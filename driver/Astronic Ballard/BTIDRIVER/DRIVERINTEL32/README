@@ -1,0 +1,207 @@
+
+
+                  32-Bit BTIDriver Linux Libraries (btikusb)
+
+       Copyright 2001-2025 Astronics Advanced Electronic Systems Corp.
+
+
+                                ------------
+
+
+          The following libraries are provided:
+
+          Library Name                Description
+
+          libbti1553.so               MIL-STD-1553 driver
+          libbti422.so                ARINC 422 driver
+          libbti429.so                ARINC 429 driver
+          libbti708.so                ARINC 708 driver
+          libbti717.so                ARINC 717 driver
+          libbtiCSDB.so               CSDB driver
+          libbtiDIO.so                DIO driver
+          libbtiEBR.so                EBR driver
+
+          libbtiCard.so               CARD driver
+          libbtiCard_debug.so         Debug build of CARD driver
+
+          ballard.conf                Example ballard.conf
+
+          Refer to the end of this document for corrections,
+          warnings, and additional information.
+
+
+
+     INTRODUCTION
+
+          BTIDriver is a unified Application Programming
+          Interface (API) for Ballard Avionics
+          Databus Interface PCI, USB, and Ethernet devices.
+          These avionics databus interfaces include
+          MIL-STD-1553, ARINC 429, ARINC 717, ARINC 708,
+          and others.  The folders listed above contain
+          the necessary components for building applications
+          for BTIDriver compliant devices.
+
+
+
+     USAGE
+
+          The example programs included with this driver can
+          be used as a starting point for developing your own
+          application.  They demonstrate various capabilities
+          and programming methods of the BTIDriver API.
+
+          Before you can run the example programs, you will
+          first need to install the API libraries.  Copy the
+          following shared object libraries to the /usr/lib
+          directory of your computer (as root):
+
+          libbtiCard.so
+          libbti1553.so
+          libbti422.so
+          libbti429.so
+          libbti708.so
+          libbti717.so
+          libbtiCSDB.so
+          libbtiDIO.so
+          libbtiEBR.so
+
+
+
+     PCI KERNEL DRIVER
+
+         To operate BTIDriver compatible PCI cards, the
+         PCI kernel driver must be installed.  Refer to the
+         <BTIKPCI> directory for building and installing
+         the PCI kernel driver.
+
+         The PCI kernel driver is not needed if a PCI card
+         is not being operated.
+
+
+
+     USB KERNEL DRIVER
+
+         To operate BTIDriver compatible USB cards, the
+         USB kernel driver must be installed.  Refer to the
+         <BTIKUSB> directory for building and installing
+         the USB kernel driver.
+
+         The USB kernel driver is not needed if a USB card
+         is not being operated.
+
+         As an alternative, BTIDriver compatible USB cards
+         can be accessed using the libusb-1.0 library.  Refer to
+         the <BTIDRIVER_LIBUSB1> directory for the BTIDriver
+         files compatible with the libusb-1.0 library.
+
+
+
+     BALLARD.CONF CARD NUMBER ASSIGNMENTS
+
+          The file /etc/ballard.conf assigns card numbers
+          to BTIDriver devices.  If not present,
+          cards are assumed to be numbered starting at
+          zero, first the PCI cards, and then the USB
+          cards.  ballard.conf must be present to access
+          Ethernet devices.
+
+
+          PCI CARDS
+
+               The starting card number for all PCI cards
+               can be set.  If none is specified, then all
+               PCI cards are in system order starting at zero.
+
+               If an Ethernet device is assigned the same card
+               number as a PCI device, the Ethernet device takes
+               precedence.
+
+              The format should be:
+
+                   <CARDNUM>,pcistart
+
+
+          USB CARDS
+
+               The starting card number for all USB cards can
+               be set.  If none is specified, then all USB
+               cards are in system order starting after the
+               last PCI card, or zero if there are no PCI cards.
+
+               If an Ethernet device is assigned the same card number
+               as a USB device, the RPC device takes precedence.
+               Likewise, if a PCI card is assigned the same card number
+               as a USB device, the PCI device takes precedence.
+
+              The format should be:
+
+                   <CARDNUM>,usbstart
+
+
+          RPC DEVICES
+
+               Lines in ballard.conf map a card number to a particular
+               BTIDriver Ethernet device.  Either a MAC address, an IPv4
+               address, or an IPv6 address can be specified.  Use an IP
+               address only if a static IP address has been assigned to
+               the device.
+
+               The format should be:
+
+                   <CARDNUM>,<MAC_ADDRESS>
+                   <CARDNUM>,<IPV4_ADDRESS>
+                   <CARDNUM>,<IPV6_ADDRESS>
+
+               Note: Not all BTIDriver Ethernet devices support IPv6.
+               Contact Customer Support for additional information.
+
+
+
+     MOVING AND RENAMING BALLARD.CONF
+
+          If the environment variable BTI_CONFIG_FILE is defined,
+          its value is used as the path and filename to use
+          instead of the file /etc/ballard.conf.
+
+
+
+     FIREWALL CONFIGURATION
+
+          The driver can broadcast a request on the network to find
+          RPC devices that are present.  Responses to this request
+          can be blocked by the firewall.  The firewall must be
+          configured to allow these responses on port 111 to be
+          accepted.  The following command will open port 111:
+
+               iptables -I INPUT 1 -p UDP --sport 111 -m conntrack --ctstate NEW -j ACCEPT
+
+          Refer to the btirpc_find example.
+
+
+
+     CORRECTIONS, WARNINGS, AND ADDITIONAL INFORMATION
+
+          There is no additional information.
+
+
+                                ------------
+
+
+          EXPORT CONTROLLED TECHNOLOGY.  This information is
+          controlled for export in accordance with the U.S.
+          Export Administration Regulations ("EAR") under EAR99.
+          Export, reexport, or transfer without a license or other
+          authorization from the Bureau of Industry and Security
+          is prohibited.
+
+
+                                ------------
+
+
+     Please contact us with your questions, comments,
+     and suggestions concerning this product.
+
+     Astronics AES
+     www.astronics.com
+     Ballard.Support@astronics.com

@@ -1,0 +1,82 @@
+
+
+                          BTIDriver Linux Libraries
+
+                             February 27, 2026
+
+       Copyright 2001-2026 Astronics Advanced Electronic Systems Corp.
+
+
+                                ------------
+
+
+          This folder contains the following subfolders:
+
+          Folder Name               Description
+
+          <DRIVERARM64>     64-bit ARM target libraries
+          <DRIVERINTEL32>   32-bit Intel target libraries
+          <DRIVERINTEL64>   64-bit Intel target libraries
+
+          <C_C++>           C and C++ example programs
+          <Python>          Python driver and examples
+
+          LICENSE.PDF       License agreement for Linux driver software
+          README            This document
+
+          Refer to the end of this document for corrections,
+          warnings, and additional information.
+
+
+
+     INTRODUCTION
+
+          BTIDriver is a unified Application Programming
+          Interface (API) for Ballard Avionics Databus
+          Interface PCI, USB, and Ethernet devices.
+          These avionics databus interfaces include
+          MIL-STD-1553, ARINC 429, ARINC 717, ARINC 708, and
+          others.  The <DRIVERINTEL32>, <DRIVERINTEL64>, and
+          <DRIVERARM64> folders contain the driver files,
+          and the <C_C++> and <Python> folders contain 
+          programming files and examples.
+
+
+
+     ACCESSING USB DEVICES
+
+          This directory contains drivers that can access PCI,
+          USB, and Ethernet devices.  When accessing USB devices,
+          these drivers use the USB kernel driver.  See the <BTIKUSB>
+          directory for more information.
+
+          Alternatively, USB devices can be access using libusb-1.0.
+          See the <BTIDRIVER_LIBUSB1> directory for more information.
+
+
+
+     CORRECTIONS, WARNINGS, AND ADDITIONAL INFORMATION
+
+          There is no additional information.
+
+
+                                ------------
+
+
+          EXPORT CONTROLLED TECHNOLOGY.  This information is
+          controlled for export in accordance with the U.S.
+          Export Administration Regulations ("EAR") under EAR99.
+          Export, reexport, or transfer without a license or other
+          authorization from the Bureau of Industry and Security
+          is prohibited.
+
+
+                                ------------
+
+
+     Please contact us with your questions, comments,
+     and suggestions concerning this product.
+
+     Astronics AES
+     www.astronics.com
+     Ballard.Support@astronics.com

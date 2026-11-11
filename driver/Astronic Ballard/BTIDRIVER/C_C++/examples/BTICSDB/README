@@ -1,0 +1,136 @@
+
+
+                        BTIDriver for Linux
+             USING THE BTICSDB DRIVER API AND EXAMPLES
+
+       Copyright 2001-2024 Astronics Advanced Electronic Systems Corp.
+
+
+                           ------------
+
+
+          This folder contains the following files:
+
+          File Name                 Description
+
+          examp1.c     Example 1: Transmitter example
+          examp2.c     Example 2: Receiver example
+          examp3.c     Example 3: Sequential monitor example
+          examp4.c     Example 4: Explicit message timing example
+          examp5.c     Example 5: Transmit and receive list buffers example
+          examp6.c     Example 6: Transmit and receive list buffers (non-continuous) example
+          examp7.c     Example 7: Transmit and receive list buffers (burst) example
+          examp8.c     Example 8: Polling the event log list
+          examp9.c     Example 9: Asynchronous serial example
+          examp10.c    Example 10: Event log using interrupts
+
+          Makefile     GNU Makefile for examples
+
+          README       This document
+
+          Refer to the end of this document for corrections,
+          warnings, and additional information.
+
+
+
+     INTRODUCTION
+
+          The BTICSDB.h and libbtiCSDB.so files are the C
+          language header and shared library for the BTICSDB
+          Driver API.  The BTICSDB API library is dependent
+          upon the BTICard API library.  With these files,
+          the user can write applications that operate a
+          BTIDriver compliant CSDB device.
+
+
+
+     MAKEFILE
+
+          All the example programs can be built by simply
+          running the command 'make'.
+
+          By default, the Makefile builds the examples without
+          linking to libtirpc.  This produces examples that can
+          only understand IPv4 addresses in the ballard.conf
+          configuration file.  To allow IPv6 addresses to be used
+          in ballard.conf, run the command 'make ipv6'.  See the
+          IPV6 section below for additional details.
+
+          To remove the built example programs, run the 'make
+          clean' command.
+
+
+
+     BTICSDB.h
+
+          Applications written in the C language that use the
+          BTICSDB Driver API library must incorporate the
+          header file BTICSDB.h using the #include
+          preprocessor directive.  Assuming the header file
+          is in the current working directory or in the
+          INCLUDE path, the following line must be added to
+          the top of the application's source file:
+
+          #include "BTICSDB.h"
+
+
+
+     EXAMPLE PROGRAMS
+
+          Examples are provided in C source code files and
+          must be compiled on the target processor.  Many of
+          the examples use the ncurses library to output to
+          the terminal.  Most Linux distributions ship the
+          ncurses runtime libraries, but may not ship the
+          programming headers.  You may need to install the
+          ncurses programming headers separately.
+
+
+
+     IPV6
+
+          A network connection to some BTIDriver network devices
+          can use an IPv6 address.  This requires the ballard.conf
+          file to have an entry of the form:
+
+               <CARDNUM>,<IPV6_ADDRESS>
+
+          In addition, The libtirpc library must be installed on the
+          client, and the client program must be linked to the libtirpc
+          library.  The resulting program will still recognize IPv4
+          addresses.
+
+
+
+     FUNCTION OVERVIEW
+
+          All functions are described in detail in the
+          Ballard CSDB User's Manual.
+
+
+
+     CORRECTIONS, WARNINGS, AND ADDITIONAL INFORMATION
+
+          There is no additional information.
+
+
+                                ------------
+
+
+          EXPORT CONTROLLED TECHNOLOGY.  This information is
+          controlled for export in accordance with the U.S.
+          Export Administration Regulations ("EAR") under EAR99.
+          Export, reexport, or transfer without a license or other
+          authorization from the Bureau of Industry and Security
+          is prohibited.
+
+
+                                ------------
+
+
+     Please contact us with your questions, comments,
+     and suggestions concerning this product.
+
+     Astronics AES
+     www.astronics.com
+     Ballard.Support@astronics.com

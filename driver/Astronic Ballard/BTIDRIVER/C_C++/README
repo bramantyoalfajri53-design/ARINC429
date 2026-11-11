@@ -1,0 +1,66 @@
+
+
+                             C/C++ Headers and Examples
+                                  for Linux
+
+       Copyright 2001-2025 Astronics Advanced Electronic Systems Corp.
+
+
+                                ------------
+
+
+          This folder contains the following files and bfolders:
+
+          Name              Description
+
+          <examples>        Example programs
+
+          BTI1553.h         BTI1553 C/C++ language include file
+          BTI422.h          BTI422 C/C++ language include file
+          BTI429.h          BTI429 C/C++ language include file
+          BTI708.h          BTI708 C/C++ language include file
+          BTI717.h          BTI717 C/C++ language include file
+          BTICard.h         BTICard C/C++ language include file
+          BTICSDB.h         BTICSDB C/C++ language include file
+          BTIDIO.h          BTIDIO C/C++ language include file
+          BTIEBR.h          BTIEBR C/C++ language include file
+
+          README            This document
+
+          Refer to the end of this document for corrections,
+          warnings, and additional information.
+
+
+
+     INTRODUCTION
+
+          This folder contains the BTIDriver C/C++ headers and
+          examples.
+
+
+
+     CORRECTIONS, WARNINGS, AND ADDITIONAL INFORMATION
+
+          There is no additional information.
+
+
+                                ------------
+
+
+          EXPORT CONTROLLED TECHNOLOGY.  This information is
+          controlled for export in accordance with the U.S.
+          Export Administration Regulations ("EAR") under EAR99.
+          Export, reexport, or transfer without a license or other
+          authorization from the Bureau of Industry and Security
+          is prohibited.
+
+
+                                ------------
+
+
+     Please contact us with your questions, comments,
+     and suggestions concerning this product.
+
+     Astronics AES
+     www.astronics.com
+     Ballard.Support@astronics.com

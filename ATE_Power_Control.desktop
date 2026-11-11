@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=ATE Power HMI Console
+Comment=Remote Control Console for Keysight N5746A (DCPS) and Keysight AC6803B (ACPS)
+Exec=/home/paridit/project/ATE/launch_power_gui.sh
+Path=/home/paridit/project/ATE
+Icon=utilities-system-monitor
+Terminal=false
+Categories=Development;Engineering;Electronics;
+StartupNotify=true

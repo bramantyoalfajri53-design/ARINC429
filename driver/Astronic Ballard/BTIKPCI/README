@@ -1,0 +1,131 @@
+
+
+                      BTI PCI Linux Kernel Module (btikpci)
+
+                              July 22, 2024
+
+       Copyright 2001-2024 Astronics Advanced Electronic Systems Corp.
+
+
+                                ------------
+
+
+          This folder contains the following files:
+
+           File Name               Description
+
+          *.c,*.h          Source code to kernel driver
+          *.rules          udev rules
+
+          LICENSE          GPL license
+          Makefile         Makefile for building kernel driver
+          README           This document
+
+          Refer to the end of this document for corrections,
+          warnings, and additional information.
+
+
+
+     INTRODUCTION
+
+          The btikpci software is licensed under the terms of
+          the GNU General Public License (GPL).  This allows
+          users of Linux to freely change and adapt the
+          btikpci software for use with their particular
+          version of the Linux kernel.  The text of the GPL
+          is contained in the LICENSE file.
+
+
+
+     BUILD THE KERNEL DRIVERS
+
+          To build the kernel module simply type:
+
+               make
+
+
+          Some kernels earlier than 6.4.0 have backported a breaking change 
+          to the kernel class_create function. On such kernels, to build the
+          kernel module type:
+
+               make CLASS_CREATE_WITHOUT_OWNER=1
+
+
+
+     SIGN THE KERNEL DRIVER
+
+          Secure boot is now enabled in modern Linux distributions
+          by default. This means kernel modules such as this one
+          cannot be loaded by the kernel unless they are cryptographically
+          signed.
+          
+          One option is to disable Secure Boot in the BIOS. While this
+          is a reliable way to allow installation of unsigned kernel modules
+          it is not recommended for all environments for security reasons.
+          
+               1. Enter BIOS setup
+               2. Disable secure boot
+               3. Save configuration
+               4. Reboot the system
+
+          Another option is to rebuild the kernel such that CONFIG_MODULE_SIG_FORCE
+          is off. Rebuilding the kernel is beyond the scope of the README, but
+          more information on this configuration option is available here
+          https://www.kernel.org/doc/html/v4.15/admin-guide/module-signing.html
+
+          Other solutions are distribution-specific, and involve adding a new
+          certificate to the shim and signing the module with the private key using
+          OS tools such as mokutil. Here are some articles for a few common distributions
+          
+               Ubuntu https://ubuntu.com/blog/how-to-sign-things-for-secure-boot
+               Gentoo https://wiki.gentoo.org/wiki/Signed_kernel_module_support
+               Fedora https://docs.fedoraproject.org/en-US/Fedora/22/html/System_Administrators_Guide/sect-signing-kernel-modules-for-secure-boot.html
+
+          Once on of these options has been implemented, the module should be
+          loadable on the target system.
+
+
+
+     INSTALL THE DRIVER
+
+          After the build is complete, the resulting kernel
+          module files will be copied to output folders (e.g.
+          pci-rel for the PCI release build).  To install the
+          module, run the following from a root account:
+
+               make install
+
+
+
+     CONFIGURE UDEV
+
+          Copy the file 70-btipci.rules to /etc/udev/rules.d
+          to configure udev to make the device nodes read/write.
+
+
+
+     CORRECTIONS, WARNINGS, AND ADDITIONAL INFORMATION
+
+          There is no additional information.
+
+
+                                ------------
+
+
+          EXPORT CONTROLLED TECHNOLOGY.  This information is
+          controlled for export in accordance with the U.S.
+          Export Administration Regulations ("EAR") under EAR99.
+          Export, reexport, or transfer without a license or other
+          authorization from the Bureau of Industry and Security
+          is prohibited.
+
+
+                                ------------
+
+
+     Please contact us with your questions, comments,
+     and suggestions concerning this product.
+
+     Astronics AES
+     www.astronics.com
+     Ballard.Support@astronics.com

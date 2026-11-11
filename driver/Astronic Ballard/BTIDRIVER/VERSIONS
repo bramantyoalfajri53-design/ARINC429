@@ -1,0 +1,432 @@
+
+
+                           Linux Driver Software
+
+                              Version History
+                              February 27, 2026
+
+       Copyright 2009-2026 Astronics Advanced Electronic Systems Corp.
+
+
+                                ------------
+
+
+CD-LNX-043 [February 27, 2026]
+----------
+
+    * Added ARM64 driver
+    * Refactored BTIDriver directories
+
+
+
+CD-LNX-042 [October 8, 2025]
+----------
+
+    * Added Python driver and examples
+    * Refactored BTIDriver directories
+    * Updated export statement
+
+
+
+CD-LNX-041 [March 11, 2025]
+----------
+
+    * Updated export statement
+
+
+
+CD-LNX-040 [September 24, 2024]
+----------
+
+    BTIKPCI
+
+        * Added support for Linux kernel v6.5
+        * Disabling caching when DMA memory is mmapped
+        * Makefile writes udev rule when driver is installed
+
+    BTICard
+
+        * Added support for OBB2 USB RPC
+        * Fixed issue when configuring interrupts from multiple cores
+        * Fix to null terminator bug in COPROCINFO_VERSION
+
+    Examples
+
+        * Added EBR Examples
+        * bticard_test - Fixed platform string and dash-rev logic
+        * BTI1553 Example 11 & 12 - Changed command subaddress from 1 to 2 so EXAMP3 can display the data
+        * BTI1553 Example 27 - Displays the message response time if supported by the hardware
+
+
+
+CD-LNX-039 [March 2, 2023]
+----------
+
+    * Added support for LE5-2022 product
+
+
+
+CD-LNX-038 [March 25, 2022]
+----------
+
+    * bticard_test supports dash revision numbers for assemblies
+    * Updated BTIVI.so LabVIEW library
+    * Added BTI422_FIFODataGapWr
+    * Updated license
+    * Updated branding
+
+
+
+CD-LNX-037 [April 30, 2021]
+----------
+
+    * Updated PCI and USB kernel drivers to support Linux version 5.X
+
+
+
+CD-LNX-036 [January 18, 2021]
+----------
+
+    * Added support for NG2
+
+
+
+CD-LNX-035 [December 1, 2020]
+----------
+
+    * Added BTIVI.so for BTIPCI (Classic LabVIEW driver wrapper library)
+
+
+
+CD-LNX-034 [July 20, 2020]
+----------
+
+    * Added support for UA2000 and NG3
+
+
+
+CD-LNX-033 [October 10, 2019]
+----------
+
+    BTIDriver
+
+        * Fixed conflicts between UAs and Bluetooh devices
+        * Added support for 5 digit serial numbers
+        * Fixed BTICard_IRIGSyncStatus() to support 6G
+        * BTI1553 now fails configuration of ping-pong list buffers on 6G
+
+    Examples
+
+        * Fixed example that was not using card number specified in command-line option
+
+
+
+CD-LNX-032 [November 8, 2018]
+----------
+
+    BTIDriver
+
+        * Added support for AB3000 Series N
+
+    BTIKPCI
+
+        * Added support for ME1000
+
+
+
+CD-LNX-031 [October 2, 2018]
+----------
+
+    BTIDriver
+
+        * Added support for ME1000
+
+    MPR-ES-1
+
+        * Fixed endianness bug when reading MIB
+
+
+
+CD-LNX-030 [May 3, 2018]
+----------
+
+    BTIDriver
+
+        * Fixed bug assigning interrupt devnode for 6G cards
+        * Added API support for reading card serial number
+        * Added support for webCS
+
+    BTI1553
+
+        * Minor bug fixes
+
+    BTI429
+
+        * Added support for webCS
+
+
+
+CD-LNX-029 [March 23, 2017]
+----------
+
+    BTIDriver
+
+        * Added support for 6G IRIG toggle
+
+    BTI429
+
+        * Fixed playback bug when used on multiple channels
+
+    BTIPCI
+
+        * Removed warning when calling mmap() for DMA memory
+
+
+
+CD-LNX-028 [August 25, 2015]
+----------
+
+    BTIDriver
+
+        * Added support for OmniBusBox II
+
+
+
+CD-LNX-027 [July 9, 2015]
+----------
+
+    BTIDriver
+
+        * Fixed a regression bug in 4G BTIDIO
+        * Added preliminary support for OmniBusBox II
+
+
+
+CD-LNX-026 [May 20, 2015]
+----------
+
+    BTIDriver
+
+        * Added support for USB Multi Serial
+        * Minor updates to examples
+
+
+
+CD-LNX-025 [February 6, 2015]
+----------
+
+    BTIDriver
+
+        * General updates to keep in sync with Windows drivers
+        * Added support for OmniBus II PXIe cards
+        * Minor updates to examples
+
+        Fixed a bug when getting a handle for a poll() call when
+        handling interrupts from a USB Adapter.  There is a race
+        condition where BTICard_IntGet() will return a valid
+        handle for only a brief time after the call to
+        BTICard_IntInstall().  After that, it will always return
+        a null handle.
+
+    BTIKPCI
+
+        * Added support for OmniBus II PXIe cards
+
+
+
+CD-LNX-024 [January 6, 2015]
+----------
+
+    BTIDriver
+
+        * General updates to keep in sync with Windows drivers
+        * Added support for 6G parametric channels
+        * Minor updates to examples
+
+
+
+CD-LNX-023 [October 16, 2014]
+----------
+
+    BTIDriver
+
+        * General updates to keep in sync with Windows drivers
+        * Added libusb-0.1 support
+        * Minor updates to examples
+        
+
+    PM1553-1 AND PM429-1
+
+        * Fixed size of variables passed to ioctl()
+
+
+
+CD-LNX-022 [May 20, 2014]
+----------
+
+    BTIKPCI
+
+        * Updated to support PE1000
+
+    BTIDriver
+
+        * Updated to support PE1000
+
+    * Updated Safety Warning and License agreement
+
+
+CD-LNX-021 [October 31, 2013]
+----------
+
+    BTIKPCI & BTIKUSB
+
+        * Fixes to allow building under newer kernel versions
+
+
+CD-LNX-020 [October 11, 2013]
+----------
+
+    BTIDriver
+
+        * Stepped architecture down from i686 to i586
+        * Operate local PCI, local USB, and remote RPC devices from the same driver
+        * Makefiles for examples call out library files after the source
+          files as required by newer versions of GCC
+
+    BTI1553
+
+        * Fixed RTConfig() bug. When called with the disabled flag, and then later called
+          with the enabled flag, sequential monitoring was enabled for all subaddresses
+
+    BTICARD
+
+        * Fixed bug in SysMonClear()
+        * ballard.conf can set the base card number of PCI and USB cards
+        * An environment variable can set the location and filename of ballard.conf
+        * Added USB multi-protocol support
+        * Fixed timeout bug in SYSMON SensorRd/Wr()
+        * Added an example that discovers RPC devices
+        * Enhanced BTICARD example #1 to show all PCI, USB, and RPC cards
+          with assigned card numbers, and their product and type string
+
+
+CD-LNX-019 [March 13, 2013]
+----------
+
+    BTIDriver
+
+        * Updated BTICARD to fix use of DIO banks on AB3000 and Mx5 devices
+
+
+CD-LNX-018 [January 4, 2013]
+----------
+
+    BTIDriver
+
+        * Added support for Mx5 20R1T channel configuration
+        * Added support for PM1553-5
+
+    MPR-ES-1
+
+        * Initial release
+
+
+CD-LNX-017 [August 10, 2012]
+----------
+
+    BTIDriver
+
+        * Added functionality for AB3000
+
+    BTIKMOD
+
+        * Added call to noncached() for mmapped memory to support non-Intel processors
+        * Tweaks to accomodate AB3000
+        * Fixes to Makefile to support kernel versions beyond 2.6
+
+
+CD-LNX-016 [April 27, 2012]
+----------
+
+    BTIDriver
+
+        * Fix to BIT function for Mx5
+
+
+CD-LNX-015 [June 10, 2011]
+----------
+
+    BTIKMOD
+
+        * Added support for Mx5
+
+    BTIDriver
+
+        * Added support and examples for Mx5
+
+
+CD-LNX-014 [May 21, 2010]
+----------
+
+    BTIKMOD
+
+        * Updated to support kernel version 2.6.32
+
+    BTIDriver
+
+        * Drivers built under GCC 4.1
+        * BTIPCI no longer depends on libusb-1.0
+        * Various fixes to examples
+
+
+CD-LNX-013 [March 3, 2010]
+----------
+
+    BTIKMOD
+
+        * Updated to support kernel version 2.6.31
+
+    BTIDriver
+
+        * Added support for USB 5G products
+        * Modified function prototypes to match documentation
+        * Various fixes to examples
+
+
+CD-LNX-012 [October 23, 2009]
+----------
+
+    BTIDriver
+
+        * Added support for ARINC 708 5G products
+        * Added support for AB22XX and AB23XX products
+        * Added additional examples
+        * Improved BTI429_SchedBuild algorithm (added
+          BTI429_SchedMode to select schedule modes)
+        * Made CommProcess functions thread safe
+        * Fixed problem in BTI1553 library with external
+          triggering of errors
+        * Fixed initialization of values for 5G 1553 products
+        * Fixed Sequential DMA problem with RPC devices
+
+
+                                ------------
+
+
+          EXPORT CONTROLLED TECHNOLOGY.  This information is
+          controlled for export in accordance with the U.S.
+          Export Administration Regulations ("EAR") under EAR99.
+          Export, reexport, or transfer without a license or other
+          authorization from the Bureau of Industry and Security
+          is prohibited.
+
+
+                                ------------
+
+
+     Please contact us with your questions, comments,
+     and suggestions concerning this product.
+
+     Astronics AES
+     www.astronics.com
+     Ballard.Support@astronics.com

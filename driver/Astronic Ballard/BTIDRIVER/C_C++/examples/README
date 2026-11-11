@@ -1,0 +1,72 @@
+
+
+                        BTIDriver for Linux
+               USING THE DRIVER API AND EXAMPLES
+
+       Copyright 2001-2024 Astronics Advanced Electronic Systems Corp.
+
+
+                           ------------
+
+
+          This folder contains the following directories:
+
+          Folder Name               Description
+
+          <BTI1553>     MIL-STD-1553 Driver Examples
+          <BTI422>      RS-422 Driver Examples
+          <BTI429>      ARINC 429 Driver Examples
+          <BTI708>      ARINC 708 Driver Examples
+          <BTI717>      ARINC 717 Driver Examples
+          <BTICard>     Card Level Driver Examples
+          <BTICSDB>     CSDB Driver Examples
+          <BTIDIO>      Discrete IO Driver Examples
+          <BTIEBR>      EBR-1553 Driver Examples
+
+          README        This document
+
+          Refer to the end of this document for corrections,
+          warnings, and additional information.
+
+
+
+     INTRODUCTION
+
+          The folders listed above contain the various
+          protocols supported by the universal BTIDriver API.
+          In the folder for each protocol are several example
+          programs.  See the README in each folder for a full
+          description of these example programs.
+
+          For multi-protocol BTIDriver compliant products,
+          simply combine the concepts from the included
+          example programs to build your own custom
+          application.
+
+
+
+     CORRECTIONS, WARNINGS, AND ADDITIONAL INFORMATION
+
+          There is no additional information.
+
+
+                                ------------
+
+
+          EXPORT CONTROLLED TECHNOLOGY.  This information is
+          controlled for export in accordance with the U.S.
+          Export Administration Regulations ("EAR") under EAR99.
+          Export, reexport, or transfer without a license or other
+          authorization from the Bureau of Industry and Security
+          is prohibited.
+
+
+                                ------------
+
+
+     Please contact us with your questions, comments,
+     and suggestions concerning this product.
+
+     Astronics AES
+     www.astronics.com
+     Ballard.Support@astronics.com

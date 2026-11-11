@@ -1,0 +1,34 @@
+# Python virtual environment
+.venv/
+venv/
+ENV/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Node modules & build artifacts
+hmi/frontend/node_modules/
+
+# Environment and sensitive secrets
+.env
+.env.*
+cred/
+*.crt
+*.key
+*.pem
+
+# Large binary / installer files (exceeds GitHub limits)
+driver/Astronic Ballard/*.iso
+driver/Astronic Ballard/*.ISO
+driver/Astronic Ballard/*.exe
+driver/Astronic Ballard/*.EXE
+driver/Astronic Ballard/*.zip
+driver/Astronic Ballard/BTIDRIVER/DRIVERARM64/*.deb
+driver/Astronic Ballard/BTIDRIVER/DRIVERARM64/*.rpm
+*.iso
+*.ISO
+*.zip
+*.tar.gz
+

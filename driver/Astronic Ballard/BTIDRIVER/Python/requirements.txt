@@ -1,0 +1,8 @@
+
+# Windows
+windows-curses; platform_system == "Windows"
+btidriver-1.0.0+813415b-py3-none-win_amd64.whl; platform_system == "Windows"
+
+# Linux
+btidriver-1.0.0+813415b-py3-none-linux_x86_64.whl; platform_system == "Linux"
+# Curses is built-in in Linux

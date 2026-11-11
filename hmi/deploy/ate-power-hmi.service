@@ -1,0 +1,19 @@
+[Unit]
+Description=ATE Power HMI (Keysight DCPS/ACPS web console)
+After=network-online.target nidevldu.service gpibenumsvc.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=paridit
+Group=paridit
+WorkingDirectory=/home/paridit/project/ATE/hmi/backend
+Environment=PYTHONPATH=/home/paridit/project/ATE/hmi/backend
+Environment=LD_LIBRARY_PATH=/home/paridit/project/ATE/driver/Astronic Ballard/BTIDRIVER/DRIVERINTEL64:/usr/local/lib
+EnvironmentFile=-/home/paridit/project/ATE/.env
+ExecStart=/home/paridit/project/ATE/.venv/bin/uvicorn app:app --host 0.0.0.0 --port 8080
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
