@@ -1,15 +1,17 @@
-import { CFDS_MODE_CONFIG } from "../config";
+import { CFDSLayout } from "./CFDSLayout";
+import "../styles/cfds.css";
+
+function returnToModeSelect() {
+  if (window.location.pathname !== "/") {
+    window.history.pushState({}, "", "/");
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  }
+}
 
 export function CfdsMode() {
   return (
-    <section className="panel">
-      <div className="panel-head">
-        <h2>AEROFLEX JCAIR T1200 / T1200B — {CFDS_MODE_CONFIG.label.toUpperCase()}</h2>
-        <span className="pill view">READY FOR DEVELOPMENT</span>
-      </div>
-      <p className="section-sub">
-        Modul CFDS dikosongkan sesuai pembagian tim agar siap dikembangkan secara independen pada direktori <code>features/cfds/</code>.
-      </p>
-    </section>
+    <div className="cfds-workbench" data-testid="cfds-workbench">
+      <CFDSLayout onBackToMain={returnToModeSelect} />
+    </div>
   );
 }

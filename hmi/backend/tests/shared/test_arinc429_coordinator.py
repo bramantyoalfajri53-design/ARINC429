@@ -47,28 +47,31 @@ def test_coordinator_mode_isolation_and_csv_export():
 
 
 def test_arinc429_http_routes_registered_and_auth_protected():
-    paths = {route.path for route in backend_app.app.routes}
-    expected = {
-        "/api/arinc429/status",
-        "/api/arinc429/mode",
-        "/api/arinc429/bus",
-        "/api/arinc429/channels",
-        "/api/arinc429/export",
-        "/api/standard/status",
-        "/api/standard/transmit",
-        "/api/cfds/status",
-        "/api/cmc/state",
-        "/api/cmc/lru",
-        "/api/cmc/command",
-        "/api/cmc/fault-summary",
-        "/api/cmc/request-config-data",
-        "/api/cmc/request-shop-faults",
+    openapi_paths = backend_app.app.openapi().get("paths", {})
+    expected_methods = {
+        "/api/arinc429/status": "get",
+        "/api/arinc429/mode": "post",
+        "/api/arinc429/bus": "post",
+        "/api/arinc429/channels": "post",
+        "/api/arinc429/export": "get",
+        "/api/standard/status": "get",
+        "/api/standard/transmit": "post",
+        "/api/cfds/status": "get",
+        "/api/cmc/state": "get",
+        "/api/cmc/lru": "post",
+        "/api/cmc/command": "post",
+        "/api/cmc/fault-summary": "post",
+        "/api/cmc/request-config-data": "post",
+        "/api/cmc/request-shop-faults": "post",
     }
-    assert expected.issubset(paths)
+    assert set(expected_methods).issubset(set(openapi_paths))
+    for path, method in expected_methods.items():
+        assert method in openapi_paths[path]
 
     async def scenario():
-        status, _, _ = await _asgi_request("GET", "/api/arinc429/status")
-        assert status == 401
+        for path, method in expected_methods.items():
+            status, _, _ = await _asgi_request(method.upper(), path)
+            assert status == 401
 
     asyncio.run(scenario())
 

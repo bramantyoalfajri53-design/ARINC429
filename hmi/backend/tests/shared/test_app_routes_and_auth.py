@@ -56,9 +56,47 @@ async def _asgi_request(method: str, path: str, body: bytes = b"", cookie: str =
     return status, resp_headers, b"".join(chunks)
 
 
+async def _asgi_websocket_unauthorized(path: str) -> tuple[bool, int | None, str]:
+    scope = {
+        "type": "websocket",
+        "asgi": {"version": "3.0"},
+        "http_version": "1.1",
+        "scheme": "ws",
+        "path": path,
+        "raw_path": path.encode("ascii"),
+        "query_string": b"",
+        "headers": [(b"host", b"testserver")],
+        "client": ("127.0.0.1", 12345),
+        "server": ("testserver", 80),
+        "subprotocols": [],
+    }
+    queue: asyncio.Queue[dict[str, object]] = asyncio.Queue()
+    await queue.put({"type": "websocket.connect"})
+
+    accepted = False
+    close_code: int | None = None
+    payload = ""
+
+    async def receive():
+        return await queue.get()
+
+    async def send(message):
+        nonlocal accepted, close_code, payload
+        if message["type"] == "websocket.accept":
+            accepted = True
+        elif message["type"] == "websocket.send":
+            payload += str(message.get("text", ""))
+        elif message["type"] == "websocket.close":
+            close_code = message.get("code")
+            await queue.put({"type": "websocket.disconnect", "code": close_code or 1000})
+
+    await backend_app.app(scope, receive, send)
+    return accepted, close_code, payload
+
+
 def test_expected_routes_registered():
-    paths = {route.path for route in backend_app.app.routes}
-    expected = {
+    openapi_paths = set(backend_app.app.openapi().get("paths", {}).keys())
+    expected_http = {
         "/api/auth/login",
         "/api/auth/logout",
         "/api/auth/session",
@@ -75,9 +113,18 @@ def test_expected_routes_registered():
         "/api/estop",
         "/api/gpib/rescan",
         "/api/mode/simulation",
-        "/ws/telemetry",
     }
-    assert expected.issubset(paths)
+    assert expected_http.issubset(openapi_paths)
+
+    async def verify_ws_and_auth():
+        status, _, _ = await _asgi_request("GET", "/api/state")
+        assert status == 401
+        accepted, close_code, payload = await _asgi_websocket_unauthorized("/ws/telemetry")
+        assert accepted is True
+        assert close_code == 4401
+        assert json.loads(payload) == {"error": "unauthorized"}
+
+    asyncio.run(verify_ws_and_auth())
 
 
 def test_auth_control_and_hv_interlock_flow():
