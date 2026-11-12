@@ -1,6 +1,6 @@
 """ATE power instrumentation package (Keysight DCPS / ACPS)."""
 
-from ate_power.drivers import ACSourceDriver, DCSupplyDriver, VISA_AVAILABLE, auto_detect_gpib_instrument
+from .drivers import ACSourceDriver, DCSupplyDriver, VISA_AVAILABLE, auto_detect_gpib_instrument
 
 __all__ = [
     "ACSourceDriver",

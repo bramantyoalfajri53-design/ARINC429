@@ -64,3 +64,4 @@ export type HvConfirmDetail = {
   message?: string;
   set_voltage?: number;
 };
+

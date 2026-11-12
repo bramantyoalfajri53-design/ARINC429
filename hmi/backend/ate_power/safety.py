@@ -7,7 +7,7 @@ HV operator confirm, AC frequency clamp, fail-safe output drop.
 
 from __future__ import annotations
 
-from ate_power.config import AC_HV_THRESHOLD_VRMS, DC_HV_THRESHOLD_V
+from .config import AC_HV_THRESHOLD_VRMS, DC_HV_THRESHOLD_V
 
 # Hardware OVP must stay above the DC setpoint (N5746A nuisance-trip margin).
 DC_OVP_MARGIN_V = 1.0

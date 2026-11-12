@@ -10,14 +10,15 @@ import time
 import atexit
 import random
 import logging
+from typing import Any
 
-from ate_power.safety import (
+from .safety import (
     AC_RANGE_LOW_V,
     DC_OVP_MARGIN_V,
     ac_voltage_range,
     clamp_dc_voltage_to_ovp,
 )
-from ate_power.visa_link import (
+from .visa_link import (
     VISA_AVAILABLE,
     apply_visa_session,
     detect_ac_resource,
@@ -25,14 +26,15 @@ from ate_power.visa_link import (
     detect_instrument,
 )
 
+pyvisa: Any
 try:
-    import pyvisa
+    import pyvisa  # type: ignore[import-not-found]
 except ImportError:
-    pyvisa = None  # type: ignore
+    pyvisa = None
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
-_ACTIVE_INSTRUMENTS = []
+_ACTIVE_INSTRUMENTS: list[Any] = []
 
 
 def _global_safety_shutdown():
@@ -61,7 +63,7 @@ class DCSupplyDriver:
     def __init__(self, resource_name="GPIB0::5::INSTR", simulation_mode=False):
         self.resource_name = resource_name
         self.simulation_mode = simulation_mode
-        self.inst = None
+        self.inst: Any = None
         self.output_enabled = False
         
         # State Setpoints & Safety Limits
@@ -283,7 +285,7 @@ class ACSourceDriver:
     def __init__(self, resource_name="GPIB0::7::INSTR", simulation_mode=False):
         self.resource_name = resource_name
         self.simulation_mode = simulation_mode
-        self.inst = None
+        self.inst: Any = None
         self.output_enabled = False
         
         # State Setpoints & Safety Limits

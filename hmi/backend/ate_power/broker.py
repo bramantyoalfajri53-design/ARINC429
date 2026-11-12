@@ -12,8 +12,8 @@ import time
 from collections import deque
 from typing import Any, Optional
 
-from ate_power.drivers import ACSourceDriver, DCSupplyDriver
-from ate_power.config import (
+from .drivers import ACSourceDriver, DCSupplyDriver
+from .config import (
     AC_HV_THRESHOLD_VRMS,
     AC_LXI_HOST,
     AC_VISA_RESOURCE,
@@ -23,12 +23,12 @@ from ate_power.config import (
     DEFAULT_AC_VISA,
     DEFAULT_DC_VISA,
 )
-from ate_power.safety import (
+from .safety import (
     is_zero_off_preset,
     must_drop_output_for_frequency,
     must_drop_output_for_voltage,
 )
-from ate_power.visa_link import resource_candidates
+from .visa_link import resource_candidates
 
 logger = logging.getLogger("ate_power.broker")
 

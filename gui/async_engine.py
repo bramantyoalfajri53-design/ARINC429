@@ -7,7 +7,13 @@ Guarantees 60 FPS silky smooth UI responsiveness with zero click lag.
 import time
 import queue
 import logging
-from PyQt6.QtCore import QThread, pyqtSignal
+import sys
+from pathlib import Path
+from PyQt6.QtCore import QThread, pyqtSignal  # type: ignore[import-not-found]
+
+_BACKEND_DIR = str(Path(__file__).resolve().parent.parent / "hmi" / "backend")
+if _BACKEND_DIR not in sys.path:
+    sys.path.insert(0, _BACKEND_DIR)
 
 from instrument_drivers import DCSupplyDriver, ACSourceDriver
 from ate_power.config import (

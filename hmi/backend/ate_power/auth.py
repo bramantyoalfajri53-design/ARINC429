@@ -10,7 +10,7 @@ from starlette.requests import Request
 from starlette.responses import Response
 from starlette.websockets import WebSocket
 
-from ate_power.config import SESSION_COOKIE, session_secret, verify_pin
+from .config import SESSION_COOKIE, session_secret, verify_pin
 
 _signer = TimestampSigner(session_secret())
 SESSION_MAX_AGE_S = 12 * 3600

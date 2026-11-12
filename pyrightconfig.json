@@ -1,0 +1,20 @@
+{
+  "include": [
+    "hmi/backend",
+    "gui",
+    "scripts"
+  ],
+  "exclude": [
+    "**/node_modules",
+    "**/__pycache__",
+    ".venv",
+    "driver"
+  ],
+  "extraPaths": [
+    "hmi/backend",
+    "gui"
+  ],
+  "pythonVersion": "3.10",
+  "reportMissingModuleSource": "none"
+}
+

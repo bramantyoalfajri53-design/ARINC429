@@ -1,4 +1,9 @@
-import type { HvConfirmDetail } from "./types";
+import type { HvConfirmDetail } from "../types";
+
+export type ApiCommandError = Error & {
+  hv?: HvConfirmDetail;
+  status?: number;
+};
 
 async function parseError(res: Response): Promise<string> {
   try {
@@ -35,10 +40,7 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   if (!res.ok) {
     const hv = await parseHvConflict(res.clone());
     if (hv) {
-      const err = new Error(hv.message || "High voltage confirmation required") as Error & {
-        hv?: HvConfirmDetail;
-        status?: number;
-      };
+      const err = new Error(hv.message || "High voltage confirmation required") as ApiCommandError;
       err.hv = hv;
       err.status = 409;
       throw err;
@@ -48,7 +50,3 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   return (await res.json()) as T;
 }
 
-export function telemetryWsUrl(): string {
-  const proto = window.location.protocol === "https:" ? "wss" : "ws";
-  return `${proto}://${window.location.host}/ws/telemetry`;
-}

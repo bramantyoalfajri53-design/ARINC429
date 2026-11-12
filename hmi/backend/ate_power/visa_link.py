@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import logging
-from typing import Iterable, Optional
+from typing import Any, Iterable, Optional
 
-from ate_power.config import (
+from .config import (
     AC_LXI_HOST,
     AC_VISA_RESOURCE,
     DC_LXI_HOST,
@@ -16,10 +16,12 @@ from ate_power.config import (
 
 logger = logging.getLogger("ate_power.visa_link")
 
+pyvisa: Any
 try:
-    import pyvisa
+    import pyvisa  # type: ignore[import-not-found]
     VISA_AVAILABLE = True
 except ImportError:
+    pyvisa = None
     VISA_AVAILABLE = False
 
 

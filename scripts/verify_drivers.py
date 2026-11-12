@@ -80,7 +80,7 @@ def check_ballard_driver():
         
     # Check Python API
     try:
-        from btidriver import bticard, bti429
+        from btidriver import bticard, bti429  # type: ignore[import-not-found]
         print_status("BTIDriver Python API", True, "Modul btidriver & C libraries berhasil di-load")
         
         # Scan devices
@@ -107,8 +107,8 @@ def check_ballard_driver():
 def check_ni_daqmx():
     print_header("3. Verifikasi Driver NI-DAQmx (NI PXIe-6341)")
     try:
-        import nidaqmx
-        from nidaqmx.system import System
+        import nidaqmx  # type: ignore[import-not-found]
+        from nidaqmx.system import System  # type: ignore[import-not-found]
         print_status("NI-DAQmx Python API", True, "Modul nidaqmx Python siap")
         try:
             system = System.local()
@@ -126,7 +126,7 @@ def check_ni_daqmx():
 def check_gpib_and_visa():
     print_header("4. Verifikasi NI-VISA & Controller GPIB")
     try:
-        import pyvisa
+        import pyvisa  # type: ignore[import-not-found]
         rm = pyvisa.ResourceManager()
         resources = rm.list_resources("?*")
         print_status("NI-VISA Resource Manager", True, f"Library: {rm.visalib.library_path}")

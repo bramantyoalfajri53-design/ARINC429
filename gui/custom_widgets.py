@@ -3,11 +3,11 @@ ATE Power Instrumentation - Compact Cockpit UI Custom Widgets
 Optimized for 1366x768 & standard displays with Zero Clipping.
 """
 
-from PyQt6.QtWidgets import (
+from PyQt6.QtWidgets import (  # type: ignore[import-not-found]
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QFrame,
     QDoubleSpinBox, QSlider, QSizePolicy
 )
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import Qt, pyqtSignal  # type: ignore[import-not-found]
 
 
 class OledMetricCard(QFrame):

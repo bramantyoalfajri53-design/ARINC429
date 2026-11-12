@@ -7,7 +7,7 @@ import time
 from dataclasses import dataclass
 from typing import Optional
 
-from ate_power.config import LEASE_TIMEOUT_S
+from .config import LEASE_TIMEOUT_S
 
 
 @dataclass

@@ -12,16 +12,16 @@ import os
 import time
 from collections import deque
 
-from PyQt6.QtWidgets import (
+from PyQt6.QtWidgets import (  # type: ignore[import-not-found]
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QGridLayout, QGroupBox, QLabel, QPushButton, QCheckBox,
     QTextEdit, QFrame, QMessageBox, QStatusBar,
     QScrollArea, QSizePolicy
 )
-from PyQt6.QtCore import Qt, QTimer, pyqtSlot
-from PyQt6.QtGui import QFont, QColor
+from PyQt6.QtCore import Qt, QTimer, pyqtSlot  # type: ignore[import-not-found]
+from PyQt6.QtGui import QFont, QColor  # type: ignore[import-not-found]
 
-import pyqtgraph as pg
+import pyqtgraph as pg  # type: ignore[import-not-found]
 
 # Local Modules
 from styles import DARK_THEME_QSS
