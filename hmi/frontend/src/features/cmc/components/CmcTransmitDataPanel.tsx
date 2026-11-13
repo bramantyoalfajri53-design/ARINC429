@@ -317,3 +317,4 @@ export function CmcTransmitDataPanel({ state, loading, onSaveTransmitData }: Pro
     </div>
   );
 }
+
