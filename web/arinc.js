@@ -2080,16 +2080,39 @@ function renderCmcChannelsTab(c, r, s) {
   function renderStandardHub(r, s) {
     const grid = el("div", "hub-grid");
     const items = [
+      { id: "dynapro_console", title: "Dynapro 1780A Infotouch", desc: "Dynamic STANDARD MODE per LRU (CRT Retro Console)", special: true },
       { id: "user_configure", title: "User Configure", desc: "Setup TX/RX channels" },
       { id: "avionics_lru", title: "Avionics LRU", desc: "LRU test profiles" },
     ];
     items.forEach((it) => {
       const card = el("div", "mode-card");
-      card.innerHTML = `<h2>${it.title}</h2><p>${it.desc}</p>`;
-      card.addEventListener("click", () => pushScreen(it.id));
+      if (it.special) {
+        card.style.borderColor = "var(--accent, #059669)";
+        card.style.background = "rgba(16, 185, 129, 0.08)";
+      }
+      card.innerHTML = `<h2 style="${it.special ? 'color:#10b981;' : ''}">${it.title}</h2><p>${it.desc}</p>`;
+      card.addEventListener("click", () => {
+        if (it.id === "dynapro_console") {
+          openDynaproConsole();
+        } else {
+          pushScreen(it.id);
+        }
+      });
       grid.appendChild(card);
     });
     r.appendChild(grid);
+  }
+
+  function openDynaproConsole() {
+    const modal = $("dynapro-modal");
+    if (!modal) return;
+    modal.style.display = "block";
+    const btnClose = $("btn-close-dynapro");
+    if (btnClose) {
+      btnClose.onclick = () => {
+        modal.style.display = "none";
+      };
+    }
   }
 
   function renderLruPicker(r, s) {

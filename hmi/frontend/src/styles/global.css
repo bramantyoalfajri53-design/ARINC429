@@ -821,3 +821,410 @@ button:disabled {
   font-size: 12.5px;
   font-weight: 600;
 }
+
+/* ========================================================================= */
+/* RETRO DYNAPRO 1780A INFOTOUCH CRT STYLES (STANDARD AVIONICS LRU MODE)     */
+/* ========================================================================= */
+
+.retro-dynapro-container {
+  background: #06120b;
+  border: 4px solid #143522;
+  border-radius: 12px;
+  box-shadow: inset 0 0 40px rgba(0, 255, 128, 0.08), 0 8px 24px rgba(0, 0, 0, 0.4);
+  padding: 24px;
+  font-family: "JetBrains Mono", monospace, monospace;
+  color: #10b981;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  position: relative;
+  overflow: hidden;
+}
+
+.retro-screen-title {
+  text-align: center;
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: 1.5px;
+  color: #34d399;
+  text-shadow: 0 0 8px rgba(52, 211, 153, 0.5);
+  margin-bottom: 8px;
+}
+
+/* CRT Screen Split Buttons (Select Menu - Figure 6) */
+.retro-menu-split-grid {
+  display: flex;
+  justify-content: center;
+  gap: 36px;
+  padding: 40px 20px;
+}
+
+.retro-crt-big-btn {
+  background: #022c19;
+  color: #34d399;
+  border: 2px solid #059669;
+  border-radius: 8px;
+  padding: 30px 40px;
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  cursor: pointer;
+  line-height: 1.4;
+  box-shadow: 0 0 16px rgba(16, 185, 129, 0.25);
+  transition: all 0.15s ease-in-out;
+}
+
+.retro-crt-big-btn:hover {
+  background: #059669;
+  color: #041f11;
+  box-shadow: 0 0 24px rgba(52, 211, 153, 0.6);
+  transform: translateY(-2px);
+}
+
+/* LRU Selection Grid */
+.retro-lru-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+  padding: 10px 0;
+}
+
+.retro-lru-btn {
+  background: #052115;
+  border: 1px solid #047857;
+  border-radius: 8px;
+  padding: 14px 18px;
+  text-align: left;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: #a7f3d0;
+  transition: all 0.15s;
+}
+
+.retro-lru-btn:hover,
+.retro-lru-btn.selected {
+  background: #064e3b;
+  border-color: #34d399;
+  box-shadow: 0 0 12px rgba(52, 211, 153, 0.3);
+}
+
+.retro-lru-btn .lru-code {
+  font-size: 11px;
+  color: #6ee7b7;
+  font-weight: bold;
+}
+
+.retro-lru-btn .lru-id-badge {
+  font-size: 16px;
+  font-weight: 800;
+  color: #34d399;
+}
+
+.retro-lru-btn .lru-full-name {
+  font-size: 12px;
+  color: #9ca3af;
+}
+
+/* Mode Choice Grid (Figure 16 / Photo 2) */
+.retro-mode-choice-grid {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 24px;
+  padding: 30px 10px;
+}
+
+.retro-mode-top-row {
+  display: flex;
+  gap: 28px;
+}
+
+.retro-crt-mode-btn {
+  background: #042918;
+  color: #34d399;
+  border: 2px solid #059669;
+  border-radius: 6px;
+  padding: 22px 32px;
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1.4;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  box-shadow: 0 0 12px rgba(16, 185, 129, 0.2);
+  transition: all 0.15s;
+}
+
+.retro-crt-mode-btn:hover {
+  background: #10b981;
+  color: #022112;
+  box-shadow: 0 0 20px rgba(52, 211, 153, 0.5);
+  transform: translateY(-2px);
+}
+
+.retro-mode-bottom-row .nav-cfg-btn {
+  padding: 20px 48px;
+}
+
+/* Single Channel Header Grid */
+.retro-header-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  border-bottom: 1px solid #134e4a;
+  padding-bottom: 12px;
+}
+
+.retro-header-box {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.retro-header-title {
+  font-size: 12px;
+  letter-spacing: 1px;
+  color: #6ee7b7;
+  font-weight: 700;
+}
+
+.retro-header-sub {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 14px;
+  font-weight: 800;
+  color: #34d399;
+}
+
+.retro-slot-badge {
+  font-size: 11px;
+  border: 1px solid #059669;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: #022314;
+}
+
+.retro-slot-num {
+  font-size: 13px;
+  color: #00ffff;
+  font-weight: bold;
+}
+
+/* CRT Data Table */
+.retro-table-container {
+  overflow-x: auto;
+  border: 1px solid #064e3b;
+  border-radius: 6px;
+  background: #031c12;
+}
+
+.retro-crt-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  letter-spacing: 0.5px;
+}
+
+.retro-crt-table th {
+  background: #052e1f;
+  color: #6ee7b7;
+  padding: 8px 10px;
+  text-align: left;
+  border-bottom: 1px solid #047857;
+  font-size: 11.5px;
+  font-weight: 700;
+}
+
+.retro-crt-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid #0f3928;
+  color: #34d399;
+}
+
+.retro-tx-row {
+  background: rgba(16, 185, 129, 0.08);
+}
+
+.retro-rx-row {
+  background: rgba(6, 78, 59, 0.25);
+  color: #a7f3d0;
+}
+
+.retro-chan-pill {
+  font-weight: bold;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+}
+
+.retro-chan-pill.tx {
+  background: #044e3a;
+  color: #00ffff;
+  border: 1px solid #0d9488;
+}
+
+.retro-chan-pill.rx {
+  background: #064e3b;
+  color: #10b981;
+  border: 1px solid #059669;
+}
+
+.retro-num {
+  font-family: "JetBrains Mono", monospace;
+  font-weight: bold;
+}
+
+.retro-editable.cursor-active {
+  box-shadow: inset 0 0 8px rgba(0, 255, 255, 0.4);
+  background: rgba(0, 255, 255, 0.08);
+  outline: 1px dashed #00ffff;
+}
+
+.retro-table-input {
+  background: #021a10;
+  border: 1px solid #059669;
+  color: #00ffff;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: bold;
+  padding: 3px 6px;
+  border-radius: 4px;
+}
+
+.retro-table-select {
+  background: #021a10;
+  border: 1px solid #059669;
+  color: #00ffff;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: bold;
+  padding: 3px 6px;
+  border-radius: 4px;
+}
+
+.retro-clickable-cell {
+  cursor: pointer;
+  color: #00ffff;
+  text-decoration: underline;
+  padding: 2px 6px;
+  background: #032d1d;
+  border-radius: 3px;
+}
+
+/* DME Telemetry Bar */
+.retro-dme-telemetry {
+  display: flex;
+  gap: 18px;
+  background: #042416;
+  border: 1px solid #059669;
+  border-radius: 6px;
+  padding: 8px 16px;
+  flex-wrap: wrap;
+}
+
+.retro-telem-item {
+  display: flex;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.retro-telem-item .telem-label {
+  color: #6ee7b7;
+  font-weight: 600;
+}
+
+.retro-telem-item .telem-val {
+  color: #00ffff;
+  font-weight: 800;
+}
+
+/* Alert Boxes */
+.retro-alert-box {
+  padding: 8px 14px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.retro-alert-box.success {
+  background: #064e3b;
+  border: 1px solid #34d399;
+  color: #a7f3d0;
+}
+
+.retro-alert-box.error {
+  background: #450a0a;
+  border: 1px solid #f87171;
+  color: #fecaca;
+}
+
+/* Retro Dynapro F-Key Bar (Bottom) */
+.retro-fkey-bar {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-top: 8px;
+  border-top: 1px solid #134e4a;
+}
+
+.retro-fkey {
+  background: #042918;
+  border: 1px solid #059669;
+  color: #34d399;
+  border-radius: 4px;
+  padding: 8px 12px;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  text-align: center;
+  line-height: 1.25;
+  cursor: pointer;
+  min-width: 82px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+  transition: all 0.15s;
+}
+
+.retro-fkey:hover {
+  background: #059669;
+  color: #031d10;
+  box-shadow: 0 0 10px rgba(52, 211, 153, 0.5);
+}
+
+.retro-fkey.active {
+  background: #10b981;
+  color: #022013;
+}
+
+.retro-fkey.transmit-btn {
+  background: #065f46;
+  border-color: #34d399;
+  color: #ffffff;
+  font-weight: 800;
+}
+
+.retro-fkey.transmit-btn:hover {
+  background: #10b981;
+  color: #000000;
+}
+
+.retro-fkey.nav-btn {
+  background: #134e4a;
+  border-color: #0d9488;
+  color: #a7f3d0;
+}
+
+.retro-bottom-nav {
+  display: flex;
+  justify-content: flex-start;
+  padding-top: 10px;
+}
+
+.retro-notice-card {
+  background: #042918;
+  border: 1px dashed #059669;
+  border-radius: 6px;
+  padding: 24px;
+  line-height: 1.6;
+}

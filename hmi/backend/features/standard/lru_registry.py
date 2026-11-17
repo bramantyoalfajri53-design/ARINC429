@@ -1,0 +1,613 @@
+"""Dynamic LRU Configuration Registry for Standard Mode (ARINC 429 Avionics LRUs).
+
+Follows Aeroflex JcAIR T1200 / T1200B official manual (Rev. 0, Section 4.B).
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Any
+
+
+@dataclass(frozen=True)
+class LruParamField:
+    id: str
+    name: str
+    param_type: str  # "bit_string", "engineering", "select", "toggle", "integer"
+    bit_start: int
+    bit_end: int
+    default: Any
+    unit: str = ""
+    options: list[str] = field(default_factory=list)
+    min_val: float | None = None
+    max_val: float | None = None
+    regex: str | None = None
+    description: str = ""
+
+
+@dataclass(frozen=True)
+class LruDefinition:
+    id: str  # e.g. "DME" or "709"
+    code: str  # e.g. "709"
+    name: str  # e.g. "Distance Measuring Equipment"
+    standard_lru: str  # "ARINC 709 DME"
+    modes_supported: list[str] = field(default_factory=lambda: ["SINGLE", "MULTI", "STANDARD_NAV"])
+    default_tx_channel: str = "TX-A"
+    default_rx_channel: str = "RX-A"
+    default_bit_rate: str = "12.5 KBPS"
+    # Transmit slot 0 template for Single Channel Mode
+    tx_template: dict[str, Any] = field(default_factory=dict)
+    # Receive slot 0 template
+    rx_template: dict[str, Any] = field(default_factory=dict)
+    # Field definitions that can be dynamically displayed and edited
+    fields: list[LruParamField] = field(default_factory=list)
+
+
+# LRU Registry Dictionary
+LRU_REGISTRY: dict[str, LruDefinition] = {
+    "DME": LruDefinition(
+        id="DME",
+        code="709",
+        name="Distance Measuring Equipment",
+        standard_lru="ARINC 709 DME",
+        modes_supported=["SINGLE", "MULTI", "STANDARD_NAV"],
+        default_tx_channel="TX-A",
+        default_rx_channel="RX-A",
+        default_bit_rate="12.5 KBPS",
+        tx_template={
+            "slot": 0,
+            "channel": "TX-A",
+            "function": "DME FREQ",
+            "label": "035",
+            "data": "108.00 MHZ",
+            "sdi": "00",
+            "pad": "1100001",
+            "ssm": "NML",
+            "parity": "ODD",
+            "rate": 150,
+            "mode_ssm": "DF1",
+            "chan_num": "1",
+            "chan_type": "X",
+            "nav_state": "VOR",
+            "disp": "OFF",
+            "ident": "OFF",
+        },
+        rx_template={
+            "slot": 0,
+            "channel": "RX-A",
+            "function": "DME DIST",
+            "label": "202",
+            "data": "43.01 NM",
+            "sdi": "00",
+            "pad": "0000000",
+            "ssm": "NML",
+            "parity": "ODD",
+            "rate": 100,
+            "bnr_dist": "43.01",
+            "bcd_dist": "43.01",
+            "speed_kts": "0",
+            "reply_eff": "70%",
+            "rf_level": "-00 dBM",
+        },
+        fields=[
+            LruParamField(
+                id="pad",
+                name="PAD",
+                param_type="bit_string",
+                bit_start=11,
+                bit_end=17,
+                default="1100001",
+                regex=r"^[01]{7}$",
+                description="PAD / Mode bits 11-17 (Mode SSM bits 11-13, State NAV bits 14-15, Disp bit 16, Ident bit 17)",
+            ),
+            LruParamField(
+                id="data",
+                name="DATA",
+                param_type="engineering",
+                bit_start=18,
+                bit_end=29,
+                default="108.00 MHZ",
+                unit="MHZ",
+                min_val=108.00,
+                max_val=135.95,
+                description="DME Frequency in MHz (108.00 to 135.95 MHz)",
+            ),
+            LruParamField(
+                id="sdi",
+                name="SDI",
+                param_type="select",
+                bit_start=9,
+                bit_end=10,
+                default="00",
+                options=["00", "01", "10", "11"],
+                description="Source/Destination Identifier (00=All Call, 01=Unit 1, 10=Unit 2, 11=Unit 3)",
+            ),
+            LruParamField(
+                id="ssm",
+                name="SSM",
+                param_type="select",
+                bit_start=30,
+                bit_end=31,
+                default="NML",
+                options=["NML", "NO", "NCD", "FT", "FW"],
+                description="Sign/Status Matrix (Normal, No Computed Data, Functional Test, Failure Warning)",
+            ),
+            LruParamField(
+                id="parity",
+                name="PARITY",
+                param_type="select",
+                bit_start=32,
+                bit_end=32,
+                default="ODD",
+                options=["ODD", "EVEN"],
+                description="Word Parity bit 32",
+            ),
+            LruParamField(
+                id="rate",
+                name="RATE(ms)",
+                param_type="integer",
+                bit_start=0,
+                bit_end=0,
+                default=150,
+                min_val=10,
+                max_val=1000,
+                unit="ms",
+                description="Transmit recurrence rate in milliseconds",
+            ),
+        ],
+    ),
+    "VOR": LruDefinition(
+        id="VOR",
+        code="579",
+        name="VHF Omnidirectional Range",
+        standard_lru="ARINC 579 VOR",
+        modes_supported=["SINGLE", "MULTI", "STANDARD_NAV"],
+        default_tx_channel="TX-A",
+        default_rx_channel="RX-A",
+        default_bit_rate="12.5 KBPS",
+        tx_template={
+            "slot": 0,
+            "channel": "TX-A",
+            "function": "VOR FREQ",
+            "label": "034",
+            "data": "108.00 MHZ",
+            "sdi": "00",
+            "pad": "0000",
+            "ssm": "NML",
+            "parity": "ODD",
+            "rate": 200,
+        },
+        rx_template={
+            "slot": 0,
+            "channel": "RX-A",
+            "function": "VOR BRG",
+            "label": "222",
+            "data": "045.0 DEG",
+            "sdi": "00",
+            "pad": "0000",
+            "ssm": "NML",
+            "parity": "ODD",
+            "rate": 100,
+        },
+        fields=[
+            LruParamField(
+                id="pad",
+                name="PAD",
+                param_type="bit_string",
+                bit_start=11,
+                bit_end=14,
+                default="0000",
+                regex=r"^[01]{4}$",
+                description="PAD bits",
+            ),
+            LruParamField(
+                id="data",
+                name="DATA",
+                param_type="engineering",
+                bit_start=15,
+                bit_end=29,
+                default="108.00 MHZ",
+                unit="MHZ",
+                min_val=108.00,
+                max_val=117.95,
+                description="VOR Frequency in MHz",
+            ),
+            LruParamField(
+                id="sdi",
+                name="SDI",
+                param_type="select",
+                bit_start=9,
+                bit_end=10,
+                default="00",
+                options=["00", "01", "10", "11"],
+                description="Source/Destination Identifier",
+            ),
+            LruParamField(
+                id="ssm",
+                name="SSM",
+                param_type="select",
+                bit_start=30,
+                bit_end=31,
+                default="NML",
+                options=["NML", "NO", "NCD", "FT", "FW"],
+                description="Sign/Status Matrix",
+            ),
+            LruParamField(
+                id="parity",
+                name="PARITY",
+                param_type="select",
+                bit_start=32,
+                bit_end=32,
+                default="ODD",
+                options=["ODD", "EVEN"],
+                description="Word Parity",
+            ),
+            LruParamField(
+                id="rate",
+                name="RATE(ms)",
+                param_type="integer",
+                bit_start=0,
+                bit_end=0,
+                default=200,
+                min_val=10,
+                max_val=1000,
+                unit="ms",
+                description="Transmit recurrence rate in ms",
+            ),
+        ],
+    ),
+    "ILS": LruDefinition(
+        id="ILS",
+        code="710",
+        name="Instrument Landing System",
+        standard_lru="ARINC 710 ILS",
+        modes_supported=["SINGLE", "MULTI", "STANDARD_NAV"],
+        default_tx_channel="TX-A",
+        default_rx_channel="RX-A",
+        default_bit_rate="12.5 KBPS",
+        tx_template={
+            "slot": 0,
+            "channel": "TX-A",
+            "function": "ILS FREQ",
+            "label": "033",
+            "data": "110.30 MHZ",
+            "sdi": "00",
+            "pad": "0000",
+            "ssm": "NML",
+            "parity": "ODD",
+            "rate": 200,
+        },
+        rx_template={
+            "slot": 0,
+            "channel": "RX-A",
+            "function": "LOC DEV",
+            "label": "173",
+            "data": "0.000 DDM",
+            "sdi": "00",
+            "pad": "0000",
+            "ssm": "NML",
+            "parity": "ODD",
+            "rate": 50,
+        },
+        fields=[
+            LruParamField(
+                id="pad",
+                name="PAD",
+                param_type="bit_string",
+                bit_start=11,
+                bit_end=14,
+                default="0000",
+                regex=r"^[01]{4}$",
+                description="PAD bits",
+            ),
+            LruParamField(
+                id="data",
+                name="DATA",
+                param_type="engineering",
+                bit_start=15,
+                bit_end=29,
+                default="110.30 MHZ",
+                unit="MHZ",
+                min_val=108.10,
+                max_val=111.95,
+                description="ILS Frequency in MHz",
+            ),
+            LruParamField(
+                id="sdi",
+                name="SDI",
+                param_type="select",
+                bit_start=9,
+                bit_end=10,
+                default="00",
+                options=["00", "01", "10", "11"],
+                description="Source/Destination Identifier",
+            ),
+            LruParamField(
+                id="ssm",
+                name="SSM",
+                param_type="select",
+                bit_start=30,
+                bit_end=31,
+                default="NML",
+                options=["NML", "NO", "NCD", "FT", "FW"],
+                description="Sign/Status Matrix",
+            ),
+            LruParamField(
+                id="parity",
+                name="PARITY",
+                param_type="select",
+                bit_start=32,
+                bit_end=32,
+                default="ODD",
+                options=["ODD", "EVEN"],
+                description="Word Parity",
+            ),
+            LruParamField(
+                id="rate",
+                name="RATE(ms)",
+                param_type="integer",
+                bit_start=0,
+                bit_end=0,
+                default=200,
+                min_val=10,
+                max_val=1000,
+                unit="ms",
+                description="Transmit recurrence rate in ms",
+            ),
+        ],
+    ),
+    "ADF": LruDefinition(
+        id="ADF",
+        code="712",
+        name="Automatic Direction Finder",
+        standard_lru="ARINC 712 ADF",
+        modes_supported=["SINGLE", "MULTI", "STANDARD_NAV"],
+        default_tx_channel="TX-A",
+        default_rx_channel="RX-A",
+        default_bit_rate="12.5 KBPS",
+        tx_template={
+            "slot": 0,
+            "channel": "TX-A",
+            "function": "ADF FREQ",
+            "label": "032",
+            "data": "577.0 KHZ",
+            "sdi": "00",
+            "pad": "000",
+            "ssm": "NML",
+            "parity": "ODD",
+            "rate": 150,
+        },
+        rx_template={
+            "slot": 0,
+            "channel": "RX-A",
+            "function": "ADF BRG",
+            "label": "162",
+            "data": "180.0 DEG",
+            "sdi": "00",
+            "pad": "000",
+            "ssm": "NML",
+            "parity": "ODD",
+            "rate": 100,
+        },
+        fields=[
+            LruParamField(
+                id="pad",
+                name="PAD",
+                param_type="bit_string",
+                bit_start=11,
+                bit_end=13,
+                default="000",
+                regex=r"^[01]{3}$",
+                description="PAD bits",
+            ),
+            LruParamField(
+                id="data",
+                name="DATA",
+                param_type="engineering",
+                bit_start=14,
+                bit_end=29,
+                default="577.0 KHZ",
+                unit="KHZ",
+                min_val=190.0,
+                max_val=1750.0,
+                description="ADF Frequency in kHz",
+            ),
+            LruParamField(
+                id="sdi",
+                name="SDI",
+                param_type="select",
+                bit_start=9,
+                bit_end=10,
+                default="00",
+                options=["00", "01", "10", "11"],
+                description="Source/Destination Identifier",
+            ),
+            LruParamField(
+                id="ssm",
+                name="SSM",
+                param_type="select",
+                bit_start=30,
+                bit_end=31,
+                default="NML",
+                options=["NML", "NO", "NCD", "FT", "FW"],
+                description="Sign/Status Matrix",
+            ),
+            LruParamField(
+                id="parity",
+                name="PARITY",
+                param_type="select",
+                bit_start=32,
+                bit_end=32,
+                default="ODD",
+                options=["ODD", "EVEN"],
+                description="Word Parity",
+            ),
+            LruParamField(
+                id="rate",
+                name="RATE(ms)",
+                param_type="integer",
+                bit_start=0,
+                bit_end=0,
+                default=150,
+                min_val=10,
+                max_val=1000,
+                unit="ms",
+                description="Transmit recurrence rate in ms",
+            ),
+        ],
+    ),
+    "MMR": LruDefinition(
+        id="MMR",
+        code="755",
+        name="Multi-Mode Receiver",
+        standard_lru="ARINC 755 MMR",
+        modes_supported=["SINGLE", "MULTI", "STANDARD_NAV"],
+        default_tx_channel="TX-A",
+        default_rx_channel="RX-A",
+        default_bit_rate="12.5 KBPS",
+        tx_template={
+            "slot": 0,
+            "channel": "TX-A",
+            "function": "MMR FREQ",
+            "label": "033",
+            "data": "108.10 MHZ",
+            "sdi": "00",
+            "pad": "0000",
+            "ssm": "NML",
+            "parity": "ODD",
+            "rate": 150,
+        },
+        rx_template={
+            "slot": 0,
+            "channel": "RX-A",
+            "function": "MMR STATUS",
+            "label": "173",
+            "data": "0.000 DDM",
+            "sdi": "00",
+            "pad": "0000",
+            "ssm": "NML",
+            "parity": "ODD",
+            "rate": 100,
+        },
+        fields=[
+            LruParamField(
+                id="pad",
+                name="PAD",
+                param_type="bit_string",
+                bit_start=11,
+                bit_end=14,
+                default="0000",
+                regex=r"^[01]{4}$",
+                description="PAD bits",
+            ),
+            LruParamField(
+                id="data",
+                name="DATA",
+                param_type="engineering",
+                bit_start=15,
+                bit_end=29,
+                default="108.10 MHZ",
+                unit="MHZ",
+                min_val=108.00,
+                max_val=118.00,
+                description="MMR Frequency in MHz",
+            ),
+            LruParamField(
+                id="sdi",
+                name="SDI",
+                param_type="select",
+                bit_start=9,
+                bit_end=10,
+                default="00",
+                options=["00", "01", "10", "11"],
+                description="Source/Destination Identifier",
+            ),
+            LruParamField(
+                id="ssm",
+                name="SSM",
+                param_type="select",
+                bit_start=30,
+                bit_end=31,
+                default="NML",
+                options=["NML", "NO", "NCD", "FT", "FW"],
+                description="Sign/Status Matrix",
+            ),
+            LruParamField(
+                id="parity",
+                name="PARITY",
+                param_type="select",
+                bit_start=32,
+                bit_end=32,
+                default="ODD",
+                options=["ODD", "EVEN"],
+                description="Word Parity",
+            ),
+            LruParamField(
+                id="rate",
+                name="RATE(ms)",
+                param_type="integer",
+                bit_start=0,
+                bit_end=0,
+                default=150,
+                min_val=10,
+                max_val=1000,
+                unit="ms",
+                description="Transmit recurrence rate in ms",
+            ),
+        ],
+    ),
+}
+
+
+def get_lru_definitions() -> list[dict[str, Any]]:
+    """Return all registered LRU summary metadata."""
+    results = []
+    for lru in LRU_REGISTRY.values():
+        results.append({
+            "id": lru.id,
+            "code": lru.code,
+            "name": lru.name,
+            "standard_lru": lru.standard_lru,
+            "modes_supported": lru.modes_supported,
+            "default_tx_channel": lru.default_tx_channel,
+            "default_rx_channel": lru.default_rx_channel,
+            "default_bit_rate": lru.default_bit_rate,
+        })
+    return results
+
+
+def get_lru_detail(lru_id: str) -> dict[str, Any]:
+    """Return full schema and defaults for a specific LRU."""
+    key = lru_id.strip().upper()
+    if key not in LRU_REGISTRY:
+        raise ValueError(f"Unknown LRU ID: {lru_id}. Available: {list(LRU_REGISTRY.keys())}")
+    lru = LRU_REGISTRY[key]
+    return {
+        "id": lru.id,
+        "code": lru.code,
+        "name": lru.name,
+        "standard_lru": lru.standard_lru,
+        "modes_supported": lru.modes_supported,
+        "default_tx_channel": lru.default_tx_channel,
+        "default_rx_channel": lru.default_rx_channel,
+        "default_bit_rate": lru.default_bit_rate,
+        "tx_template": lru.tx_template,
+        "rx_template": lru.rx_template,
+        "fields": [
+            {
+                "id": f.id,
+                "name": f.name,
+                "param_type": f.param_type,
+                "bit_start": f.bit_start,
+                "bit_end": f.bit_end,
+                "default": f.default,
+                "unit": f.unit,
+                "options": f.options,
+                "min_val": f.min_val,
+                "max_val": f.max_val,
+                "regex": f.regex,
+                "description": f.description,
+            }
+            for f in lru.fields
+        ],
+    }

@@ -8,7 +8,10 @@ $DistIndex = Join-Path $Root "hmi\frontend\dist\index.html"
 $env:PYTHONPATH = $BackendDir
 
 $VenvPy = Join-Path $Root ".venv\Scripts\python.exe"
-if (Test-Path $VenvPy) {
+$BackendVenvPy = Join-Path $Root "hmi\backend\.venv\Scripts\python.exe"
+if (Test-Path $BackendVenvPy) {
+    $PythonBin = $BackendVenvPy
+} elseif (Test-Path $VenvPy) {
     $PythonBin = $VenvPy
 } elseif (Get-Command python -ErrorAction SilentlyContinue) {
     $PythonBin = "python"

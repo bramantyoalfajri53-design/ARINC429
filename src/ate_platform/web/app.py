@@ -701,13 +701,18 @@ def create_app(
     try:
         from features.cfds.router import router as cfds_router
         from features.cmc.router import router as cmc_router
+        from features.standard.router import router as standard_router
         app.include_router(cfds_router)
         app.include_router(cmc_router)
+        app.include_router(standard_router)
     except Exception as exc:
-        logger.warning("Could not mount cfds/cmc routers: %s", exc)
+        logger.warning("Could not mount cfds/cmc/standard routers: %s", exc)
 
     if WEB_ROOT.is_dir():
         app.mount("/static", StaticFiles(directory=str(WEB_ROOT)), name="static")
+        dist_dir = WEB_ROOT / "dist"
+        if dist_dir.is_dir():
+            app.mount("/dist", StaticFiles(directory=str(dist_dir), html=True), name="dist")
 
     @app.get("/")
     def index():

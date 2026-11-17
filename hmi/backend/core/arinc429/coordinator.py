@@ -262,9 +262,20 @@ class Arinc429Coordinator:
 
             decoded = decode_arinc429_word(raw_word, expected_parity=expected_parity)
             if not self._simulation_mode:
-                ok = self.adapter.transmit_word(channel, decoded.raw)
-                if not ok:
-                    raise RuntimeError(f"Hardware transmit failed: {self.adapter.last_error}")
+                if self.adapter.is_connected:
+                    ok = self.adapter.transmit_word(channel, decoded.raw)
+                    if not ok:
+                        raise RuntimeError(f"Hardware transmit failed: {self.adapter.last_error}")
+                else:
+                    self._simulation_mode = True
+                    self._log(
+                        mode,
+                        "SYS",
+                        channel,
+                        decoded.label_oct,
+                        f"{decoded.raw:08X}",
+                        "Hardware card not connected; operating in SIMULATION mode",
+                    )
 
             self._word_count += 1
             src = self.data_source
