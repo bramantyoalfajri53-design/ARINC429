@@ -1,0 +1,17 @@
+adapter_id: dummy_ita
+name: Dummy ITA for platform smoke test
+
+capabilities:
+  - dc_bus
+  - ac_bus
+
+pins:
+  J1-1: dc_pos
+  J1-2: dc_return
+  J1-3: ac_line
+  J1-4: ac_neutral
+  J1-5: chassis_gnd
+
+notes: >
+  Not a flight harness. Maps dummy UUT pins to station power rails for
+  sequencer validation only.

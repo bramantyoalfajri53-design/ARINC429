@@ -1,0 +1,22 @@
+# ARINC 716 VHF — T1200 default label 030 118.000 MHz @ 150 ms
+id: vhf_comm
+name: VHF Comm
+funct: VHF
+arinc_characteristic: "716"
+mode: standard
+bus: A
+high_speed: false
+notes: VHF COMM frequency 118.000 MHz.
+labels:
+  - label: "030"
+    funct: VHF_FREQ
+    direction: both
+    sdi: 0
+    ssm: NML
+    parity: ODD
+    rate_ms: 150
+    encoding: bcd
+    units: MHZ
+    bcd_scale: 1000.0
+    bcd_digits: 5
+    eng: { name: freq_mhz, units: MHZ, min: 118.0, max: 136.975, step: 0.025, default: 118.000 }

@@ -1,0 +1,24 @@
+id: t1200_arinc_loopback
+name: T1200 DB37 map — OmniBus A–D ARINC loopback (external jumpers)
+netlist: netlist/t1200_db37_omnibus_441.yaml
+required_capabilities:
+  - arinc_bus
+
+steps:
+  - id: setup
+    name: Note — power rails not required for this ARINC-only smoke
+    action: setup
+
+  - id: arinc_abcd
+    name: Loopback XMIT A–D to RCVR A–D (CH1→0, 3→2, 5→4, 7→6)
+    action: plugin
+    params:
+      module: t1200_arinc
+      function: run
+      buses: ["A", "B", "C", "D"]
+      seconds: 2.0
+      min_hits: 3
+
+  - id: teardown
+    name: Final reset_safe (DC/AC)
+    action: teardown

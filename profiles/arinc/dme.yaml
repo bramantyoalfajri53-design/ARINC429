@@ -1,0 +1,56 @@
+# ARINC 709 DME — default label 035 134.40 MHz
+id: dme
+name: DME
+funct: DME
+arinc_characteristic: "709"
+mode: standard
+bus: A
+high_speed: false
+notes: DME frequency 134.40 MHz @ 100 ms. Single/Multi Channel screens add mode bits.
+labels:
+  - label: "035"
+    funct: DME_FREQ
+    direction: both
+    sdi: 0
+    ssm: NML
+    parity: ODD
+    rate_ms: 100
+    encoding: dme_freq
+    units: MHZ
+    bcd_scale: 100.0
+    bcd_digits: 5
+    eng: { name: freq_mhz, units: MHZ, min: 108.0, max: 135.95, step: 0.05, default: 134.40 }
+  - label: "202"
+    funct: DME_DIST_BNR
+    direction: rx
+    sdi: 0
+    ssm: NML
+    parity: ODD
+    rate_ms: 200
+    encoding: bnr
+    units: NM
+    pads: "00"
+    bnr: { lsb: 0.0048828125, offset: 0.0, bits: 16 }
+    eng: { name: distance_nm, units: NM, min: 0.0, max: 400.0, step: 0.01, default: 0.0 }
+  - label: "246"
+    funct: DME_IDENT1
+    direction: rx
+    sdi: 0
+    ssm: NML
+    parity: ODD
+    rate_ms: 200
+    encoding: iso5
+    units: IDENT
+    iso5_chars: 3
+    eng: { name: ident1, units: IDENT, default: "" }
+  - label: "247"
+    funct: DME_IDENT2
+    direction: rx
+    sdi: 0
+    ssm: NML
+    parity: ODD
+    rate_ms: 200
+    encoding: iso5
+    units: IDENT
+    iso5_chars: 3
+    eng: { name: ident2, units: IDENT, default: "" }

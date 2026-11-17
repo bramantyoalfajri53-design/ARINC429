@@ -1,0 +1,34 @@
+# ARINC 707 LRA — T1200 defaults: 165 BCD 1000.0 FT, 164 BNR 125 FT
+id: radio_alt
+name: Radio Altimeter
+funct: LRA
+arinc_characteristic: "707"
+mode: standard
+bus: A
+high_speed: false
+notes: Radio altitude BCD 1000.0 FT @ 100 ms and BNR 125 FT @ 37 ms.
+labels:
+  - label: "165"
+    funct: RADALT_BCD
+    direction: both
+    sdi: 0
+    ssm: PLS
+    parity: ODD
+    rate_ms: 100
+    encoding: bcd
+    units: FT
+    bcd_scale: 10.0
+    bcd_digits: 5
+    eng: { name: altitude_ft, units: FT, min: 0, max: 8192, step: 0.1, default: 1000.0 }
+  - label: "164"
+    funct: RADALT_BNR
+    direction: both
+    sdi: 0
+    ssm: NML
+    parity: ODD
+    rate_ms: 37
+    encoding: bnr
+    units: FT
+    pads: "00"
+    bnr: { lsb: 0.125, offset: 0.0, bits: 16 }
+    eng: { name: altitude_ft, units: FT, min: 0, max: 8192, step: 0.125, default: 125.0000 }

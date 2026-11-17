@@ -3,10 +3,14 @@
 venv/
 ENV/
 
-# Python cache
+# Python cache & build
 __pycache__/
 *.py[cod]
 *$py.class
+*.egg-info/
+.eggs/
+dist/
+build/
 
 # Node modules & build artifacts
 hmi/frontend/node_modules/
@@ -14,6 +18,7 @@ hmi/frontend/node_modules/
 # Environment and sensitive secrets
 .env
 .env.*
+!.env.example
 cred/
 *.crt
 *.key
@@ -32,3 +37,18 @@ driver/Astronic Ballard/BTIDRIVER/DRIVERARM64/*.rpm
 *.zip
 *.tar.gz
 
+# Results & Test output
+results_out/*.json
+!results_out/.gitkeep
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Logs & OS
+*.log
+.DS_Store
+
+# Temporary & backup
+*.ate
+*.bak

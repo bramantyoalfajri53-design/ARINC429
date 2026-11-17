@@ -1,0 +1,38 @@
+# ARINC 712 ADF — T1200 Standard Mode default
+id: adf_032
+name: ADF
+funct: ADF
+arinc_characteristic: "712"
+mode: standard
+bus: A
+high_speed: false
+notes: Channel A TX label 032 ADF frequency 577.0 kHz @ 150 ms.
+labels:
+  - label: "032"
+    funct: ADF_FREQ
+    direction: tx
+    sdi: 0
+    ssm: NML
+    parity: ODD
+    rate_ms: 150
+    encoding: bcd_freq_khz
+    units: KHZ
+    eng:
+      name: freq_khz
+      units: KHZ
+      min: 100.0
+      max: 1799.9
+      step: 0.1
+      default: 577.0
+  - label: "162"
+    funct: ADF_BEARING
+    direction: rx
+    sdi: 0
+    ssm: NML
+    parity: ODD
+    rate_ms: 200
+    encoding: bnr
+    units: DEG
+    pads: "000000"
+    bnr: { lsb: 0.087890625, offset: 0.0, bits: 12 }
+    eng: { name: bearing_deg, units: DEG, min: 0.0, max: 359.9, step: 0.1, default: 0.0 }

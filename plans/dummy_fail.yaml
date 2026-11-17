@@ -1,0 +1,26 @@
+id: dummy_fail_teardown
+name: Intentional FAIL then prove reset_safe still runs
+netlist: netlist/dummy_ita.yaml
+required_capabilities:
+  - dc_bus
+  - ac_bus
+
+steps:
+  - id: setup
+    action: setup
+  - id: dc_set
+    action: dc_apply
+    params:
+      voltage: 28.0
+      current_limit: 5.0
+  - id: dc_on
+    action: dc_output
+    params:
+      enabled: true
+  - id: boom
+    name: Intentional limit fail
+    action: fail_intentional
+    params:
+      message: "simulated measurement fail"
+  - id: never_reached
+    action: teardown

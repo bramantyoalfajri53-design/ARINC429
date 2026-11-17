@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ATE 429 Console</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/arinc.css?v=29" />
+</head>
+<body>
+  <div id="login-view" class="screen screen-login">
+    <div class="login-card">
+      <h1 class="brand">ATE <span>429</span></h1>
+      <p class="muted">ARINC 429 test console. Lab PIN required.</p>
+      <form id="login-form" class="login-form">
+        <input type="password" id="pin" placeholder="PIN" autocomplete="current-password" required />
+        <button type="submit">Enter</button>
+      </form>
+      <p id="login-error" class="err" hidden></p>
+    </div>
+  </div>
+
+  <div id="app-view" class="app" hidden>
+    <header class="topbar">
+      <div class="topbar-brand">ATE <span>429</span></div>
+      <nav id="breadcrumb" class="breadcrumb"></nav>
+      <div class="topbar-status" id="topbar-status">
+        <span id="run-pill" class="pill pill-stop">STOPPED</span>
+        <span id="rate-pill" class="pill">12.5 kbps</span>
+        <button type="button" id="btn-arinc-start" class="btn btn-sm">Start</button>
+        <button type="button" id="btn-arinc-stop" class="btn btn-sm btn-ghost" disabled>Stop</button>
+      </div>
+      <div class="topbar-actions">
+        <a href="/" class="link-muted">Operator</a>
+        <button type="button" id="btn-logout" class="btn btn-ghost">Logout</button>
+      </div>
+    </header>
+
+    <main id="view-root" class="content"></main>
+  </div>
+
+  <div id="modal-root" hidden></div>
+
+  <script src="/static/arinc.js?v=29"></script>
+</body>
+</html>

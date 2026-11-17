@@ -1,0 +1,30 @@
+# ARINC 750 VDR — channel C high speed
+id: vdr_750
+name: VDR
+funct: VDR
+arinc_characteristic: "750"
+mode: standard
+bus: C
+high_speed: true
+notes: High-speed VDR SAL 172 and DSCR DAT1 270 on channel C.
+labels:
+  - label: "172"
+    funct: VDR_SAL
+    direction: tx
+    sdi: 0
+    ssm: NML
+    parity: ODD
+    rate_ms: 100
+    encoding: raw
+    units: HEX
+    eng: { name: data, units: HEX, min: 0, max: 524287, step: 1, default: 0 }
+  - label: "270"
+    funct: DSCR_DAT1
+    direction: tx
+    sdi: 0
+    ssm: NML
+    parity: ODD
+    rate_ms: 100
+    encoding: raw
+    units: HEX
+    eng: { name: data, units: HEX, min: 0, max: 524287, step: 1, default: 0 }

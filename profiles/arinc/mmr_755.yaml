@@ -1,0 +1,58 @@
+# ARINC 755 MMR — ILS on A plus DADS/FMS background on B and C (applied by session)
+id: mmr_755
+name: MMR
+funct: MMR
+arinc_characteristic: "755"
+mode: standard
+bus: A
+high_speed: false
+notes: Visible ILS labels on A; session also arms DADS (B) and IRS (C) background TX.
+labels:
+  - label: "033"
+    funct: ILS_FREQ
+    direction: tx
+    sdi: 0
+    ssm: NML
+    parity: ODD
+    rate_ms: 200
+    encoding: bcd
+    units: MHZ
+    bcd_scale: 100.0
+    bcd_digits: 5
+    eng: { name: freq_mhz, units: MHZ, min: 108.10, max: 111.95, step: 0.05, default: 110.30 }
+  - label: "017"
+    funct: RWY_HDG_BCD
+    direction: tx
+    sdi: 0
+    ssm: PLS
+    parity: ODD
+    rate_ms: 200
+    encoding: bcd
+    units: DEG
+    bcd_scale: 10.0
+    bcd_digits: 4
+    eng: { name: heading_deg, units: DEG, min: 0.0, max: 359.9, step: 0.1, default: 0.0 }
+  - label: "173"
+    funct: ILS_DDM
+    direction: rx
+    sdi: 0
+    ssm: NML
+    parity: ODD
+    rate_ms: 200
+    encoding: bnr
+    units: DDM
+    pads: "000000"
+    bnr: { lsb: 0.0001525879, offset: 0.0, bits: 12 }
+    eng: { name: gs_ddm, units: DDM, min: -0.4, max: 0.4, step: 0.001, default: 0.0 }
+  - label: "174"
+    funct: ILS_LOC
+    direction: rx
+    sdi: 0
+    ssm: NML
+    parity: ODD
+    rate_ms: 200
+    encoding: bnr
+    units: DDM
+    pads: "000000"
+    bnr: { lsb: 0.0001525879, offset: 0.0, bits: 12 }
+    eng: { name: loc_ddm, units: DDM, min: -0.4, max: 0.4, step: 0.001, default: 0.0 }

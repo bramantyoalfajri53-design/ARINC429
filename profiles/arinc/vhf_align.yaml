@@ -1,0 +1,22 @@
+# Collins VHF ALIGN — limited entry (Section C starts page 61)
+id: vhf_align
+name: VHF Align
+funct: VHF_ALIGN
+arinc_characteristic: "716"
+mode: standard
+bus: A
+high_speed: false
+notes: Limited alignment entry. Full Collins VHF-900 calibration is Section C (page 61+).
+labels:
+  - label: "030"
+    funct: VHF_FREQ
+    direction: tx
+    sdi: 0
+    ssm: NML
+    parity: ODD
+    rate_ms: 150
+    encoding: bcd
+    units: MHZ
+    bcd_scale: 1000.0
+    bcd_digits: 5
+    eng: { name: freq_mhz, units: MHZ, min: 118.0, max: 136.975, step: 0.025, default: 121.5 }

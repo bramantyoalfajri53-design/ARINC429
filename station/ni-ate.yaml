@@ -1,0 +1,56 @@
+station_id: ni-ate
+name: NI PXIe-8821 ATE rack
+
+safety:
+  dc_hv_threshold_v: 35.0
+  ac_hv_threshold_vrms: 130.0
+  dc_ovp_default_v: 35.0
+  dc_ovp_margin_v: 1.0
+
+instruments:
+  dcps:
+    model: N5746A
+    model_keyword: N5746
+    role: dc_bus
+    lxi_host_env: ATE_DC_LXI_HOST
+    visa_env: ATE_DC_VISA
+    gpib_fallback: GPIB0::5::INSTR
+    voltage_max_v: 40.0
+    current_max_a: 19.0
+  acps:
+    model: AC6803B
+    model_keyword: AC680
+    role: ac_bus
+    lxi_host_env: ATE_AC_LXI_HOST
+    visa_env: ATE_AC_VISA
+    gpib_fallback: GPIB0::7::INSTR
+    voltage_max_vrms: 270.0
+    current_max_a: 20.0
+    freq_min_hz: 45.0
+    freq_max_hz: 500.0
+  omnibus_429:
+    model: OmniBusII-441
+    model_keyword: OmniBus
+    role: arinc_bus
+    lxi_host_env: ""
+    visa_env: ""
+    gpib_fallback: ""
+    voltage_max_v: 0.0
+    current_max_a: 0.0
+    card: 0
+    core: 0
+    netlist: netlist/t1200_db37_omnibus_441.yaml
+
+capabilities:
+  dc_bus:
+    instrument: dcps
+    description: Aircraft DC power rail
+  ac_bus:
+    instrument: acps
+    description: Aircraft AC power rail (avionics / mains)
+  arinc_bus:
+    instrument: omnibus_429
+    description: ARINC 429 via OmniBus II PN 441 (T1200-compatible breakout)
+
+future_slots:
+  daq_mf: null

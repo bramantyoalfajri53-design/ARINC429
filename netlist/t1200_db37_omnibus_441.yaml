@@ -1,0 +1,87 @@
+# T1200-compatible ARINC 429 breakout → OmniBus II PN 441 (Core A)
+#
+# T1200 rear DFIU DB37 (030-2188-01) roles wired to OmniBus CH0–CH7.
+# Parallel DFIU lines (PD0–7, ACK, DATA STB) are not on OmniBus — omit for now.
+#
+# Polarity: T1200 HI → OmniBus P (BUS*P), T1200 LO → OmniBus N (BUS*N).
+# BTIDriver on 441: Rx logical = physical N; Tx logical = physical N+16.
+
+adapter_id: t1200_db37_omnibus_441
+name: T1200 DB37 breakout to OmniBus II PN 441
+
+capabilities:
+  - arinc_bus
+
+channels:
+  RCVR_A:
+    role: rx
+    omnibus_phys: 0
+    bti_logical: 0
+    t1200_db37: {hi: 29, lo: 11}
+    lfh: {p: 3, n: 2, name: BUS0}
+  XMIT_A:
+    role: tx
+    omnibus_phys: 1
+    bti_logical: 17
+    t1200_db37: {hi: 26, lo: 8}
+    lfh: {p: 28, n: 29, name: BUS1}
+  RCVR_B:
+    role: rx
+    omnibus_phys: 2
+    bti_logical: 2
+    t1200_db37: {hi: 12, lo: 31}
+    lfh: {p: 5, n: 4, name: BUS2}
+  XMIT_B:
+    role: tx
+    omnibus_phys: 3
+    bti_logical: 19
+    t1200_db37: {hi: 9, lo: 28}
+    lfh: {p: 26, n: 27, name: BUS3}
+  RCVR_C:
+    role: rx
+    omnibus_phys: 4
+    bti_logical: 4
+    t1200_db37: {hi: 35, lo: 17}
+    lfh: {p: 7, n: 6, name: BUS4}
+  XMIT_C:
+    role: tx
+    omnibus_phys: 5
+    bti_logical: 21
+    t1200_db37: {hi: 32, lo: 14}
+    lfh: {p: 24, n: 25, name: BUS5}
+  RCVR_D:
+    role: rx
+    omnibus_phys: 6
+    bti_logical: 6
+    t1200_db37: {hi: 18, lo: 37}
+    lfh: {p: 9, n: 8, name: BUS6}
+  XMIT_D:
+    role: tx
+    omnibus_phys: 7
+    bti_logical: 23
+    t1200_db37: {hi: 15, lo: 34}
+    lfh: {p: 22, n: 23, name: BUS7}
+
+# Convenience aliases (same as T1200 menu names)
+pins:
+  RCVR_A_HI: RCVR_A
+  RCVR_A_LO: RCVR_A
+  XMIT_A_HI: XMIT_A
+  XMIT_A_LO: XMIT_A
+  RCVR_B_HI: RCVR_B
+  RCVR_B_LO: RCVR_B
+  XMIT_B_HI: XMIT_B
+  XMIT_B_LO: XMIT_B
+  RCVR_C_HI: RCVR_C
+  RCVR_C_LO: RCVR_C
+  XMIT_C_HI: XMIT_C
+  XMIT_C_LO: XMIT_C
+  RCVR_D_HI: RCVR_D
+  RCVR_D_LO: RCVR_D
+  XMIT_D_HI: XMIT_D
+  XMIT_D_LO: XMIT_D
+
+notes: >
+  Replaces Aeroflex T1200 CDU ARINC ports on DB37 with OmniBus II 222-441-000.
+  Production loopback jumpers (per bus): CH1↔0 (A), CH3↔2 (B), CH5↔4 (C), CH7↔6 (D).
+  Early diag jumpers 0↔4…3↔7 must be removed before production-map tests or UUT use.

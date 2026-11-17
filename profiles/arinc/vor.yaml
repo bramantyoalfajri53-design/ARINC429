@@ -1,0 +1,82 @@
+# ARINC 711 VOR — T1200 defaults: 034, 024, 027, 100, 110
+id: vor
+name: VOR Receiver
+funct: VOR
+arinc_characteristic: "711"
+mode: standard
+bus: A
+high_speed: false
+notes: VOR frequency 108.00 MHz plus selected course BCD/BNR.
+labels:
+  - label: "034"
+    funct: VOR_FREQ
+    direction: tx
+    sdi: 0
+    ssm: NML
+    parity: ODD
+    rate_ms: 200
+    encoding: bcd
+    units: MHZ
+    bcd_scale: 100.0
+    bcd_digits: 5
+    eng: { name: freq_mhz, units: MHZ, min: 108.0, max: 117.95, step: 0.05, default: 108.00 }
+  - label: "024"
+    funct: SEL_CRS1_BCD
+    direction: tx
+    sdi: 0
+    ssm: PLS
+    parity: ODD
+    rate_ms: 200
+    encoding: bcd
+    units: DEG
+    bcd_scale: 10.0
+    bcd_digits: 4
+    eng: { name: course_deg, units: DEG, min: 0.0, max: 359.9, step: 0.1, default: 0.0 }
+  - label: "027"
+    funct: SEL_CRS2_BCD
+    direction: tx
+    sdi: 0
+    ssm: PLS
+    parity: ODD
+    rate_ms: 200
+    encoding: bcd
+    units: DEG
+    bcd_scale: 10.0
+    bcd_digits: 4
+    eng: { name: course_deg, units: DEG, min: 0.0, max: 359.9, step: 0.1, default: 0.0 }
+  - label: "100"
+    funct: SEL_CRS1_BNR
+    direction: tx
+    sdi: 0
+    ssm: NML
+    parity: ODD
+    rate_ms: 200
+    encoding: bnr
+    units: DEG
+    pads: "000000"
+    bnr: { lsb: 0.087890625, offset: 0.0, bits: 12 }
+    eng: { name: course_deg, units: DEG, min: 0.0, max: 359.0, step: 1.0, default: 0.0 }
+  - label: "110"
+    funct: SEL_CRS2_BNR
+    direction: tx
+    sdi: 0
+    ssm: NML
+    parity: ODD
+    rate_ms: 200
+    encoding: bnr
+    units: DEG
+    pads: "000000"
+    bnr: { lsb: 0.087890625, offset: 0.0, bits: 12 }
+    eng: { name: course_deg, units: DEG, min: 0.0, max: 359.0, step: 1.0, default: 0.0 }
+  - label: "222"
+    funct: VOR_BEARING
+    direction: rx
+    sdi: 0
+    ssm: NML
+    parity: ODD
+    rate_ms: 200
+    encoding: bnr
+    units: DEG
+    pads: "000000"
+    bnr: { lsb: 0.087890625, offset: 0.0, bits: 12 }
+    eng: { name: bearing_deg, units: DEG, min: 0.0, max: 359.9, step: 0.1, default: 0.0 }

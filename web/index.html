@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ATE Operator</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <div id="login-view" class="panel login">
+    <h1>ATE Operator</h1>
+    <p class="muted">Lab PIN required. This console runs plans — it does not set power setpoints.</p>
+    <form id="login-form">
+      <label>PIN <input type="password" id="pin" autocomplete="current-password" required /></label>
+      <button type="submit">Login</button>
+    </form>
+    <p id="login-error" class="error" hidden></p>
+  </div>
+
+  <div id="app-view" hidden>
+    <header class="topbar">
+      <div>
+        <strong id="station-id">—</strong>
+        <span id="mode-badge" class="badge">—</span>
+        <span id="lock-label" class="muted"></span>
+      </div>
+      <div class="topbar-actions">
+        <a href="/arinc" style="color:inherit;margin-right:0.5rem">ARINC 429</a>
+        <button type="button" id="btn-logout" class="secondary">Logout</button>
+        <button type="button" id="btn-estop" class="estop">E-STOP</button>
+      </div>
+    </header>
+
+    <main class="grid">
+      <section class="panel">
+        <h2>Run</h2>
+        <form id="run-form" class="form-grid">
+          <label>Operator <input id="operator" value="operator" /></label>
+          <label>UUT <input id="uut" value="DUMMY-UUT" /></label>
+          <label>Adapter <input id="adapter" value="dummy_ita" /></label>
+          <label>Plan
+            <select id="plan"></select>
+          </label>
+          <div class="row">
+            <button type="submit" id="btn-start">Start</button>
+            <button type="button" id="btn-abort" class="secondary" disabled>Abort</button>
+          </div>
+        </form>
+        <p id="run-status" class="muted">Idle</p>
+        <ol id="steps" class="steps"></ol>
+      </section>
+
+      <section class="panel">
+        <h2>Meters <span class="muted">(read-only)</span></h2>
+        <div class="meters">
+          <div>
+            <h3>DC</h3>
+            <div class="meter"><span>V</span><strong id="dc-v">—</strong></div>
+            <div class="meter"><span>I</span><strong id="dc-i">—</strong></div>
+            <div class="meter"><span>OUT</span><strong id="dc-out">—</strong></div>
+          </div>
+          <div>
+            <h3>AC</h3>
+            <div class="meter"><span>Vrms</span><strong id="ac-v">—</strong></div>
+            <div class="meter"><span>Hz</span><strong id="ac-hz">—</strong></div>
+            <div class="meter"><span>OUT</span><strong id="ac-out">—</strong></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel wide">
+        <h2>Recent runs</h2>
+        <table id="runs-table">
+          <thead>
+            <tr><th>Run</th><th>Plan</th><th>UUT</th><th>Verdict</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+        <pre id="run-detail" class="detail" hidden></pre>
+      </section>
+    </main>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,20 @@
+# VDL MODE — limited entry (Section D starts page 75)
+id: vdl_mode
+name: VDL Mode
+funct: VDL
+arinc_characteristic: "750"
+mode: standard
+bus: C
+high_speed: true
+notes: Limited VDL entry. Full Collins VHF-920 VDL is Section D (page 75+).
+labels:
+  - label: "172"
+    funct: VDR_SAL
+    direction: tx
+    sdi: 0
+    ssm: NML
+    parity: ODD
+    rate_ms: 100
+    encoding: raw
+    units: HEX
+    eng: { name: data, units: HEX, min: 0, max: 524287, step: 1, default: 0 }

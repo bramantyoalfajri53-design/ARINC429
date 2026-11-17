@@ -1,0 +1,42 @@
+# ARINC 753 HFDR RMP — 205 pair + 207
+id: hfdr_rmp
+name: HFDR RMP
+funct: HFDR_RMP
+arinc_characteristic: "753"
+mode: standard
+bus: A
+high_speed: false
+notes: Label 205 pair plus HF MODE 207 (HFDR RMP).
+labels:
+  - label: "205"
+    funct: HF_FREQ1
+    direction: tx
+    sdi: 0
+    ssm: NML
+    parity: ODD
+    rate_ms: 200
+    encoding: hf_pair
+    units: MHZ
+    word_index: 1
+    eng: { name: freq_mhz, units: MHZ, min: 2.0, max: 30.0, step: 0.0001, default: 10.0 }
+  - label: "205"
+    funct: HF_FREQ2
+    direction: tx
+    sdi: 1
+    ssm: NML
+    parity: ODD
+    rate_ms: 200
+    encoding: hf_pair
+    units: MHZ
+    word_index: 2
+    eng: { name: freq_mhz, units: MHZ, min: 0.0, max: 1.0, step: 0.0001, default: 0.0 }
+  - label: "207"
+    funct: HF_MODE
+    direction: tx
+    sdi: 0
+    ssm: NML
+    parity: ODD
+    rate_ms: 200
+    encoding: raw
+    units: HEX
+    eng: { name: mode, units: HEX, min: 0, max: 524287, step: 1, default: 0 }

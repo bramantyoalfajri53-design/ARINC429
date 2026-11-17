@@ -1,0 +1,22 @@
+# ARINC 716 8.33 kHz VHF
+id: vhf_833
+name: VHF 8.33
+funct: VHF833
+arinc_characteristic: "716"
+mode: standard
+bus: A
+high_speed: false
+notes: VHF COMM 8.33 kHz frequency 117.992 MHz @ 150 ms.
+labels:
+  - label: "047"
+    funct: VHF_833
+    direction: both
+    sdi: 0
+    ssm: NML
+    parity: ODD
+    rate_ms: 150
+    encoding: bcd
+    units: MHZ
+    bcd_scale: 1000.0
+    bcd_digits: 5
+    eng: { name: freq_mhz, units: MHZ, min: 117.992, max: 136.992, step: 0.008, default: 117.992 }
