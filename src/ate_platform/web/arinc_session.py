@@ -38,6 +38,7 @@ from ate_platform.device.arinc_profile import (
     LabelSpec,
     decode_label,
     delete_profile,
+    dme_unpack,
     encode_label,
     label_spec_to_dict,
     list_profiles,
@@ -434,7 +435,14 @@ class ArincSession:
         if mode_l != "raw":
             pid = (profile or "").strip()
             if not pid:
-                pid = "adf_032" if mode_l in {"adf", "adf_032"} else mode_l
+                if mode_l in {"adf", "adf_032"}:
+                    pid = "adf_032"
+                elif mode_l in {"dme", "freq", "dme_freq"}:
+                    pid = "dme"
+                else:
+                    pid = mode_l
+            elif pid in {"freq", "dme_freq"}:
+                pid = "dme"
         if pid:
             spec_profile = load_profile(pid)
             wanted = str(label or "").strip()
@@ -1013,7 +1021,7 @@ class ArincSession:
                     self.tx[bus][i].rate_ms = 100
             else:
                 self._fill_slot_from_spec(
-                    bus, 0, spec, {"value": 134.40, "mode": "DF1", "nav": "VOR"},
+                    bus, 0, spec, {"value": 134.40, "mode": "DF1", "nav": "VOR", "disp": True},
                 )
                 self.tx[bus][0].rate_ms = 100
             if mode == "standard":
@@ -1028,6 +1036,7 @@ class ArincSession:
         self,
         index: int,
         *,
+        bus: str = "A",
         freq_mhz: float | None = None,
         mode: str | None = None,
         nav: str | None = None,
@@ -1035,16 +1044,22 @@ class ArincSession:
         ident: bool | None = None,
         sdi: int | None = None,
         ssm: str | None = None,
+        pad: str | None = None,
+        parity: str = "ODD",
+        rate_ms: int = 100,
         enabled: bool | None = None,
     ) -> dict[str, Any]:
         spec = lookup_label("035")
         if spec is None:
             raise ValueError("DME label 035 missing")
+        bus = bus.upper() if bus else "A"
+        if bus not in BUSES:
+            bus = "A"
         with self._lock:
-            sl = self.tx["A"][int(index)]
-            from ate_platform.device.arinc_profile import dme_unpack
-            cur = dme_unpack(sl.data19) if sl.raw else {"freq_mhz": 134.40, "mode": "DF1", "nav": "VOR", "disp": False, "ident": False}
-            payload = {
+            sl = self.tx[bus][int(index)]
+            from ate_platform.device.arinc_profile import dme_unpack, DME_MODE_BITS, DME_NAV_BITS
+            cur = dme_unpack(sl.data19) if sl.raw else {"freq_mhz": 134.40, "mode": "DF1", "nav": "VOR", "disp": True, "ident": False, "pads": "0100001"}
+            payload: dict[str, Any] = {
                 "value": float(freq_mhz if freq_mhz is not None else cur["freq_mhz"]),
                 "mode": mode or cur["mode"],
                 "nav": nav or cur["nav"],
@@ -1053,8 +1068,22 @@ class ArincSession:
                 "sdi": sl.sdi if sdi is None else sdi,
                 "ssm": ssm or sl.ssm,
             }
-            self._fill_slot_from_spec("A", int(index), spec, payload, enabled=sl.enabled if enabled is None else enabled)
-            self.tx["A"][int(index)].rate_ms = 100
+            if pad is not None and str(pad).strip():
+                clean_pad = str(pad).strip()
+                payload["pad_bits"] = clean_pad
+                try:
+                    p_val = int(clean_pad, 2) if all(c in "01" for c in clean_pad) else int(clean_pad, 0)
+                    mode_i = p_val & 0x7
+                    nav_i = (p_val >> 3) & 0x3
+                    payload["mode"] = next((k for k, v in DME_MODE_BITS.items() if v == mode_i), payload["mode"])
+                    payload["nav"] = next((k for k, v in DME_NAV_BITS.items() if v == nav_i), payload["nav"])
+                    payload["disp"] = bool((p_val >> 5) & 1)
+                    payload["ident"] = bool((p_val >> 6) & 1)
+                except Exception:
+                    pass
+            self._fill_slot_from_spec(bus, int(index), spec, payload, enabled=sl.enabled if enabled is None else enabled)
+            self.tx[bus][int(index)].rate_ms = rate_ms
+            self.tx[bus][int(index)].parity = parity.upper()
             self.dme_line = int(index)
             return self._snapshot_locked()
 
@@ -1361,7 +1390,10 @@ class ArincSession:
                         "data_eng": s.data_text,
                         "data19": f"0x{s.data19:05X}",
                         "pad3": f"{s.pad3:03b}",
-                        "pads": format_pads(s.data19, (lib.pads if (lib := lookup_label(s.label_octal)) else "-")),
+                        "pads": (
+                            dme_unpack(s.data19)["pads"] if s.encoding == "dme_freq" and s.raw
+                            else format_pads(s.data19, (lib.pads if (lib := lookup_label(s.label_octal)) else "-"))
+                        ),
                         "data16": f"0x{s.data16:04X}",
                         "sdi": f"{s.sdi:02d}",
                         "ssm": s.ssm,

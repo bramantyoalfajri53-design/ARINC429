@@ -192,6 +192,7 @@ class ArincDmeModeBody(BaseModel):
 
 class ArincDmeSlotBody(BaseModel):
     index: int = Field(default=0, ge=0, le=9)
+    bus: str = Field(default="A", max_length=1)
     freq_mhz: float | None = None
     mode: str | None = Field(default=None, max_length=8)
     nav: str | None = Field(default=None, max_length=8)
@@ -199,6 +200,9 @@ class ArincDmeSlotBody(BaseModel):
     ident: bool | None = None
     sdi: int | None = Field(default=None, ge=0, le=3)
     ssm: str | None = Field(default=None, max_length=8)
+    pad: str | None = Field(default=None, max_length=16)
+    parity: str = Field(default="ODD", max_length=8)
+    rate_ms: int = Field(default=100, ge=10, le=5000)
     enabled: bool | None = None
 
 
@@ -670,6 +674,7 @@ def create_app(
         try:
             return get_arinc().configure_dme_slot(
                 body.index,
+                bus=body.bus,
                 freq_mhz=body.freq_mhz,
                 mode=body.mode,
                 nav=body.nav,
@@ -677,6 +682,9 @@ def create_app(
                 ident=body.ident,
                 sdi=body.sdi,
                 ssm=body.ssm,
+                pad=body.pad,
+                parity=body.parity,
+                rate_ms=body.rate_ms,
                 enabled=body.enabled,
             )
         except Exception as exc:

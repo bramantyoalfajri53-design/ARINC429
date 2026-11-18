@@ -325,23 +325,35 @@ def dme_pack(
     nav: str = "VOR",
     disp: bool = False,
     ident: bool = False,
+    pad_bits: int | str | None = None,
 ) -> int:
-    """BCD frequency (MHz x 100) with DME control bits in 11-17."""
+    """BCD frequency (MHz x 100) with DME control bits in 11-17 (bits 0-6 of data19)."""
     _need_bti()
     tenths = int(round(float(freq_mhz) * 100.0))
     word = bti429.BCDPutMant(0, tenths, 5, 0)
     data = int(bti429.FldGetData(word)) & DATA_MASK19
-    data = (data & ~0x7) | (DME_MODE_BITS.get(str(mode).upper(), 1) & 0x7)
-    data = (data & ~(0x3 << 3)) | ((DME_NAV_BITS.get(str(nav).upper(), 0) & 0x3) << 3)
-    data = (data & ~(1 << 5)) | ((1 if disp else 0) << 5)
-    data = (data & ~(1 << 6)) | ((1 if ident else 0) << 6)
+    if pad_bits is not None:
+        if isinstance(pad_bits, str):
+            clean = pad_bits.strip().replace(" ", "")
+            p_val = int(clean, 2) if (clean and all(c in "01" for c in clean)) else int(clean, 0)
+        else:
+            p_val = int(pad_bits)
+        data = (data & ~0x7F) | (p_val & 0x7F)
+    else:
+        m_val = DME_MODE_BITS.get(str(mode).upper(), 1) & 0x7
+        n_val = (DME_NAV_BITS.get(str(nav).upper(), 0) & 0x3) << 3
+        d_val = (1 if disp else 0) << 5
+        i_val = (1 if ident else 0) << 6
+        p_val = m_val | n_val | d_val | i_val
+        data = (data & ~0x7F) | p_val
     return data
 
 
 def dme_unpack(data19: int) -> dict[str, Any]:
     _need_bti()
     d = int(data19) & DATA_MASK19
-    word = bti429.FldPutData(0, d)
+    clean_d = d & ~0x7F
+    word = bti429.FldPutData(0, clean_d)
     try:
         mant = int(bti429.BCDGetMant(word, 5))
         freq = mant / 100.0
@@ -351,56 +363,18 @@ def dme_unpack(data19: int) -> dict[str, Any]:
     nav_i = (d >> 3) & 0x3
     mode = next((k for k, v in DME_MODE_BITS.items() if v == mode_i), f"M{mode_i}")
     nav = next((k for k, v in DME_NAV_BITS.items() if v == nav_i), "UND")
+    disp = bool((d >> 5) & 1)
+    ident = bool((d >> 6) & 1)
+    pad_bits = d & 0x7F
+    pads = format(pad_bits, "07b")
     return {
         "freq_mhz": freq,
         "mode": mode,
         "nav": nav,
-        "disp": bool((d >> 5) & 1),
-        "ident": bool((d >> 6) & 1),
-    }
-
-
-def dme_unpack(data19: int) -> dict[str, Any]:
-    _need_bti()
-    d = int(data19) & DATA_MASK19
-    freq_word = bti429.FldPutData(0, (d >> 3) & 0xFFFF)
-    try:
-        mant = int(bti429.BCDGetMant(freq_word, 5))
-        freq = mant / 100.0
-    except Exception:
-        freq = 0.0
-    mode_i = d & 0x7
-    nav_i = (d >> 3) & 0x3
-    mode = next((k for k, v in DME_MODE_BITS.items() if v == mode_i), f"M{mode_i}")
-    nav = next((k for k, v in DME_NAV_BITS.items() if v == nav_i), "UND")
-    return {
-        "freq_mhz": freq,
-        "mode": mode,
-        "nav": nav,
-        "disp": bool((d >> 5) & 1),
-        "ident": bool((d >> 6) & 1),
-    }
-
-
-def dme_unpack(data19: int) -> dict[str, Any]:
-    _need_bti()
-    d = int(data19) & DATA_MASK19
-    word = bti429.FldPutData(0, d)
-    try:
-        mant = int(bti429.BCDGetMant(word, 5))
-        freq = mant / 100.0
-    except Exception:
-        freq = 0.0
-    mode_i = d & 0x7
-    nav_i = (d >> 3) & 0x3
-    mode = next((k for k, v in DME_MODE_BITS.items() if v == mode_i), f"M{mode_i}")
-    nav = next((k for k, v in DME_NAV_BITS.items() if v == nav_i), "UND")
-    return {
-        "freq_mhz": freq,
-        "mode": mode,
-        "nav": nav,
-        "disp": bool((d >> 5) & 1),
-        "ident": bool((d >> 6) & 1),
+        "disp": disp,
+        "ident": ident,
+        "pad_bits": pad_bits,
+        "pads": pads,
     }
 
 
@@ -619,6 +593,7 @@ def encode_label(spec: LabelSpec, value: Any) -> int:
             nav=str(extra.get("nav", "VOR")),
             disp=bool(extra.get("disp", False)),
             ident=bool(extra.get("ident", False)),
+            pad_bits=extra.get("pad_bits") or extra.get("pad"),
         )
         word = bti429.FldPutData(word, data)
         word = put_ssm_bits(word, ssm_i)

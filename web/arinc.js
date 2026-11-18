@@ -4643,7 +4643,7 @@ function renderCmcChannelsTab(c, r, s) {
 
     let padStr = "0100001";
     if (curTx.pads && curTx.pads !== "-") {
-      padStr = curTx.pads;
+      padStr = curTx.pads.padStart(7, "0");
     } else if (curTx.pad3 != null) {
       padStr = curTx.pad3.toString(2).padStart(3, "0") + "0001";
     }
@@ -4841,35 +4841,23 @@ function renderCmcChannelsTab(c, r, s) {
     p.querySelector("#btn-single-apply").onclick = async () => {
       try {
         const freq = parseFloat(p.querySelector("#inp-single-freq").value) || 108.00;
+        const padVal = (p.querySelector("#inp-single-pad").value || "0100001").trim();
         const sdi = parseInt(p.querySelector("#sel-single-sdi").value, 10);
         const ssm = p.querySelector("#sel-single-ssm").value;
         const par = p.querySelector("#sel-single-par").value;
-        const rate = parseInt(p.querySelector("#inp-single-rate").value, 10) || 150;
-
-        await api("/api/arinc/tx/slot", {
-          method: "POST",
-          body: JSON.stringify({
-            bus: txCh,
-            slot: curSlotIdx,
-            mode: "freq",
-            label: "035",
-            data: freq.toFixed(2),
-            eng_value: freq,
-            sdi: sdi,
-            ssm: ssm,
-            odd_parity: par === "ODD",
-            rate_ms: rate,
-            enabled: true,
-          }),
-        });
+        const rate = parseInt(p.querySelector("#inp-single-rate").value, 10) || 100;
 
         await api("/api/arinc/dme/slot", {
           method: "POST",
           body: JSON.stringify({
             index: curSlotIdx,
+            bus: txCh,
             freq_mhz: freq,
+            pad: padVal,
             sdi: sdi,
             ssm: ssm,
+            parity: par,
+            rate_ms: rate,
             enabled: true,
           }),
         });
@@ -4878,6 +4866,19 @@ function renderCmcChannelsTab(c, r, s) {
         render(updated);
       } catch (e) { alert(e.message); }
     };
+
+    const triggerApplyOnEnter = (inputEl) => {
+      if (!inputEl) return;
+      inputEl.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          p.querySelector("#btn-single-apply").click();
+        }
+      });
+    };
+    triggerApplyOnEnter(p.querySelector("#inp-single-pad"));
+    triggerApplyOnEnter(p.querySelector("#inp-single-freq"));
+    triggerApplyOnEnter(p.querySelector("#inp-single-rate"));
   }
 
   function renderDmeMulti(r, s) {
