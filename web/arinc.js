@@ -4608,18 +4608,18 @@ function renderCmcChannelsTab(c, r, s) {
     const existing = document.getElementById("dynapro-modal-root");
     if (existing) existing.remove();
 
-    const overlay = el("div", "dynapro-modal-overlay");
+    const overlay = el("div", "dme-modal-overlay dynapro-modal-overlay");
     overlay.id = "dynapro-modal-root";
-    const box = el("div", "dynapro-modal-box");
+    const box = el("div", "dme-modal-box dynapro-modal-box");
     box.innerHTML = `
-      <div class="dynapro-modal-title">${title}</div>
-      <input type="text" class="dynapro-modal-input" id="dynapro-modal-input" value="${value || ""}" autofocus />
-      ${hint ? `<div style="font-size:11px; margin-bottom:10px; color:#86efac; text-align:center;">${hint}</div>` : ""}
+      <div class="dme-modal-title dynapro-modal-title">${title}</div>
+      <input type="text" class="dme-modal-input dynapro-modal-input" id="dynapro-modal-input" value="${value || ""}" autofocus />
+      ${hint ? `<div style="font-size:12px; margin-bottom:10px; color:var(--text-2); text-align:center;">${hint}</div>` : ""}
       <div id="dynapro-modal-extra"></div>
-      <div class="dynapro-keypad-grid" id="dynapro-modal-keypad"></div>
-      <div class="dynapro-modal-actions">
-        <button type="button" class="dynapro-hw-btn clr" id="dynapro-modal-cancel">CANCEL</button>
-        <button type="button" class="dynapro-hw-btn" id="dynapro-modal-apply" style="color:#4ade80;">APPLY (ENT)</button>
+      <div class="dme-keypad-grid dynapro-keypad-grid" id="dynapro-modal-keypad"></div>
+      <div class="dme-modal-actions dynapro-modal-actions">
+        <button type="button" class="btn btn-ghost" id="dynapro-modal-cancel">Cancel</button>
+        <button type="button" class="btn" id="dynapro-modal-apply">Apply</button>
       </div>
     `;
     overlay.appendChild(box);
@@ -4648,7 +4648,7 @@ function renderCmcChannelsTab(c, r, s) {
 
     if (type === "pad") {
       extra.innerHTML = `
-        <div style="font-size:11px; margin-bottom:8px; color:#94a3b8; text-align:center;">
+        <div style="font-size:11px; margin-bottom:8px; color:var(--text-2); text-align:center;">
           Bit 6: IDENT | Bit 5: DISP | Bits 4-3: NAV | Bits 2-0: MODE
         </div>
         <div style="display:flex; justify-content:center; gap:6px; margin-bottom:12px;" id="pad-bits-row"></div>
@@ -4659,11 +4659,11 @@ function renderCmcChannelsTab(c, r, s) {
         let padStr = (input.value || "0100001").padEnd(7, "0").slice(0, 7);
         for (let i = 6; i >= 0; i--) {
           const bitVal = padStr[6 - i] || "0";
-          const b = el("button", `dynapro-kp-btn ${bitVal === "1" ? "active" : ""}`);
+          const b = el("button", `dme-kp-btn dynapro-kp-btn ${bitVal === "1" ? "active" : ""}`);
           b.type = "button";
           b.style.minWidth = "38px";
-          b.style.background = bitVal === "1" ? "#22c55e" : "#000000";
-          b.style.color = bitVal === "1" ? "#000000" : "#22c55e";
+          b.style.background = bitVal === "1" ? "var(--accent)" : "var(--surface)";
+          b.style.color = bitVal === "1" ? "#ffffff" : "var(--text)";
           b.innerHTML = `<span style="font-size:9px; display:block; opacity:0.8;">b${i}</span><strong>${bitVal}</strong>`;
           b.onclick = () => {
             const arr = padStr.split("");
@@ -4679,10 +4679,10 @@ function renderCmcChannelsTab(c, r, s) {
       input.addEventListener("input", renderBits);
 
       kp.innerHTML = `
-        <button type="button" class="dynapro-kp-btn" data-act="0">0</button>
-        <button type="button" class="dynapro-kp-btn" data-act="1">1</button>
-        <button type="button" class="dynapro-kp-btn" data-act="bs">&larr;</button>
-        <button type="button" class="dynapro-kp-btn" data-act="def">DEFAULT</button>
+        <button type="button" class="dme-kp-btn dynapro-kp-btn" data-act="0">0</button>
+        <button type="button" class="dme-kp-btn dynapro-kp-btn" data-act="1">1</button>
+        <button type="button" class="dme-kp-btn dynapro-kp-btn" data-act="bs">&larr;</button>
+        <button type="button" class="dme-kp-btn dynapro-kp-btn" data-act="def">DEFAULT</button>
       `;
       kp.querySelectorAll("[data-act]").forEach((btn) => {
         btn.onclick = () => {
@@ -4701,7 +4701,7 @@ function renderCmcChannelsTab(c, r, s) {
         ".", "0", "CLR", "-1.00"
       ];
       keys.forEach((k) => {
-        const btn = el("button", "dynapro-kp-btn");
+        const btn = el("button", "dme-kp-btn dynapro-kp-btn");
         btn.type = "button";
         btn.textContent = k;
         btn.onclick = () => {
@@ -4782,49 +4782,31 @@ function renderCmcChannelsTab(c, r, s) {
   }
 
   function renderDmeConfig(r, s) {
-    const p = el("div", "dynapro-chassis");
+    const p = el("div", "panel");
     p.innerHTML = `
-      <div class="dynapro-bezel-header">
-        <span class="dynapro-badge"><span style="color:#22c55e">///</span> DYNAPRO &nbsp; 1780A INFOTOUCH DISPLAY</span>
-        <span class="dynapro-target">DME &bull; ARINC 709</span>
-      </div>
-      <div class="cfds-crt-screen is-connected">
-        <div class="dynapro-inner-box">
-          <div class="dynapro-screen-header">
-            <span class="dynapro-screen-title">DME-0 &bull; MODE SELECT</span>
-            <span class="dynapro-screen-nxt">NXT</span>
-          </div>
-          <div class="dynapro-screen-sub">ARINC 709 DME TEST MODES</div>
-          <div class="dynapro-menu-grid">
-            <div class="dynapro-menu-row">
-              <button type="button" class="dynapro-menu-item-btn" id="btn-dme-mode-single">
-                <span class="dynapro-key-num">1</span> &lt; SINGLE CHANNEL MODE
-              </button>
-              <span class="dynapro-key-right">A</span>
-            </div>
-            <div class="dynapro-menu-row">
-              <button type="button" class="dynapro-menu-item-btn" id="btn-dme-mode-multi">
-                <span class="dynapro-key-num">2</span> &lt; MULTI CHANNEL MODE
-              </button>
-              <span class="dynapro-key-right">B</span>
-            </div>
-            <div class="dynapro-menu-row">
-              <button type="button" class="dynapro-menu-item-btn" id="btn-dme-mode-standard">
-                <span class="dynapro-key-num">3</span> &lt; STANDARD NAV CONFIGURATION
-              </button>
-              <span class="dynapro-key-right">C</span>
-            </div>
-            <div class="dynapro-menu-row" style="margin-top:20px;">
-              <button type="button" class="dynapro-menu-item-btn" id="btn-dme-mode-return">
-                <span class="dynapro-key-num">6</span> &lt; RETURN TO LRU SELECT
-              </button>
-              <span class="dynapro-key-right">F</span>
-            </div>
-          </div>
+      <div class="lru-toolbar">
+        <div>
+          <div class="panel-title" style="margin-bottom:.35rem">DME &bull; ARINC 709 Test Modes</div>
+          <p class="muted">Select DME test mode according to Aeroflex T1200 manual</p>
         </div>
+        <button type="button" class="btn btn-ghost" id="btn-dme-cfg-back">&lt; Back to LRUs</button>
       </div>
-      <div class="dynapro-tactile-bar">
-        <button type="button" class="dynapro-hw-btn" id="btn-dme-cfg-back">&lt; Back to LRUs</button>
+      <div class="hub-grid" style="max-width:960px; margin:1.5rem auto;">
+        <div class="mode-card" id="btn-dme-mode-single">
+          <div class="tag">MODE 1</div>
+          <h2>Single Channel Mode</h2>
+          <p>Single frequency tuning, transmitter control &amp; receiver word monitor (ARINC 709 / CMM 1.4.B)</p>
+        </div>
+        <div class="mode-card" id="btn-dme-mode-multi">
+          <div class="tag">MODE 2</div>
+          <h2>Multi Channel Mode</h2>
+          <p>Multi-frequency scan sequence, multi-channel pulse squitter &amp; reply efficiency</p>
+        </div>
+        <div class="mode-card" id="btn-dme-mode-standard">
+          <div class="tag">MODE 3</div>
+          <h2>Standard Nav Configuration</h2>
+          <p>Standard navigation words configuration, BNR distance and BCD station identifier</p>
+        </div>
       </div>
     `;
     r.appendChild(p);
@@ -4844,7 +4826,6 @@ function renderCmcChannelsTab(c, r, s) {
         render(await api("/api/arinc/dme/mode", { method: "POST", body: JSON.stringify({ mode: "standard" }) }));
       } catch (e) { alert(e.message); }
     };
-    p.querySelector("#btn-dme-mode-return").onclick = () => navTo("avionics_lru");
     p.querySelector("#btn-dme-cfg-back").onclick = () => navTo("avionics_lru");
   }
 
@@ -4884,23 +4865,31 @@ function renderCmcChannelsTab(c, r, s) {
     const bnrDist = curRx202 && curRx202.eng_value != null ? Number(curRx202.eng_value).toFixed(1) : (dmeSingleState.replyDist || "--.-");
     const bcdIdent = curRx246 ? (curRx246.data_text || "PRES") : "----";
 
-    const p = el("div", "dynapro-chassis");
+    const p = el("div", "panel");
     p.innerHTML = `
-      <div class="dynapro-bezel-header">
-        <span class="dynapro-badge"><span style="color:#22c55e">///</span> DYNAPRO &nbsp; 1780A INFOTOUCH DISPLAY</span>
-        <span class="dynapro-target">DME SINGLE CHANNEL MODE</span>
+      <div class="lru-toolbar">
+        <div>
+          <div class="panel-title" style="margin-bottom:.35rem">DME Single Channel Mode</div>
+          <p class="muted">Tuning &amp; Word Monitor (ARINC 709 / CMM Chapter 1 Section 4.B)</p>
+        </div>
+        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+          <span class="pill pill-run">BUS TX-${txCh} &bull; RX-${rxCh}</span>
+          <button type="button" class="btn btn-ghost btn-sm" id="btn-dme-single-back">&lt; Back to DME Modes</button>
+          <button type="button" class="btn btn-ghost btn-sm" id="btn-dme-single-lrus">&lt; LRU Select</button>
+          <button type="button" class="btn btn-sm" id="btn-dme-single-tx">Transmit Active Word</button>
+        </div>
       </div>
-      <div class="dynapro-dme-crt">
+      <div class="dme-hmi-workbench dynapro-dme-crt">
         <div class="dynapro-dme-content">
           <!-- Top Header Line -->
-          <div class="dynapro-dme-hdr-line">
+          <div class="dme-hmi-hdr-line dynapro-dme-hdr-line">
             <span>-------- TRANSMITTER CONTROL --------</span>
             <span>--------- RECEIVED DATA ----------</span>
           </div>
           <!-- Subheaders & Table -->
-          <table class="dynapro-dme-table">
+          <table class="dme-hmi-table dynapro-dme-table">
             <thead>
-              <tr style="font-size:12px;">
+              <tr style="font-size:11px;">
                 <th colspan="7" style="padding-bottom:0;">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;MODE</th>
                 <th style="padding-bottom:0;">BNR</th>
                 <th colspan="3" style="padding-bottom:0;"></th>
@@ -4923,33 +4912,33 @@ function renderCmcChannelsTab(c, r, s) {
             </thead>
             <tbody>
               <tr>
-                <td><span class="dynapro-cell-edit" id="s-cell-echo">${echoVal}</span></td>
-                <td><span class="dynapro-cell-edit" id="s-cell-mode">${modeVal}</span></td>
-                <td><span class="dynapro-cell-edit" id="s-cell-chan">${dmeSingleState.dispChan ? `${chanInfo.ch} ${chanInfo.xy}` : freqVal.toFixed(2)}</span></td>
-                <td><span class="dynapro-cell-edit" id="s-cell-sdi">${sdiVal === 0 ? "ALL" : String(sdiVal).padStart(2, "0")}</span></td>
-                <td><span class="dynapro-cell-edit" id="s-cell-disp">${dispVal}</span></td>
-                <td><span class="dynapro-cell-edit" id="s-cell-ident">${identVal}</span></td>
-                <td><span class="dynapro-cell-edit" id="s-cell-nav">${navVal}</span></td>
-                <td><span class="dynapro-cell-readonly ${curRx202 ? "has-data" : ""}">${bnrDist}</span></td>
-                <td><span class="dynapro-cell-readonly">--</span></td>
-                <td><span class="dynapro-cell-readonly">--</span></td>
-                <td><span class="dynapro-cell-readonly">--</span></td>
-                <td><span class="dynapro-cell-readonly ${curRx246 ? "has-data" : ""}">${bcdIdent}</span></td>
+                <td><span class="dme-cell-edit dynapro-cell-edit" id="s-cell-echo">${echoVal}</span></td>
+                <td><span class="dme-cell-edit dynapro-cell-edit" id="s-cell-mode">${modeVal}</span></td>
+                <td><span class="dme-cell-edit dynapro-cell-edit" id="s-cell-chan">${dmeSingleState.dispChan ? `${chanInfo.ch} ${chanInfo.xy}` : freqVal.toFixed(2)}</span></td>
+                <td><span class="dme-cell-edit dynapro-cell-edit" id="s-cell-sdi">${sdiVal === 0 ? "ALL" : String(sdiVal).padStart(2, "0")}</span></td>
+                <td><span class="dme-cell-edit dynapro-cell-edit" id="s-cell-disp">${dispVal}</span></td>
+                <td><span class="dme-cell-edit dynapro-cell-edit" id="s-cell-ident">${identVal}</span></td>
+                <td><span class="dme-cell-edit dynapro-cell-edit" id="s-cell-nav">${navVal}</span></td>
+                <td><span class="dme-cell-readonly dynapro-cell-readonly ${curRx202 ? "has-data" : ""}">${bnrDist}</span></td>
+                <td><span class="dme-cell-readonly dynapro-cell-readonly">--</span></td>
+                <td><span class="dme-cell-readonly dynapro-cell-readonly">--</span></td>
+                <td><span class="dme-cell-readonly dynapro-cell-readonly">--</span></td>
+                <td><span class="dme-cell-readonly dynapro-cell-readonly ${curRx246 ? "has-data" : ""}">${bcdIdent}</span></td>
               </tr>
             </tbody>
           </table>
 
           <!-- Middle SQ/NT Status Section -->
-          <div class="dynapro-sqnt-grid">
-            <div class="dynapro-sqnt-row" style="margin-bottom:2px;">
-              <span>SQ/NT</span>
-              <span><span class="dynapro-cell-edit" id="sqnt-cell-chan">${chanInfo.ch} ${chanInfo.xy}</span></span>
-              <span><span class="dynapro-cell-edit" id="sqnt-cell-dist">${bnrDist}</span></span>
-              <span><span class="dynapro-cell-edit" id="sqnt-cell-speed">${dmeSingleState.replySpeed}</span></span>
-              <span><span class="dynapro-cell-edit" id="sqnt-cell-eff">${dmeSingleState.replyEff} %</span></span>
-              <span><span class="dynapro-cell-edit" id="sqnt-cell-rf">${dmeSingleState.rfLevel} dBm</span></span>
+          <div class="dme-sqnt-grid dynapro-sqnt-grid">
+            <div class="dme-sqnt-row dynapro-sqnt-row" style="margin-bottom:2px;">
+              <span style="font-weight:700;">SQ/NT</span>
+              <span><span class="dme-cell-edit dynapro-cell-edit" id="sqnt-cell-chan">${chanInfo.ch} ${chanInfo.xy}</span></span>
+              <span><span class="dme-cell-edit dynapro-cell-edit" id="sqnt-cell-dist">${bnrDist}</span></span>
+              <span><span class="dme-cell-edit dynapro-cell-edit" id="sqnt-cell-speed">${dmeSingleState.replySpeed}</span></span>
+              <span><span class="dme-cell-edit dynapro-cell-edit" id="sqnt-cell-eff">${dmeSingleState.replyEff} %</span></span>
+              <span><span class="dme-cell-edit dynapro-cell-edit" id="sqnt-cell-rf">${dmeSingleState.rfLevel} dBm</span></span>
             </div>
-            <div class="dynapro-sqnt-row" style="font-size:12px; color:#16a34a;">
+            <div class="dme-sqnt-row dynapro-sqnt-row" style="font-size:11px; color:var(--text-2);">
               <span>STATUS:</span>
               <span></span>
               <span>NM</span>
@@ -4960,58 +4949,51 @@ function renderCmcChannelsTab(c, r, s) {
           </div>
 
           <!-- Bottom 7 Softkeys -->
-          <div class="dynapro-softkeys-row">
+          <div class="dme-softkeys-row dynapro-softkeys-row">
             <!-- 1: [ X / Y ] -->
-            <button type="button" class="dynapro-softkey-btn" id="s-sk-xy">
-              <div class="dynapro-softkey-half ${chanInfo.xy === "X" ? "active" : ""}">X</div>
-              <div class="dynapro-softkey-divider"></div>
-              <div class="dynapro-softkey-half ${chanInfo.xy === "Y" ? "active" : ""}">Y</div>
+            <button type="button" class="dme-softkey-btn dynapro-softkey-btn" id="s-sk-xy">
+              <div class="dme-softkey-half dynapro-softkey-half ${chanInfo.xy === "X" ? "active" : ""}">X</div>
+              <div class="dme-softkey-divider dynapro-softkey-divider"></div>
+              <div class="dme-softkey-half dynapro-softkey-half ${chanInfo.xy === "Y" ? "active" : ""}">Y</div>
             </button>
             <!-- 2: [ TX-A / TX-B ] -->
-            <button type="button" class="dynapro-softkey-btn" id="s-sk-tx">
-              <div class="dynapro-softkey-half ${txCh === "A" ? "active" : ""}">TX-A</div>
-              <div class="dynapro-softkey-divider"></div>
-              <div class="dynapro-softkey-half ${txCh === "B" ? "active" : ""}">TX-B</div>
+            <button type="button" class="dme-softkey-btn dynapro-softkey-btn" id="s-sk-tx">
+              <div class="dme-softkey-half dynapro-softkey-half ${txCh === "A" ? "active" : ""}">TX-A</div>
+              <div class="dme-softkey-divider dynapro-softkey-divider"></div>
+              <div class="dme-softkey-half dynapro-softkey-half ${txCh === "B" ? "active" : ""}">TX-B</div>
             </button>
             <!-- 3: [ RX-A / RX-B ] -->
-            <button type="button" class="dynapro-softkey-btn" id="s-sk-rx">
-              <div class="dynapro-softkey-half ${rxCh === "A" ? "active" : ""}">RX-A</div>
-              <div class="dynapro-softkey-divider"></div>
-              <div class="dynapro-softkey-half ${rxCh === "B" ? "active" : ""}">RX-B</div>
+            <button type="button" class="dme-softkey-btn dynapro-softkey-btn" id="s-sk-rx">
+              <div class="dme-softkey-half dynapro-softkey-half ${rxCh === "A" ? "active" : ""}">RX-A</div>
+              <div class="dme-softkey-divider dynapro-softkey-divider"></div>
+              <div class="dme-softkey-half dynapro-softkey-half ${rxCh === "B" ? "active" : ""}">RX-B</div>
             </button>
             <!-- 4: [ SQ/NT / INDEP. ] -->
-            <button type="button" class="dynapro-softkey-btn" id="s-sk-sqnt">
-              <div class="dynapro-softkey-half ${dmeSingleState.sqntMode === "SQNT" ? "active" : ""}">SQ/NT</div>
-              <div class="dynapro-softkey-divider"></div>
-              <div class="dynapro-softkey-half ${dmeSingleState.sqntMode === "INDEP" ? "active" : ""}">INDEP.</div>
+            <button type="button" class="dme-softkey-btn dynapro-softkey-btn" id="s-sk-sqnt">
+              <div class="dme-softkey-half dynapro-softkey-half ${dmeSingleState.sqntMode === "SQNT" ? "active" : ""}">SQ/NT</div>
+              <div class="dme-softkey-divider dynapro-softkey-divider"></div>
+              <div class="dme-softkey-half dynapro-softkey-half ${dmeSingleState.sqntMode === "INDEP" ? "active" : ""}">INDEP.</div>
             </button>
             <!-- 5: [ CHAN / FREQ ] -->
-            <button type="button" class="dynapro-softkey-btn" id="s-sk-chan">
-              <div class="dynapro-softkey-half ${dmeSingleState.dispChan ? "active" : ""}">CHAN</div>
-              <div class="dynapro-softkey-divider"></div>
-              <div class="dynapro-softkey-half ${!dmeSingleState.dispChan ? "active" : ""}">FREQ</div>
+            <button type="button" class="dme-softkey-btn dynapro-softkey-btn" id="s-sk-chan">
+              <div class="dme-softkey-half dynapro-softkey-half ${dmeSingleState.dispChan ? "active" : ""}">CHAN</div>
+              <div class="dme-softkey-divider dynapro-softkey-divider"></div>
+              <div class="dme-softkey-half dynapro-softkey-half ${!dmeSingleState.dispChan ? "active" : ""}">FREQ</div>
             </button>
             <!-- 6: [ MODE / ADVAN ] -->
-            <button type="button" class="dynapro-softkey-btn" id="s-sk-mode">
-              <div class="dynapro-softkey-half">MODE</div>
-              <div class="dynapro-softkey-divider"></div>
-              <div class="dynapro-softkey-half active">ADVAN</div>
+            <button type="button" class="dme-softkey-btn dynapro-softkey-btn" id="s-sk-mode">
+              <div class="dme-softkey-half dynapro-softkey-half">MODE</div>
+              <div class="dme-softkey-divider dynapro-softkey-divider"></div>
+              <div class="dme-softkey-half dynapro-softkey-half active">ADVAN</div>
             </button>
             <!-- 7: [ BCD / IDENT ] -->
-            <button type="button" class="dynapro-softkey-btn" id="s-sk-ident">
-              <div class="dynapro-softkey-half ${identVal === "ON" ? "active" : ""}">BCD</div>
-              <div class="dynapro-softkey-divider"></div>
-              <div class="dynapro-softkey-half ${identVal === "ON" ? "active" : ""}">IDENT</div>
+            <button type="button" class="dme-softkey-btn dynapro-softkey-btn" id="s-sk-ident">
+              <div class="dme-softkey-half dynapro-softkey-half ${identVal === "ON" ? "active" : ""}">BCD</div>
+              <div class="dme-softkey-divider dynapro-softkey-divider"></div>
+              <div class="dme-softkey-half dynapro-softkey-half ${identVal === "ON" ? "active" : ""}">IDENT</div>
             </button>
           </div>
         </div>
-      </div>
-      <div class="dynapro-tactile-bar">
-        <div style="display:flex; gap:8px;">
-          <button type="button" class="dynapro-hw-btn" id="btn-dme-single-back">&lt; Back to DME Modes</button>
-          <button type="button" class="dynapro-hw-btn" id="btn-dme-single-lrus">&lt; LRU Select</button>
-        </div>
-        <button type="button" class="dynapro-hw-btn" id="btn-dme-single-tx" style="color:#4ade80;">Transmit Active Word</button>
       </div>
     `;
     r.appendChild(p);
@@ -5276,23 +5258,31 @@ function renderCmcChannelsTab(c, r, s) {
     const bnrDist = curRx202 && curRx202.eng_value != null ? Number(curRx202.eng_value).toFixed(1) : "--.-";
     const bcdIdent = curRx246 ? (curRx246.data_text || "PRES") : "----";
 
-    const p = el("div", "dynapro-chassis");
+    const p = el("div", "panel");
     p.innerHTML = `
-      <div class="dynapro-bezel-header">
-        <span class="dynapro-badge"><span style="color:#22c55e">///</span> DYNAPRO &nbsp; 1780A INFOTOUCH DISPLAY</span>
-        <span class="dynapro-target">DME MULTI CHANNEL MODE</span>
+      <div class="lru-toolbar">
+        <div>
+          <div class="panel-title" style="margin-bottom:.35rem">DME Multi Channel Mode</div>
+          <p class="muted">Multi-Frequency Scan &amp; Transmitter Control (ARINC 709)</p>
+        </div>
+        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+          <span class="pill pill-run">BUS TX-${txCh} &bull; RX-${rxCh}</span>
+          <button type="button" class="btn btn-ghost btn-sm" id="btn-dme-multi-back">&lt; Back to DME Modes</button>
+          <button type="button" class="btn btn-ghost btn-sm" id="btn-dme-multi-lrus">&lt; LRU Select</button>
+          <button type="button" class="btn btn-sm" id="btn-dme-multi-tx">Transmit All Lines</button>
+        </div>
       </div>
-      <div class="dynapro-dme-crt">
+      <div class="dme-hmi-workbench dynapro-dme-crt">
         <div class="dynapro-dme-content">
           <!-- Top Header Line -->
-          <div class="dynapro-dme-hdr-line">
+          <div class="dme-hmi-hdr-line dynapro-dme-hdr-line">
             <span>-------- TRANSMITTER CONTROL --------</span>
             <span>--------- RECEIVED DATA ----------</span>
           </div>
           <!-- Subheaders & Multi Rows Table -->
-          <table class="dynapro-dme-table">
+          <table class="dme-hmi-table dynapro-dme-table">
             <thead>
-              <tr style="font-size:12px;">
+              <tr style="font-size:11px;">
                 <th colspan="7" style="padding-bottom:0;">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;MODE</th>
                 <th style="padding-bottom:0;">BNR</th>
                 <th colspan="3" style="padding-bottom:0;"></th>
@@ -5316,82 +5306,75 @@ function renderCmcChannelsTab(c, r, s) {
             <tbody>
               ${lines.map((r, i) => `
                 <tr data-line="${i}" class="${i === curLine ? "active-line" : ""}" style="cursor:pointer;">
-                  <td><span class="dynapro-cell-edit" data-edit="echo" data-idx="${i}">${r.mode === "SCAN" ? "" : r.echo}</span></td>
-                  <td><span class="dynapro-cell-edit" data-edit="mode" data-idx="${i}"><strong>${r.mode}</strong></span></td>
-                  <td><span class="dynapro-cell-edit" data-edit="chan" data-idx="${i}">${r.mode === "SCAN" ? "" : `${r.ch} ${r.xy}`}</span></td>
-                  <td><span class="dynapro-cell-edit" data-edit="sdi" data-idx="${i}">${r.sdi === 0 ? "ALL" : String(r.sdi).padStart(2, "0")}</span></td>
-                  <td><span class="dynapro-cell-edit" data-edit="disp" data-idx="${i}">${r.disp}</span></td>
-                  <td><span class="dynapro-cell-edit" data-edit="ident" data-idx="${i}">${r.ident}</span></td>
-                  <td><span class="dynapro-cell-edit" data-edit="nav" data-idx="${i}">${r.nav}</span></td>
-                  <td><span class="dynapro-cell-readonly ${i === curLine && curRx202 ? "has-data" : ""}">${i === curLine ? bnrDist : "--.-"}</span></td>
-                  <td><span class="dynapro-cell-readonly">--</span></td>
-                  <td><span class="dynapro-cell-readonly">--</span></td>
-                  <td><span class="dynapro-cell-readonly">--</span></td>
-                  <td><span class="dynapro-cell-readonly ${i === curLine && curRx246 ? "has-data" : ""}">${i === curLine ? bcdIdent : "----"}</span></td>
+                  <td><span class="dme-cell-edit dynapro-cell-edit" data-edit="echo" data-idx="${i}">${r.mode === "SCAN" ? "" : r.echo}</span></td>
+                  <td><span class="dme-cell-edit dynapro-cell-edit" data-edit="mode" data-idx="${i}"><strong>${r.mode}</strong></span></td>
+                  <td><span class="dme-cell-edit dynapro-cell-edit" data-edit="chan" data-idx="${i}">${r.mode === "SCAN" ? "" : `${r.ch} ${r.xy}`}</span></td>
+                  <td><span class="dme-cell-edit dynapro-cell-edit" data-edit="sdi" data-idx="${i}">${r.sdi === 0 ? "ALL" : String(r.sdi).padStart(2, "0")}</span></td>
+                  <td><span class="dme-cell-edit dynapro-cell-edit" data-edit="disp" data-idx="${i}">${r.disp}</span></td>
+                  <td><span class="dme-cell-edit dynapro-cell-edit" data-edit="ident" data-idx="${i}">${r.ident}</span></td>
+                  <td><span class="dme-cell-edit dynapro-cell-edit" data-edit="nav" data-idx="${i}">${r.nav}</span></td>
+                  <td><span class="dme-cell-readonly dynapro-cell-readonly ${i === curLine && curRx202 ? "has-data" : ""}">${i === curLine ? bnrDist : "--.-"}</span></td>
+                  <td><span class="dme-cell-readonly dynapro-cell-readonly">--</span></td>
+                  <td><span class="dme-cell-readonly dynapro-cell-readonly">--</span></td>
+                  <td><span class="dme-cell-readonly dynapro-cell-readonly">--</span></td>
+                  <td><span class="dme-cell-readonly dynapro-cell-readonly ${i === curLine && curRx246 ? "has-data" : ""}">${i === curLine ? bcdIdent : "----"}</span></td>
                 </tr>
               `).join("")}
             </tbody>
           </table>
 
           <!-- Bottom Telemetry Status Line -->
-          <div class="dynapro-multi-status-row">
-            <span>${activeRow.mode === "SCAN" ? "SCAN" : `${activeRow.ch} ${activeRow.xy}`}</span>
-            <span>${bnrDist} NM</span>
+          <div class="dme-multi-status-row dynapro-multi-status-row">
+            <span>CHANNEL: <strong>${activeRow.mode === "SCAN" ? "SCAN" : `${activeRow.ch} ${activeRow.xy}`}</strong></span>
+            <span>DISTANCE: <strong style="color:var(--accent);">${bnrDist} NM</strong></span>
           </div>
 
           <!-- Bottom 7 Softkeys -->
-          <div class="dynapro-softkeys-row">
+          <div class="dme-softkeys-row dynapro-softkeys-row">
             <!-- 1: [ X / Y ] -->
-            <button type="button" class="dynapro-softkey-btn" id="m-sk-xy">
-              <div class="dynapro-softkey-half ${activeRow.xy === "X" ? "active" : ""}">X</div>
-              <div class="dynapro-softkey-divider"></div>
-              <div class="dynapro-softkey-half ${activeRow.xy === "Y" ? "active" : ""}">Y</div>
+            <button type="button" class="dme-softkey-btn dynapro-softkey-btn" id="m-sk-xy">
+              <div class="dme-softkey-half dynapro-softkey-half ${activeRow.xy === "X" ? "active" : ""}">X</div>
+              <div class="dme-softkey-divider dynapro-softkey-divider"></div>
+              <div class="dme-softkey-half dynapro-softkey-half ${activeRow.xy === "Y" ? "active" : ""}">Y</div>
             </button>
             <!-- 2: [ TX-A / TX-B ] -->
-            <button type="button" class="dynapro-softkey-btn" id="m-sk-tx">
-              <div class="dynapro-softkey-half ${txCh === "A" ? "active" : ""}">TX-A</div>
-              <div class="dynapro-softkey-divider"></div>
-              <div class="dynapro-softkey-half ${txCh === "B" ? "active" : ""}">TX-B</div>
+            <button type="button" class="dme-softkey-btn dynapro-softkey-btn" id="m-sk-tx">
+              <div class="dme-softkey-half dynapro-softkey-half ${txCh === "A" ? "active" : ""}">TX-A</div>
+              <div class="dme-softkey-divider dynapro-softkey-divider"></div>
+              <div class="dme-softkey-half dynapro-softkey-half ${txCh === "B" ? "active" : ""}">TX-B</div>
             </button>
             <!-- 3: [ RX-A / RX-B ] -->
-            <button type="button" class="dynapro-softkey-btn" id="m-sk-rx">
-              <div class="dynapro-softkey-half ${rxCh === "A" ? "active" : ""}">RX-A</div>
-              <div class="dynapro-softkey-divider"></div>
-              <div class="dynapro-softkey-half ${rxCh === "B" ? "active" : ""}">RX-B</div>
+            <button type="button" class="dme-softkey-btn dynapro-softkey-btn" id="m-sk-rx">
+              <div class="dme-softkey-half dynapro-softkey-half ${rxCh === "A" ? "active" : ""}">RX-A</div>
+              <div class="dme-softkey-divider dynapro-softkey-divider"></div>
+              <div class="dme-softkey-half dynapro-softkey-half ${rxCh === "B" ? "active" : ""}">RX-B</div>
             </button>
             <!-- 4: [ SQ/NT / INDEP. ] -->
-            <button type="button" class="dynapro-softkey-btn" id="m-sk-sqnt">
-              <div class="dynapro-softkey-half ${dmeMultiState.sqntMode === "SQNT" ? "active" : ""}">SQ/NT</div>
-              <div class="dynapro-softkey-divider"></div>
-              <div class="dynapro-softkey-half ${dmeMultiState.sqntMode === "INDEP" ? "active" : ""}">INDEP.</div>
+            <button type="button" class="dme-softkey-btn dynapro-softkey-btn" id="m-sk-sqnt">
+              <div class="dme-softkey-half dynapro-softkey-half ${dmeMultiState.sqntMode === "SQNT" ? "active" : ""}">SQ/NT</div>
+              <div class="dme-softkey-divider dynapro-softkey-divider"></div>
+              <div class="dme-softkey-half dynapro-softkey-half ${dmeMultiState.sqntMode === "INDEP" ? "active" : ""}">INDEP.</div>
             </button>
             <!-- 5: [ SQ/NT / CTL ] -->
-            <button type="button" class="dynapro-softkey-btn" id="m-sk-ctl">
-              <div class="dynapro-softkey-half">SQ/NT</div>
-              <div class="dynapro-softkey-divider"></div>
-              <div class="dynapro-softkey-half active">CTL</div>
+            <button type="button" class="dme-softkey-btn dynapro-softkey-btn" id="m-sk-ctl">
+              <div class="dme-softkey-half dynapro-softkey-half">SQ/NT</div>
+              <div class="dme-softkey-divider dynapro-softkey-divider"></div>
+              <div class="dme-softkey-half dynapro-softkey-half active">CTL</div>
             </button>
             <!-- 6: [ LINE / ADVAN ] -->
-            <button type="button" class="dynapro-softkey-btn" id="m-sk-line">
-              <div class="dynapro-softkey-half">LINE</div>
-              <div class="dynapro-softkey-divider"></div>
-              <div class="dynapro-softkey-half active">ADVAN</div>
+            <button type="button" class="dme-softkey-btn dynapro-softkey-btn" id="m-sk-line">
+              <div class="dme-softkey-half dynapro-softkey-half">LINE</div>
+              <div class="dme-softkey-divider dynapro-softkey-divider"></div>
+              <div class="dme-softkey-half dynapro-softkey-half active">ADVAN</div>
             </button>
             <!-- 7: [ BCD / IDENT ] -->
-            <button type="button" class="dynapro-softkey-btn" id="m-sk-ident">
-              <div class="dynapro-softkey-half ${activeRow.ident === "ON" ? "active" : ""}">BCD</div>
-              <div class="dynapro-softkey-divider"></div>
-              <div class="dynapro-softkey-half ${activeRow.ident === "ON" ? "active" : ""}">IDENT</div>
+            <button type="button" class="dme-softkey-btn dynapro-softkey-btn" id="m-sk-ident">
+              <div class="dme-softkey-half dynapro-softkey-half ${activeRow.ident === "ON" ? "active" : ""}">BCD</div>
+              <div class="dme-softkey-divider dynapro-softkey-divider"></div>
+              <div class="dme-softkey-half dynapro-softkey-half ${activeRow.ident === "ON" ? "active" : ""}">IDENT</div>
             </button>
           </div>
         </div>
-      </div>
-      <div class="dynapro-tactile-bar">
-        <div style="display:flex; gap:8px;">
-          <button type="button" class="dynapro-hw-btn" id="btn-dme-multi-back">&lt; Back to DME Modes</button>
-          <button type="button" class="dynapro-hw-btn" id="btn-dme-multi-lrus">&lt; LRU Select</button>
-        </div>
-        <button type="button" class="dynapro-hw-btn" id="btn-dme-multi-tx" style="color:#4ade80;">Transmit All Lines</button>
       </div>
     `;
     r.appendChild(p);
@@ -5399,7 +5382,7 @@ function renderCmcChannelsTab(c, r, s) {
     // Row selection on click
     p.querySelectorAll("tr[data-line]").forEach((tr) => {
       tr.onclick = (e) => {
-        if (e.target.closest(".dynapro-cell-edit")) return;
+        if (e.target.closest(".dynapro-cell-edit") || e.target.closest(".dme-cell-edit")) return;
         dmeMultiState.selectedLine = parseInt(tr.dataset.line, 10);
         render(snap);
       };
@@ -5637,20 +5620,28 @@ function renderCmcChannelsTab(c, r, s) {
     const rxParStr = curRx035 ? (curRx035.parity || "ODD") : "---";
     const rxRateStr = curRx035 ? (curRx035.period_ms || 150) : "---";
 
-    const p = el("div", "dynapro-chassis");
+    const p = el("div", "panel");
     p.innerHTML = `
-      <div class="dynapro-bezel-header">
-        <span class="dynapro-badge"><span style="color:#22c55e">///</span> DYNAPRO &nbsp; 1780A INFOTOUCH DISPLAY</span>
-        <span class="dynapro-target">DME STANDARD NAV CONFIGURATION</span>
+      <div class="lru-toolbar">
+        <div>
+          <div class="panel-title" style="margin-bottom:.35rem">DME Standard Nav Configuration</div>
+          <p class="muted">Standard Navigation Words &amp; Slot Configuration (ARINC 709)</p>
+        </div>
+        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+          <span class="pill pill-run">BUS TX-${txCh} &bull; RX-${rxCh}</span>
+          <button type="button" class="btn btn-ghost btn-sm" id="btn-dme-std-back">&lt; Back to DME Modes</button>
+          <button type="button" class="btn btn-ghost btn-sm" id="btn-dme-std-lrus">&lt; LRU Select</button>
+          <button type="button" class="btn btn-sm" id="btn-dme-std-tx">Transmit Active Slot</button>
+        </div>
       </div>
-      <div class="dynapro-dme-crt">
+      <div class="dme-hmi-workbench dynapro-dme-crt">
         <div class="dynapro-dme-content">
           <!-- Top Header Lines (WhatsApp Image 11.24.11 (1)) -->
-          <div class="dynapro-dme-hdr-line" style="margin-bottom:2px;">
+          <div class="dme-hmi-hdr-line dynapro-dme-hdr-line" style="margin-bottom:2px;">
             <span>          CHANNEL ${txCh}</span>
             <span>CHANNEL ${rxCh}</span>
           </div>
-          <div class="dynapro-dme-hdr-line" style="margin-bottom:8px;">
+          <div class="dme-hmi-hdr-line dynapro-dme-hdr-line" style="margin-bottom:8px;">
             <span>-- TRANSMITTED WORDS --</span>
             <span>-- RECEIVED WORDS --</span>
           </div>
@@ -5658,19 +5649,19 @@ function renderCmcChannelsTab(c, r, s) {
           <!-- Function & Slot Indicator -->
           <div style="display:flex; justify-content:flex-start; gap:40px; margin-bottom:8px; font-weight:700;">
             <div>
-              <div style="font-size:12px;">DME</div>
+              <div style="font-size:11px; color:var(--text-2);">DME</div>
               <div style="font-size:13.5px;">FREQ</div>
             </div>
             <div>
-              <div style="font-size:12px;">SLOT</div>
+              <div style="font-size:11px; color:var(--text-2);">SLOT</div>
               <div style="font-size:13.5px; cursor:pointer;" id="std-slot-cursor">
-                <span class="dynapro-inv-box">${curSlotIdx}</span>
+                <span class="dme-inv-box dynapro-inv-box">${curSlotIdx}</span>
               </div>
             </div>
           </div>
 
           <!-- Table with Transmitted and Received Words -->
-          <table class="dynapro-dme-table">
+          <table class="dme-hmi-table dynapro-dme-table">
             <thead>
               <tr>
                 <th style="width:10%;">CHAN</th>
@@ -5687,89 +5678,82 @@ function renderCmcChannelsTab(c, r, s) {
             <tbody>
               <!-- Transmitted Word Row (Editable) -->
               <tr>
-                <td><span class="dynapro-cell-edit" id="std-tx-ch-cell">TX-${txCh}</span></td>
+                <td><span class="dme-cell-edit dynapro-cell-edit" id="std-tx-ch-cell">TX-${txCh}</span></td>
                 <td><span>DME FREQ</span></td>
-                <td><span class="dynapro-cell-edit" id="std-label-cell">035</span></td>
-                <td><span class="dynapro-cell-edit" id="std-data-cell" style="font-weight:800;">${freqVal.toFixed(2)} MHZ</span></td>
-                <td><span class="dynapro-cell-edit" id="std-sdi-cell">${String(sdiVal).padStart(2, "0")}</span></td>
-                <td><span class="dynapro-cell-edit" id="std-pad-cell" style="font-weight:800;">${padStr}</span></td>
-                <td><span class="dynapro-cell-edit" id="std-ssm-cell">${ssmVal}</span></td>
-                <td><span class="dynapro-cell-edit" id="std-par-cell">${parVal}</span></td>
-                <td><span class="dynapro-cell-edit" id="std-rate-cell">${rateVal}</span></td>
+                <td><span class="dme-cell-edit dynapro-cell-edit" id="std-label-cell">035</span></td>
+                <td><span class="dme-cell-edit dynapro-cell-edit" id="std-data-cell" style="font-weight:700;">${freqVal.toFixed(2)} MHZ</span></td>
+                <td><span class="dme-cell-edit dynapro-cell-edit" id="std-sdi-cell">${String(sdiVal).padStart(2, "0")}</span></td>
+                <td><span class="dme-cell-edit dynapro-cell-edit" id="std-pad-cell" style="font-weight:700;">${padStr}</span></td>
+                <td><span class="dme-cell-edit dynapro-cell-edit" id="std-ssm-cell">${ssmVal}</span></td>
+                <td><span class="dme-cell-edit dynapro-cell-edit" id="std-par-cell">${parVal}</span></td>
+                <td><span class="dme-cell-edit dynapro-cell-edit" id="std-rate-cell">${rateVal}</span></td>
               </tr>
               <!-- Received Word Row (Strictly Read-Only) -->
               <tr>
-                <td><span class="dynapro-cell-readonly">RX-${rxCh}</span></td>
-                <td><span class="dynapro-cell-readonly">DME FREQ</span></td>
-                <td><span class="dynapro-cell-readonly">035</span></td>
-                <td><span class="dynapro-cell-readonly ${curRx035 ? "has-data" : ""}">${rxDataStr}</span></td>
-                <td><span class="dynapro-cell-readonly">${rxSdiStr}</span></td>
-                <td><span class="dynapro-cell-readonly">${rxPadStr}</span></td>
-                <td><span class="dynapro-cell-readonly">${rxSsmStr}</span></td>
-                <td><span class="dynapro-cell-readonly">${rxParStr}</span></td>
-                <td><span class="dynapro-cell-readonly">${rxRateStr}</span></td>
+                <td><span class="dme-cell-readonly dynapro-cell-readonly">RX-${rxCh}</span></td>
+                <td><span class="dme-cell-readonly dynapro-cell-readonly">DME FREQ</span></td>
+                <td><span class="dme-cell-readonly dynapro-cell-readonly">035</span></td>
+                <td><span class="dme-cell-readonly dynapro-cell-readonly ${curRx035 ? "has-data" : ""}">${rxDataStr}</span></td>
+                <td><span class="dme-cell-readonly dynapro-cell-readonly">${rxSdiStr}</span></td>
+                <td><span class="dme-cell-readonly dynapro-cell-readonly">${rxPadStr}</span></td>
+                <td><span class="dme-cell-readonly dynapro-cell-readonly">${rxSsmStr}</span></td>
+                <td><span class="dme-cell-readonly dynapro-cell-readonly">${rxParStr}</span></td>
+                <td><span class="dme-cell-readonly dynapro-cell-readonly">${rxRateStr}</span></td>
               </tr>
             </tbody>
           </table>
 
           <!-- Middle Rate Status Line -->
-          <div class="dynapro-std-rate-row">
-            <span>${s.bit_rate_kbps || 12.5} KBPS</span>
+          <div class="dme-std-rate-row dynapro-std-rate-row">
+            <span>BIT RATE: <strong style="color:var(--accent);">${s.bit_rate_kbps || 12.5} KBPS</strong></span>
           </div>
 
           <!-- Bottom 7 Softkeys -->
-          <div class="dynapro-softkeys-row">
+          <div class="dme-softkeys-row dynapro-softkeys-row">
             <!-- 1: [ DISP / CURSOR ] -->
-            <button type="button" class="dynapro-softkey-btn" id="std-sk-cursor">
-              <div class="dynapro-softkey-half">DISP</div>
-              <div class="dynapro-softkey-divider"></div>
-              <div class="dynapro-softkey-half active">CURSOR</div>
+            <button type="button" class="dme-softkey-btn dynapro-softkey-btn" id="std-sk-cursor">
+              <div class="dme-softkey-half dynapro-softkey-half">DISP</div>
+              <div class="dme-softkey-divider dynapro-softkey-divider"></div>
+              <div class="dme-softkey-half dynapro-softkey-half active">CURSOR</div>
             </button>
             <!-- 2: [ DATA / STEP ] -->
-            <button type="button" class="dynapro-softkey-btn" id="std-sk-step">
-              <div class="dynapro-softkey-half">DATA</div>
-              <div class="dynapro-softkey-divider"></div>
-              <div class="dynapro-softkey-half active">STEP &plusmn;${dmeStandardState.stepVal}</div>
+            <button type="button" class="dme-softkey-btn dynapro-softkey-btn" id="std-sk-step">
+              <div class="dme-softkey-half dynapro-softkey-half">DATA</div>
+              <div class="dme-softkey-divider dynapro-softkey-divider"></div>
+              <div class="dme-softkey-half dynapro-softkey-half active">STEP &plusmn;${dmeStandardState.stepVal}</div>
             </button>
             <!-- 3: [ INC. / DECR ] -->
-            <button type="button" class="dynapro-softkey-btn" id="std-sk-incdec">
-              <div class="dynapro-softkey-half" id="std-sk-half-inc">INC.</div>
-              <div class="dynapro-softkey-divider"></div>
-              <div class="dynapro-softkey-half" id="std-sk-half-dec">DECR</div>
+            <button type="button" class="dme-softkey-btn dynapro-softkey-btn" id="std-sk-incdec">
+              <div class="dme-softkey-half dynapro-softkey-half" id="std-sk-half-inc">INC.</div>
+              <div class="dme-softkey-divider dynapro-softkey-divider"></div>
+              <div class="dme-softkey-half dynapro-softkey-half" id="std-sk-half-dec">DECR</div>
             </button>
             <!-- 4: [ MORE / WORDS ] -->
-            <button type="button" class="dynapro-softkey-btn" id="std-sk-more">
-              <div class="dynapro-softkey-half">MORE</div>
-              <div class="dynapro-softkey-divider"></div>
-              <div class="dynapro-softkey-half">WORDS</div>
+            <button type="button" class="dme-softkey-btn dynapro-softkey-btn" id="std-sk-more">
+              <div class="dme-softkey-half dynapro-softkey-half">MORE</div>
+              <div class="dme-softkey-divider dynapro-softkey-divider"></div>
+              <div class="dme-softkey-half dynapro-softkey-half">WORDS</div>
             </button>
             <!-- 5: [ BIT / RATE ] -->
-            <button type="button" class="dynapro-softkey-btn" id="std-sk-bitrate">
-              <div class="dynapro-softkey-half">BIT</div>
-              <div class="dynapro-softkey-divider"></div>
-              <div class="dynapro-softkey-half active">RATE</div>
+            <button type="button" class="dme-softkey-btn dynapro-softkey-btn" id="std-sk-bitrate">
+              <div class="dme-softkey-half dynapro-softkey-half">BIT</div>
+              <div class="dme-softkey-divider dynapro-softkey-divider"></div>
+              <div class="dme-softkey-half dynapro-softkey-half active">RATE</div>
             </button>
             <!-- 6: [ TX-A / TX-B ] -->
-            <button type="button" class="dynapro-softkey-btn" id="std-sk-tx">
-              <div class="dynapro-softkey-half ${txCh === "A" ? "active" : ""}">TX-A</div>
-              <div class="dynapro-softkey-divider"></div>
-              <div class="dynapro-softkey-half ${txCh === "B" ? "active" : ""}">TX-B</div>
+            <button type="button" class="dme-softkey-btn dynapro-softkey-btn" id="std-sk-tx">
+              <div class="dme-softkey-half dynapro-softkey-half ${txCh === "A" ? "active" : ""}">TX-A</div>
+              <div class="dme-softkey-divider dynapro-softkey-divider"></div>
+              <div class="dme-softkey-half dynapro-softkey-half ${txCh === "B" ? "active" : ""}">TX-B</div>
             </button>
             <!-- 7: [ RX-A / RX-B ] -->
-            <button type="button" class="dynapro-softkey-btn" id="std-sk-rx">
-              <div class="dynapro-softkey-half ${rxCh === "A" ? "active" : ""}">RX-A</div>
-              <div class="dynapro-softkey-divider"></div>
-              <div class="dynapro-softkey-half ${rxCh === "B" ? "active" : ""}">RX-B</div>
+            <button type="button" class="dme-softkey-btn dynapro-softkey-btn" id="std-sk-rx">
+              <div class="dme-softkey-half dynapro-softkey-half ${rxCh === "A" ? "active" : ""}">RX-A</div>
+              <div class="dme-softkey-divider dynapro-softkey-divider"></div>
+              <div class="dme-softkey-half dynapro-softkey-half ${rxCh === "B" ? "active" : ""}">RX-B</div>
             </button>
           </div>
         </div>
-      </div>
-      <div class="dynapro-tactile-bar">
-        <div style="display:flex; gap:8px;">
-          <button type="button" class="dynapro-hw-btn" id="btn-dme-std-back">&lt; Back to DME Modes</button>
-          <button type="button" class="dynapro-hw-btn" id="btn-dme-std-lrus">&lt; LRU Select</button>
-        </div>
-        <button type="button" class="dynapro-hw-btn" id="btn-dme-std-tx" style="color:#4ade80;">Transmit Active Slot</button>
       </div>
     `;
     r.appendChild(p);

@@ -1529,37 +1529,31 @@ tr.slot-off td { color: var(--muted); }
 }
 
 /* ====================================================================
-   DYNAPRO 1780A DME TEST SCREENS (SINGLE, MULTI, STANDARD NAV)
+   AVIONICS LRU: DME WORKBENCH SCREENS (SINGLE, MULTI, STANDARD NAV)
+   Styled to match Main HMI Theme (Clean Modern Test Bench)
    ==================================================================== */
+.dme-hmi-workbench,
 .dynapro-dme-crt {
-  background-color: #000000 !important;
+  background-color: var(--surface-2) !important;
   min-height: 480px;
   width: 100%;
-  border-radius: 6px;
-  border: 2px solid #166534;
-  box-shadow: inset 0 0 50px rgba(34, 197, 94, 0.15), 0 0 15px rgba(34, 197, 94, 0.1);
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
   padding: 18px 22px;
-  color: #22c55e;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  color: var(--text);
+  font-family: var(--mono);
   display: flex;
   flex-direction: column;
   position: relative;
-  text-shadow: 0 0 4px rgba(34, 197, 94, 0.6);
+  text-shadow: none !important;
   user-select: none;
   box-sizing: border-box;
   overflow-x: auto;
 }
 
 .dynapro-dme-crt::before {
-  content: " ";
-  display: block;
-  position: absolute;
-  top: 0; left: 0; bottom: 0; right: 0;
-  background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%);
-  background-size: 100% 4px;
-  z-index: 2;
-  pointer-events: none;
-  opacity: 0.6;
+  display: none !important;
 }
 
 .dynapro-dme-content {
@@ -1571,93 +1565,124 @@ tr.slot-off td { color: var(--muted); }
 }
 
 /* Top Header Line */
+.dme-hmi-hdr-line,
 .dynapro-dme-hdr-line {
   display: flex;
   justify-content: space-between;
-  font-size: 13.5px;
+  font-size: 13px;
   font-weight: 700;
-  letter-spacing: 1px;
-  margin-bottom: 4px;
+  letter-spacing: 0.5px;
+  color: var(--text-2);
+  margin-bottom: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px dashed var(--border-strong);
   white-space: pre;
 }
 
 /* Tables */
+.dme-hmi-table,
 .dynapro-dme-table {
   width: 100%;
-  border-collapse: collapse;
-  font-size: 13.5px;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 13px;
   line-height: 1.5;
   margin-bottom: 10px;
 }
 
+.dme-hmi-table th,
 .dynapro-dme-table th {
-  color: #22c55e;
+  color: var(--text-2);
+  font-family: var(--sans);
   font-weight: 700;
+  font-size: 11.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
   text-align: left;
-  padding: 2px 4px;
+  padding: 4px 6px;
   white-space: nowrap;
+  border-bottom: 1px solid var(--border);
 }
 
+.dme-hmi-table td,
 .dynapro-dme-table td {
-  color: #22c55e;
-  padding: 3px 4px;
+  color: var(--text);
+  padding: 5px 6px;
   white-space: nowrap;
+  vertical-align: middle;
 }
 
+.dme-hmi-table tr.active-line,
 .dynapro-dme-table tr.active-line {
-  background: rgba(34, 197, 94, 0.18);
-  box-shadow: inset 0 -2px 0 #22c55e;
+  background: var(--accent-soft);
+  border-radius: var(--radius-sm);
 }
 
+.dme-cell-edit,
 .dynapro-cell-edit {
   cursor: pointer;
-  padding: 1px 4px;
-  border-radius: 2px;
-  transition: all 0.1s ease;
+  padding: 2px 7px;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  color: var(--accent);
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(15,23,42,0.04);
+  transition: all 0.15s ease;
   display: inline-block;
-  border: 1px solid transparent;
 }
 
+.dme-cell-edit:hover,
 .dynapro-cell-edit:hover {
-  background: rgba(34, 197, 94, 0.25);
-  border-color: #22c55e;
-  color: #86efac;
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+  transform: translateY(-1px);
 }
 
+.dme-cell-edit:active,
 .dynapro-cell-edit:active {
-  background: #22c55e;
-  color: #000000;
-  text-shadow: none;
+  background: var(--accent);
+  color: #ffffff;
 }
 
+.dme-cell-readonly,
 .dynapro-cell-readonly {
   cursor: default;
-  color: #16a34a;
-  padding: 1px 4px;
+  color: var(--muted);
+  padding: 2px 6px;
+  font-weight: 500;
 }
 
+.dme-cell-readonly.has-data,
 .dynapro-cell-readonly.has-data {
-  color: #22c55e;
+  color: var(--ok);
   font-weight: 700;
 }
 
+.dme-inv-box,
 .dynapro-inv-box {
-  background: #22c55e;
-  color: #000000 !important;
-  font-weight: 800;
-  padding: 0 5px;
-  border-radius: 2px;
-  text-shadow: none;
+  background: var(--accent);
+  color: #ffffff !important;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
   display: inline-block;
 }
 
 /* Single Mode SQ/NT STATUS */
+.dme-sqnt-grid,
 .dynapro-sqnt-grid {
-  margin: 14px 0 16px;
-  font-size: 13.5px;
+  margin: 12px 0 14px;
+  font-size: 13px;
   line-height: 1.5;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
 }
 
+.dme-sqnt-row,
 .dynapro-sqnt-row {
   display: grid;
   grid-template-columns: 80px 70px 100px 90px 130px 130px;
@@ -1665,42 +1690,54 @@ tr.slot-off td { color: var(--muted); }
 }
 
 /* Multi Mode Bottom Status */
+.dme-multi-status-row,
 .dynapro-multi-status-row {
   display: flex;
   justify-content: center;
   gap: 60px;
-  margin: 14px 0 10px;
-  font-size: 14px;
+  margin: 12px 0 10px;
+  font-size: 13px;
   font-weight: 700;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
 }
 
 /* Standard Nav Middle Status */
+.dme-std-rate-row,
 .dynapro-std-rate-row {
   display: flex;
   justify-content: center;
   margin: 12px 0 10px;
-  font-size: 13.5px;
+  font-size: 13px;
   font-weight: 700;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
 }
 
 /* Softkeys */
+.dme-softkeys-row,
 .dynapro-softkeys-row {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
   gap: 8px;
   margin-top: auto;
-  padding-top: 12px;
-  border-top: 1px solid rgba(34, 197, 94, 0.3);
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
 }
 
+.dme-softkey-btn,
 .dynapro-softkey-btn {
-  background: #000000;
-  border: 1.5px solid #22c55e;
-  color: #22c55e;
-  font-family: inherit;
-  font-size: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  color: var(--text-2);
+  font-family: var(--sans);
+  font-size: 11.5px;
   font-weight: 700;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.3px;
   cursor: pointer;
   display: flex;
   flex-direction: column;
@@ -1709,91 +1746,103 @@ tr.slot-off td { color: var(--muted); }
   min-height: 48px;
   padding: 0;
   text-align: center;
-  border-radius: 3px;
-  box-shadow: 0 0 6px rgba(34, 197, 94, 0.2);
-  transition: all 0.1s ease;
-  text-shadow: 0 0 3px rgba(34, 197, 94, 0.6);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow);
+  transition: all 0.15s ease;
   overflow: hidden;
+  text-shadow: none !important;
 }
 
+.dme-softkey-btn:hover,
 .dynapro-softkey-btn:hover {
-  background: rgba(34, 197, 94, 0.12);
-  box-shadow: 0 0 10px rgba(34, 197, 94, 0.4);
+  border-color: var(--accent);
+  box-shadow: 0 2px 6px rgba(13, 148, 136, 0.15);
 }
 
+.dme-softkey-half,
 .dynapro-softkey-half {
   width: 100%;
-  padding: 3px 0;
+  padding: 4px 0;
   text-align: center;
-  transition: all 0.1s ease;
+  transition: all 0.15s ease;
 }
 
+.dme-softkey-half.active,
 .dynapro-softkey-half.active {
-  background: #22c55e;
-  color: #000000;
+  background: var(--accent);
+  color: #ffffff;
   font-weight: 800;
-  text-shadow: none;
 }
 
+.dme-softkey-divider,
 .dynapro-softkey-divider {
   width: 100%;
   height: 1px;
-  background: #22c55e;
+  background: var(--border);
 }
 
 /* Touch Entry Modal */
+.dme-modal-overlay,
 .dynapro-modal-overlay {
   position: fixed;
   top: 0; left: 0; right: 0; bottom: 0;
-  background: rgba(0, 0, 0, 0.75);
+  background: rgba(15, 23, 42, 0.45);
+  backdrop-filter: blur(2px);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 9999;
 }
 
+.dme-modal-box,
 .dynapro-modal-box {
-  background: #021a0a;
-  border: 2px solid #22c55e;
-  border-radius: 6px;
-  padding: 16px 20px;
-  box-shadow: 0 0 30px rgba(34, 197, 94, 0.5);
-  max-width: 420px;
-  width: 90%;
-  color: #22c55e;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px 24px;
+  box-shadow: var(--shadow-lg);
+  max-width: 440px;
+  width: 92%;
+  color: var(--text);
+  font-family: var(--sans);
 }
 
+.dme-modal-title,
 .dynapro-modal-title {
-  font-size: 14px;
-  font-weight: 800;
-  letter-spacing: 1px;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
   text-align: center;
-  margin-bottom: 12px;
-  border-bottom: 1px solid rgba(34, 197, 94, 0.4);
-  padding-bottom: 6px;
+  margin-bottom: 14px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 8px;
+  color: var(--text);
 }
 
+.dme-modal-input,
 .dynapro-modal-input {
   width: 100%;
-  background: #000000;
-  border: 1.5px solid #22c55e;
-  color: #22c55e;
-  font-family: inherit;
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  color: var(--text);
+  font-family: var(--mono);
   font-size: 18px;
   font-weight: 700;
-  padding: 6px 10px;
-  border-radius: 4px;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
   margin-bottom: 12px;
   text-align: center;
   box-sizing: border-box;
 }
 
+.dme-modal-input:focus,
 .dynapro-modal-input:focus {
   outline: none;
-  box-shadow: 0 0 10px rgba(34, 197, 94, 0.8);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
+.dme-keypad-grid,
 .dynapro-keypad-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -1801,33 +1850,39 @@ tr.slot-off td { color: var(--muted); }
   margin-bottom: 12px;
 }
 
+.dme-kp-btn,
 .dynapro-kp-btn {
-  background: #000000;
-  border: 1px solid #22c55e;
-  color: #22c55e;
-  font-family: inherit;
-  font-size: 14px;
-  font-weight: 700;
-  padding: 8px 4px;
-  border-radius: 4px;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 13.5px;
+  font-weight: 600;
+  padding: 9px 4px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   text-align: center;
-  transition: all 0.1s ease;
+  transition: all 0.15s ease;
 }
 
+.dme-kp-btn:hover,
 .dynapro-kp-btn:hover {
-  background: rgba(34, 197, 94, 0.2);
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
+.dme-kp-btn:active,
 .dynapro-kp-btn:active {
-  background: #22c55e;
-  color: #000000;
+  background: var(--accent);
+  color: #ffffff;
 }
 
+.dme-modal-actions,
 .dynapro-modal-actions {
   display: flex;
   justify-content: space-between;
   gap: 10px;
-  margin-top: 10px;
+  margin-top: 12px;
 }
 
