@@ -3643,7 +3643,7 @@ function renderCmcChannelsTab(c, r, s) {
       label_library: "Label Library",
       user_configure: "User Configure", setup_txrx: "Setup TX/RX",
       avionics_lru: "Avionics LRU", lru_format: "LRU Format",
-      dme_config: "DME Config", dme_single: "DME Single", dme_multi: "DME Multi",
+      dme_config: "DME Config", dme_single: "DME Single", dme_multi: "DME Multi", dme_standard: "DME Standard Nav",
       mmr_menu: "MMR", mmr_format: "MMR Format",
       cfds_lru: "CFDS LRU", cfds_edit_tx: "Edit TX", cfds_op_modes: "Op Modes",
       cfds_config_channels: "Config Channels",
@@ -3718,7 +3718,7 @@ function renderCmcChannelsTab(c, r, s) {
     return view === "user_configure" || view === "setup_txrx" ||
       view === "cfds_edit_tx" || view === "cfds_config_channels" ||
       view === "cmc_edit_tx" || view === "cmc_config_txrx" ||
-      view === "dme_single" || view === "dme_multi" || view === "lru_format" || view === "mmr_format";
+      view === "dme_single" || view === "dme_multi" || view === "dme_standard" || view === "lru_format" || view === "mmr_format";
   }
 
   function render(s, opts) {
@@ -3752,12 +3752,13 @@ function renderCmcChannelsTab(c, r, s) {
     if (view === "mode_select") renderModeSelect(r, s);
     else if (view === "label_library") renderLabelLibrary(r, s);
     else if (view === "standard") renderStandardHub(r, s);
-    else if (isWorkbench(view) && view !== "dme_single" && view !== "dme_multi" && view !== "lru_format" && view !== "mmr_format") renderSetupTxRx(r, s);
+    else if (isWorkbench(view) && view !== "dme_single" && view !== "dme_multi" && view !== "dme_standard" && view !== "lru_format" && view !== "mmr_format") renderSetupTxRx(r, s);
     else if (view === "avionics_lru" || view === "cfds_lru") renderLruPicker(r, s);
-    else if (view === "lru_format" || view === "mmr_format") renderFormatScreen(r, s);
     else if (view === "dme_config") renderDmeConfig(r, s);
     else if (view === "dme_single") renderDmeSingle(r, s);
     else if (view === "dme_multi") renderDmeMulti(r, s);
+    else if (view === "dme_standard" || (view === "lru_format" && (s.active_profile === "dme" || s.dme_mode === "standard"))) renderDmeStandard(r, s);
+    else if (view === "lru_format" || view === "mmr_format") renderFormatScreen(r, s);
     else if (view === "mmr_menu") renderMmrMenu(r, s);
     else if (view === "cfds") renderCfdsHub(r, s);
     else if (view === "cmc") renderCmcHub(r, s);
@@ -4533,21 +4534,187 @@ function renderCmcChannelsTab(c, r, s) {
 
   // ====================================================================
   // 709 DME (ARINC 709 / CMM Chapter 1 Section 4.B)
-  // Native ate-platform style: .panel, .hub-grid, .mode-card, .table-wrap
+  // Dynapro 1780A Infotouch CRT Screens: Single, Multi, Standard Nav
   // ====================================================================
 
   let dmeSingleState = {
     activeSlot: 0,
     txBus: "A",
     rxBus: "A",
-    stepVal: 1.0,
+    stepVal: 0.05,
+    dispChan: true,
+    sqntMode: "SQNT",
+    replyEff: 70,
+    rfLevel: -107,
+    replySpeed: 0,
+    replyDist: "--.-",
+    echo: "NONE",
+    mode: "DF1",
+    ch: 1,
+    xy: "X",
+    freq: 134.40,
+    sdi: 0,
+    disp: "ON",
+    ident: "ON",
+    nav: "VOR",
+    parity: "ODD",
+    rate: 150,
+    pad: "0100001",
   };
 
   let dmeMultiState = {
     selectedLine: 0,
     txBus: "A",
     rxBus: "A",
+    sqntMode: "SQNT",
+    sqntCtl: "NORM",
+    lines: [
+      { mode: "DF1", ch: 1,   xy: "X", sdi: 0, disp: "ON",  ident: "ON",  nav: "VOR", freq: 134.40, echo: "NONE" },
+      { mode: "DF2", ch: 1,   xy: "X", sdi: 0, disp: "OFF", ident: "OFF", nav: "VOR", freq: 134.40, echo: "NONE" },
+      { mode: "DF3", ch: 1,   xy: "X", sdi: 0, disp: "OFF", ident: "OFF", nav: "VOR", freq: 134.40, echo: "NONE" },
+      { mode: "DF4", ch: 1,   xy: "X", sdi: 0, disp: "OFF", ident: "OFF", nav: "VOR", freq: 134.40, echo: "NONE" },
+      { mode: "DF5", ch: 1,   xy: "X", sdi: 0, disp: "OFF", ident: "OFF", nav: "VOR", freq: 134.40, echo: "NONE" },
+      { mode: "SCAN", ch: 1,  xy: "X", sdi: 0, disp: "OFF", ident: "OFF", nav: "VOR", freq: 134.40, echo: "NONE" },
+    ],
   };
+
+  let dmeStandardState = {
+    activeSlot: 0,
+    txBus: "A",
+    rxBus: "A",
+    stepVal: 0.05,
+  };
+
+  function showDmeKeypadModal({ title, value, type, hint, onApply }) {
+    const existing = document.getElementById("dynapro-modal-root");
+    if (existing) existing.remove();
+
+    const overlay = el("div", "dynapro-modal-overlay");
+    overlay.id = "dynapro-modal-root";
+    const box = el("div", "dynapro-modal-box");
+    box.innerHTML = `
+      <div class="dynapro-modal-title">${title}</div>
+      <input type="text" class="dynapro-modal-input" id="dynapro-modal-input" value="${value || ""}" autofocus />
+      ${hint ? `<div style="font-size:11px; margin-bottom:10px; color:#86efac; text-align:center;">${hint}</div>` : ""}
+      <div id="dynapro-modal-extra"></div>
+      <div class="dynapro-keypad-grid" id="dynapro-modal-keypad"></div>
+      <div class="dynapro-modal-actions">
+        <button type="button" class="dynapro-hw-btn clr" id="dynapro-modal-cancel">CANCEL</button>
+        <button type="button" class="dynapro-hw-btn" id="dynapro-modal-apply" style="color:#4ade80;">APPLY (ENT)</button>
+      </div>
+    `;
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+
+    const input = box.querySelector("#dynapro-modal-input");
+    const kp = box.querySelector("#dynapro-modal-keypad");
+    const extra = box.querySelector("#dynapro-modal-extra");
+
+    const close = () => overlay.remove();
+    box.querySelector("#dynapro-modal-cancel").onclick = close;
+    box.querySelector("#dynapro-modal-apply").onclick = () => {
+      const val = input.value;
+      close();
+      if (onApply) onApply(val);
+    };
+
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        box.querySelector("#dynapro-modal-apply").click();
+      } else if (e.key === "Escape") {
+        close();
+      }
+    });
+
+    if (type === "pad") {
+      extra.innerHTML = `
+        <div style="font-size:11px; margin-bottom:8px; color:#94a3b8; text-align:center;">
+          Bit 6: IDENT | Bit 5: DISP | Bits 4-3: NAV | Bits 2-0: MODE
+        </div>
+        <div style="display:flex; justify-content:center; gap:6px; margin-bottom:12px;" id="pad-bits-row"></div>
+      `;
+      const row = extra.querySelector("#pad-bits-row");
+      const renderBits = () => {
+        row.innerHTML = "";
+        let padStr = (input.value || "0100001").padEnd(7, "0").slice(0, 7);
+        for (let i = 6; i >= 0; i--) {
+          const bitVal = padStr[6 - i] || "0";
+          const b = el("button", `dynapro-kp-btn ${bitVal === "1" ? "active" : ""}`);
+          b.type = "button";
+          b.style.minWidth = "38px";
+          b.style.background = bitVal === "1" ? "#22c55e" : "#000000";
+          b.style.color = bitVal === "1" ? "#000000" : "#22c55e";
+          b.innerHTML = `<span style="font-size:9px; display:block; opacity:0.8;">b${i}</span><strong>${bitVal}</strong>`;
+          b.onclick = () => {
+            const arr = padStr.split("");
+            arr[6 - i] = bitVal === "1" ? "0" : "1";
+            padStr = arr.join("");
+            input.value = padStr;
+            renderBits();
+          };
+          row.appendChild(b);
+        }
+      };
+      renderBits();
+      input.addEventListener("input", renderBits);
+
+      kp.innerHTML = `
+        <button type="button" class="dynapro-kp-btn" data-act="0">0</button>
+        <button type="button" class="dynapro-kp-btn" data-act="1">1</button>
+        <button type="button" class="dynapro-kp-btn" data-act="bs">&larr;</button>
+        <button type="button" class="dynapro-kp-btn" data-act="def">DEFAULT</button>
+      `;
+      kp.querySelectorAll("[data-act]").forEach((btn) => {
+        btn.onclick = () => {
+          const a = btn.dataset.act;
+          if (a === "bs") input.value = input.value.slice(0, -1);
+          else if (a === "def") input.value = "0100001";
+          else input.value = (input.value + a).slice(0, 7);
+          renderBits();
+        };
+      });
+    } else {
+      const keys = [
+        "1", "2", "3", "+0.05",
+        "4", "5", "6", "-0.05",
+        "7", "8", "9", "+1.00",
+        ".", "0", "CLR", "-1.00"
+      ];
+      keys.forEach((k) => {
+        const btn = el("button", "dynapro-kp-btn");
+        btn.type = "button";
+        btn.textContent = k;
+        btn.onclick = () => {
+          if (k === "CLR") input.value = "";
+          else if (k.startsWith("+") || k.startsWith("-")) {
+            const cur = parseFloat(input.value) || 0;
+            const delta = parseFloat(k);
+            input.value = (cur + delta).toFixed(2);
+          } else {
+            input.value += k;
+          }
+        };
+        kp.appendChild(btn);
+      });
+    }
+
+    input.focus();
+    input.select();
+  }
+
+  async function applyDmeSlotHelper(params) {
+    try {
+      await api("/api/arinc/dme/slot", {
+        method: "POST",
+        body: JSON.stringify(params),
+      });
+      const updated = await api("/api/arinc/status");
+      render(updated);
+    } catch (e) {
+      alert(e.message);
+    }
+  }
 
   function dmeChannelToFreq(ch, xy) {
     ch = parseInt(ch, 10) || 1;
@@ -4596,42 +4763,837 @@ function renderCmcChannelsTab(c, r, s) {
   }
 
   function renderDmeConfig(r, s) {
-    const p = el("div", "panel");
+    const p = el("div", "dynapro-chassis");
     p.innerHTML = `
-      <div class="lru-toolbar">
-        <div>
-          <div class="panel-title" style="margin-bottom:0.35rem">709 DME Configuration</div>
-          <p class="muted">Select desired DME test operating mode (ARINC 709 / CMM Section 4.B).</p>
+      <div class="dynapro-bezel-header">
+        <span class="dynapro-badge"><span style="color:#22c55e">///</span> DYNAPRO &nbsp; 1780A INFOTOUCH DISPLAY</span>
+        <span class="dynapro-target">DME &bull; ARINC 709</span>
+      </div>
+      <div class="cfds-crt-screen is-connected">
+        <div class="dynapro-inner-box">
+          <div class="dynapro-screen-header">
+            <span class="dynapro-screen-title">DME-0 &bull; MODE SELECT</span>
+            <span class="dynapro-screen-nxt">NXT</span>
+          </div>
+          <div class="dynapro-screen-sub">ARINC 709 DME TEST MODES</div>
+          <div class="dynapro-menu-grid">
+            <div class="dynapro-menu-row">
+              <button type="button" class="dynapro-menu-item-btn" id="btn-dme-mode-single">
+                <span class="dynapro-key-num">1</span> &lt; SINGLE CHANNEL MODE
+              </button>
+              <span class="dynapro-key-right">A</span>
+            </div>
+            <div class="dynapro-menu-row">
+              <button type="button" class="dynapro-menu-item-btn" id="btn-dme-mode-multi">
+                <span class="dynapro-key-num">2</span> &lt; MULTI CHANNEL MODE
+              </button>
+              <span class="dynapro-key-right">B</span>
+            </div>
+            <div class="dynapro-menu-row">
+              <button type="button" class="dynapro-menu-item-btn" id="btn-dme-mode-standard">
+                <span class="dynapro-key-num">3</span> &lt; STANDARD NAV CONFIGURATION
+              </button>
+              <span class="dynapro-key-right">C</span>
+            </div>
+            <div class="dynapro-menu-row" style="margin-top:20px;">
+              <button type="button" class="dynapro-menu-item-btn" id="btn-dme-mode-return">
+                <span class="dynapro-key-num">6</span> &lt; RETURN TO LRU SELECT
+              </button>
+              <span class="dynapro-key-right">F</span>
+            </div>
+          </div>
         </div>
-        <button type="button" class="btn btn-ghost" id="btn-dme-cfg-back">&lt; Back to LRUs</button>
+      </div>
+      <div class="dynapro-tactile-bar">
+        <button type="button" class="dynapro-hw-btn" id="btn-dme-cfg-back">&lt; Back to LRUs</button>
       </div>
     `;
-    const grid = el("div", "hub-grid");
-    const items = [
-      { id: "single", title: "Single Channel Mode", desc: "Manual word tuning (Slot 0-9, PAD, Data/Freq, SDI, SSM, Parity, Rate)" },
-      { id: "multi", title: "Multi Channel Mode", desc: "Multi-directed frequency control (DF1-DF5 & SCAN, line advance, X/Y toggle)" },
-      { id: "standard", title: "Standard Nav Configuration", desc: "Standard ARINC 429 navigation tuning (Label 035, 202, 246/247)" },
-    ];
-    items.forEach(it => {
-      const card = el("div", "mode-card");
-      card.innerHTML = `<h2>${it.title}</h2><p>${it.desc}</p>`;
-      card.onclick = async () => {
-        try {
-          render(await api("/api/arinc/dme/mode", { method: "POST", body: JSON.stringify({ mode: it.id }) }));
-        } catch (e) { alert(e.message); }
-      };
-      grid.appendChild(card);
-    });
-    p.appendChild(grid);
     r.appendChild(p);
+
+    p.querySelector("#btn-dme-mode-single").onclick = async () => {
+      try {
+        render(await api("/api/arinc/dme/mode", { method: "POST", body: JSON.stringify({ mode: "single" }) }));
+      } catch (e) { alert(e.message); }
+    };
+    p.querySelector("#btn-dme-mode-multi").onclick = async () => {
+      try {
+        render(await api("/api/arinc/dme/mode", { method: "POST", body: JSON.stringify({ mode: "multi" }) }));
+      } catch (e) { alert(e.message); }
+    };
+    p.querySelector("#btn-dme-mode-standard").onclick = async () => {
+      try {
+        render(await api("/api/arinc/dme/mode", { method: "POST", body: JSON.stringify({ mode: "standard" }) }));
+      } catch (e) { alert(e.message); }
+    };
+    p.querySelector("#btn-dme-mode-return").onclick = () => navTo("avionics_lru");
     p.querySelector("#btn-dme-cfg-back").onclick = () => navTo("avionics_lru");
   }
 
+  // ====================================================================
+  // SCREEN 1: SINGLE CHANNEL DME TEST SCREEN
+  // Matches WhatsApp Image 2026-11-18 at 11.24.09 (Aeroflex Figure 17)
+  // ====================================================================
   function renderDmeSingle(r, s) {
-    const dme = s.dme || { rows: [] };
-    const curSlotIdx = dmeSingleState.activeSlot || 0;
     const txCh = dmeSingleState.txBus || s.tx_ch || "A";
     const rxCh = dmeSingleState.rxBus || s.rx_ch || "A";
+    const txSlots = (s.tx && s.tx[txCh]) || [];
+    const curTx = txSlots[0] || {};
+
+    let freqVal = (curTx.eng_value != null && Number.isFinite(Number(curTx.eng_value))) ? Number(curTx.eng_value) : dmeSingleState.freq;
+    let sdiVal = curTx.sdi != null ? Number(curTx.sdi) : dmeSingleState.sdi;
+    let ssmVal = curTx.ssm || "NML";
+    let parVal = curTx.parity || "ODD";
+    let rateVal = curTx.rate_ms || 150;
+
+    let padStr = "0100001";
+    if (curTx.pads && curTx.pads !== "-") {
+      padStr = curTx.pads.padStart(7, "0");
+    }
+
+    const chanInfo = dmeFreqToChannel(freqVal);
+    const dispVal = padStr[1] === "1" ? "ON" : "OFF";
+    const identVal = padStr[0] === "1" ? "ON" : "OFF";
+    const echoVal = dmeSingleState.echo || "NONE";
+    const modeVal = dmeSingleState.mode || "DF1";
+    const navVal = dmeSingleState.nav || "VOR";
+
+    const rxLabs = (s.rx && s.rx[rxCh] && s.rx[rxCh].labels) || [];
+    const curRx035 = rxLabs.find((l) => l.label === "035") || null;
+    const curRx202 = rxLabs.find((l) => l.label === "202") || null;
+    const curRx246 = rxLabs.find((l) => l.label === "246") || null;
+
+    const bnrDist = curRx202 && curRx202.eng_value != null ? Number(curRx202.eng_value).toFixed(1) : (dmeSingleState.replyDist || "--.-");
+    const bcdIdent = curRx246 ? (curRx246.data_text || "PRES") : "----";
+
+    const p = el("div", "dynapro-chassis");
+    p.innerHTML = `
+      <div class="dynapro-bezel-header">
+        <span class="dynapro-badge"><span style="color:#22c55e">///</span> DYNAPRO &nbsp; 1780A INFOTOUCH DISPLAY</span>
+        <span class="dynapro-target">DME SINGLE CHANNEL MODE</span>
+      </div>
+      <div class="dynapro-dme-crt">
+        <div class="dynapro-dme-content">
+          <!-- Top Header Line -->
+          <div class="dynapro-dme-hdr-line">
+            <span>-------- TRANSMITTER CONTROL --------</span>
+            <span>--------- RECEIVED DATA ----------</span>
+          </div>
+          <!-- Subheaders & Table -->
+          <table class="dynapro-dme-table">
+            <thead>
+              <tr style="font-size:12px;">
+                <th colspan="7" style="padding-bottom:0;">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;MODE</th>
+                <th style="padding-bottom:0;">BNR</th>
+                <th colspan="3" style="padding-bottom:0;"></th>
+                <th style="padding-bottom:0;">BCDDIST</th>
+              </tr>
+              <tr>
+                <th style="width:10%;">ECHO</th>
+                <th style="width:10%;">SSM</th>
+                <th style="width:10%;">CHAN</th>
+                <th style="width:8%;">SDI</th>
+                <th style="width:8%;">DISP</th>
+                <th style="width:8%;">IDENT</th>
+                <th style="width:8%;">NAV</th>
+                <th style="width:10%;">DIST</th>
+                <th style="width:7%;">MEM</th>
+                <th style="width:7%;">B/F</th>
+                <th style="width:7%;">DELTA</th>
+                <th style="width:9%;">IDENT</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><span class="dynapro-cell-edit" id="s-cell-echo">${echoVal}</span></td>
+                <td><span class="dynapro-cell-edit" id="s-cell-mode">${modeVal}</span></td>
+                <td><span class="dynapro-cell-edit" id="s-cell-chan">${dmeSingleState.dispChan ? `${chanInfo.ch} ${chanInfo.xy}` : freqVal.toFixed(2)}</span></td>
+                <td><span class="dynapro-cell-edit" id="s-cell-sdi">${sdiVal === 0 ? "ALL" : String(sdiVal).padStart(2, "0")}</span></td>
+                <td><span class="dynapro-cell-edit" id="s-cell-disp">${dispVal}</span></td>
+                <td><span class="dynapro-cell-edit" id="s-cell-ident">${identVal}</span></td>
+                <td><span class="dynapro-cell-edit" id="s-cell-nav">${navVal}</span></td>
+                <td><span class="dynapro-cell-readonly ${curRx202 ? "has-data" : ""}">${bnrDist}</span></td>
+                <td><span class="dynapro-cell-readonly">--</span></td>
+                <td><span class="dynapro-cell-readonly">--</span></td>
+                <td><span class="dynapro-cell-readonly">--</span></td>
+                <td><span class="dynapro-cell-readonly ${curRx246 ? "has-data" : ""}">${bcdIdent}</span></td>
+              </tr>
+            </tbody>
+          </table>
+
+          <!-- Middle SQ/NT Status Section -->
+          <div class="dynapro-sqnt-grid">
+            <div class="dynapro-sqnt-row" style="margin-bottom:2px;">
+              <span>SQ/NT</span>
+              <span><span class="dynapro-cell-edit" id="sqnt-cell-chan">${chanInfo.ch} ${chanInfo.xy}</span></span>
+              <span><span class="dynapro-cell-edit" id="sqnt-cell-dist">${bnrDist}</span></span>
+              <span><span class="dynapro-cell-edit" id="sqnt-cell-speed">${dmeSingleState.replySpeed}</span></span>
+              <span><span class="dynapro-cell-edit" id="sqnt-cell-eff">${dmeSingleState.replyEff} %</span></span>
+              <span><span class="dynapro-cell-edit" id="sqnt-cell-rf">${dmeSingleState.rfLevel} dBm</span></span>
+            </div>
+            <div class="dynapro-sqnt-row" style="font-size:12px; color:#16a34a;">
+              <span>STATUS:</span>
+              <span></span>
+              <span>NM</span>
+              <span>KTS</span>
+              <span>REPLY EFF.</span>
+              <span>RF LEVEL</span>
+            </div>
+          </div>
+
+          <!-- Bottom 7 Softkeys -->
+          <div class="dynapro-softkeys-row">
+            <!-- 1: [ X / Y ] -->
+            <button type="button" class="dynapro-softkey-btn" id="s-sk-xy">
+              <div class="dynapro-softkey-half ${chanInfo.xy === "X" ? "active" : ""}">X</div>
+              <div class="dynapro-softkey-divider"></div>
+              <div class="dynapro-softkey-half ${chanInfo.xy === "Y" ? "active" : ""}">Y</div>
+            </button>
+            <!-- 2: [ TX-A / TX-B ] -->
+            <button type="button" class="dynapro-softkey-btn" id="s-sk-tx">
+              <div class="dynapro-softkey-half ${txCh === "A" ? "active" : ""}">TX-A</div>
+              <div class="dynapro-softkey-divider"></div>
+              <div class="dynapro-softkey-half ${txCh === "B" ? "active" : ""}">TX-B</div>
+            </button>
+            <!-- 3: [ RX-A / RX-B ] -->
+            <button type="button" class="dynapro-softkey-btn" id="s-sk-rx">
+              <div class="dynapro-softkey-half ${rxCh === "A" ? "active" : ""}">RX-A</div>
+              <div class="dynapro-softkey-divider"></div>
+              <div class="dynapro-softkey-half ${rxCh === "B" ? "active" : ""}">RX-B</div>
+            </button>
+            <!-- 4: [ SQ/NT / INDEP. ] -->
+            <button type="button" class="dynapro-softkey-btn" id="s-sk-sqnt">
+              <div class="dynapro-softkey-half ${dmeSingleState.sqntMode === "SQNT" ? "active" : ""}">SQ/NT</div>
+              <div class="dynapro-softkey-divider"></div>
+              <div class="dynapro-softkey-half ${dmeSingleState.sqntMode === "INDEP" ? "active" : ""}">INDEP.</div>
+            </button>
+            <!-- 5: [ CHAN / FREQ ] -->
+            <button type="button" class="dynapro-softkey-btn" id="s-sk-chan">
+              <div class="dynapro-softkey-half ${dmeSingleState.dispChan ? "active" : ""}">CHAN</div>
+              <div class="dynapro-softkey-divider"></div>
+              <div class="dynapro-softkey-half ${!dmeSingleState.dispChan ? "active" : ""}">FREQ</div>
+            </button>
+            <!-- 6: [ MODE / ADVAN ] -->
+            <button type="button" class="dynapro-softkey-btn" id="s-sk-mode">
+              <div class="dynapro-softkey-half">MODE</div>
+              <div class="dynapro-softkey-divider"></div>
+              <div class="dynapro-softkey-half active">ADVAN</div>
+            </button>
+            <!-- 7: [ BCD / IDENT ] -->
+            <button type="button" class="dynapro-softkey-btn" id="s-sk-ident">
+              <div class="dynapro-softkey-half ${identVal === "ON" ? "active" : ""}">BCD</div>
+              <div class="dynapro-softkey-divider"></div>
+              <div class="dynapro-softkey-half ${identVal === "ON" ? "active" : ""}">IDENT</div>
+            </button>
+          </div>
+        </div>
+      </div>
+      <div class="dynapro-tactile-bar">
+        <div style="display:flex; gap:8px;">
+          <button type="button" class="dynapro-hw-btn" id="btn-dme-single-back">&lt; Back to DME Modes</button>
+          <button type="button" class="dynapro-hw-btn" id="btn-dme-single-lrus">&lt; LRU Select</button>
+        </div>
+        <button type="button" class="dynapro-hw-btn" id="btn-dme-single-tx" style="color:#4ade80;">Transmit Active Word</button>
+      </div>
+    `;
+    r.appendChild(p);
+
+    // Direct cell click handlers
+    p.querySelector("#s-cell-echo").onclick = () => {
+      dmeSingleState.echo = echoVal === "NONE" ? "ECHO" : "NONE";
+      render(snap);
+    };
+
+    const modesList = ["DF1", "DF2", "DF3", "DF4", "DF5", "SCAN"];
+    const advanceMode = () => {
+      const idx = modesList.indexOf(dmeSingleState.mode || "DF1");
+      dmeSingleState.mode = modesList[(idx + 1) % modesList.length];
+      applyDmeSlotHelper({
+        index: 0,
+        bus: txCh,
+        mode: dmeSingleState.mode,
+        freq_mhz: freqVal,
+        pad: padStr,
+        enabled: true,
+      });
+    };
+    p.querySelector("#s-cell-mode").onclick = advanceMode;
+    p.querySelector("#s-sk-mode").onclick = advanceMode;
+
+    const editChannelOrFreq = () => {
+      showDmeKeypadModal({
+        title: dmeSingleState.dispChan ? "SET DME CHANNEL (1-126)" : "SET DME FREQ (MHz)",
+        value: dmeSingleState.dispChan ? String(chanInfo.ch) : freqVal.toFixed(2),
+        type: "numeric",
+        hint: dmeSingleState.dispChan ? "Enter channel 1-126 (Suffix: " + chanInfo.xy + ")" : "Enter frequency (108.00 - 135.95 MHz)",
+        onApply: (val) => {
+          let newFreq = freqVal;
+          if (dmeSingleState.dispChan) {
+            const chNum = parseInt(val, 10) || 1;
+            newFreq = dmeChannelToFreq(chNum, chanInfo.xy);
+          } else {
+            newFreq = parseFloat(val) || freqVal;
+          }
+          applyDmeSlotHelper({
+            index: 0,
+            bus: txCh,
+            freq_mhz: newFreq,
+            mode: modeVal,
+            pad: padStr,
+            enabled: true,
+          });
+        },
+      });
+    };
+    p.querySelector("#s-cell-chan").onclick = editChannelOrFreq;
+    p.querySelector("#sqnt-cell-chan").onclick = editChannelOrFreq;
+
+    // Toggle X/Y
+    const toggleXY = () => {
+      const newXY = chanInfo.xy === "X" ? "Y" : "X";
+      const newFreq = dmeChannelToFreq(chanInfo.ch, newXY);
+      applyDmeSlotHelper({
+        index: 0,
+        bus: txCh,
+        freq_mhz: newFreq,
+        mode: modeVal,
+        pad: padStr,
+        enabled: true,
+      });
+    };
+    p.querySelector("#s-sk-xy").onclick = toggleXY;
+
+    // SDI cycle
+    p.querySelector("#s-cell-sdi").onclick = () => {
+      const sdiNext = (sdiVal + 1) % 4;
+      applyDmeSlotHelper({
+        index: 0,
+        bus: txCh,
+        freq_mhz: freqVal,
+        sdi: sdiNext,
+        pad: padStr,
+        enabled: true,
+      });
+    };
+
+    // DISP toggle
+    p.querySelector("#s-cell-disp").onclick = () => {
+      const newDisp = dispVal !== "ON";
+      let arr = padStr.split("");
+      arr[1] = newDisp ? "1" : "0";
+      const newPad = arr.join("");
+      applyDmeSlotHelper({
+        index: 0,
+        bus: txCh,
+        freq_mhz: freqVal,
+        disp: newDisp,
+        pad: newPad,
+        enabled: true,
+      });
+    };
+
+    // IDENT toggle
+    const toggleIdent = () => {
+      const newIdent = identVal !== "ON";
+      let arr = padStr.split("");
+      arr[0] = newIdent ? "1" : "0";
+      const newPad = arr.join("");
+      applyDmeSlotHelper({
+        index: 0,
+        bus: txCh,
+        freq_mhz: freqVal,
+        ident: newIdent,
+        pad: newPad,
+        enabled: true,
+      });
+    };
+    p.querySelector("#s-cell-ident").onclick = toggleIdent;
+    p.querySelector("#s-sk-ident").onclick = toggleIdent;
+
+    // NAV cycle (VOR -> ILS -> MLS)
+    const navList = ["VOR", "ILS", "MLS"];
+    p.querySelector("#s-cell-nav").onclick = () => {
+      const idx = navList.indexOf(navVal);
+      const nextNav = navList[(idx + 1) % navList.length];
+      dmeSingleState.nav = nextNav;
+      applyDmeSlotHelper({
+        index: 0,
+        bus: txCh,
+        freq_mhz: freqVal,
+        nav: nextNav,
+        pad: padStr,
+        enabled: true,
+      });
+    };
+
+    // SQ/NT status edits
+    p.querySelector("#sqnt-cell-dist").onclick = () => {
+      showDmeKeypadModal({
+        title: "SET RANGE DISTANCE (NM)",
+        value: dmeSingleState.replyDist === "--.-" ? "20.0" : dmeSingleState.replyDist,
+        type: "numeric",
+        hint: "Simulated DME reply distance",
+        onApply: (v) => {
+          dmeSingleState.replyDist = v ? Number(parseFloat(v).toFixed(1)) : "--.-";
+          render(snap);
+        },
+      });
+    };
+    p.querySelector("#sqnt-cell-speed").onclick = () => {
+      showDmeKeypadModal({
+        title: "SET VELOCITY (KTS)",
+        value: String(dmeSingleState.replySpeed),
+        type: "numeric",
+        onApply: (v) => {
+          dmeSingleState.replySpeed = parseInt(v, 10) || 0;
+          render(snap);
+        },
+      });
+    };
+    p.querySelector("#sqnt-cell-eff").onclick = () => {
+      showDmeKeypadModal({
+        title: "SET REPLY EFFICIENCY (%)",
+        value: String(dmeSingleState.replyEff),
+        type: "numeric",
+        hint: "Reply efficiency percentage (0-100)",
+        onApply: (v) => {
+          dmeSingleState.replyEff = Math.min(100, Math.max(0, parseInt(v, 10) || 70));
+          render(snap);
+        },
+      });
+    };
+    p.querySelector("#sqnt-cell-rf").onclick = () => {
+      showDmeKeypadModal({
+        title: "SET RF LEVEL (dBm)",
+        value: String(dmeSingleState.rfLevel),
+        type: "numeric",
+        hint: "RF Level in dBm (e.g. -107)",
+        onApply: (v) => {
+          dmeSingleState.rfLevel = parseInt(v, 10) || -107;
+          render(snap);
+        },
+      });
+    };
+
+    // Softkey TX & RX toggles
+    p.querySelector("#s-sk-tx").onclick = () => {
+      dmeSingleState.txBus = txCh === "A" ? "B" : "A";
+      render(snap);
+    };
+    p.querySelector("#s-sk-rx").onclick = () => {
+      dmeSingleState.rxBus = rxCh === "A" ? "B" : "A";
+      render(snap);
+    };
+    p.querySelector("#s-sk-sqnt").onclick = () => {
+      dmeSingleState.sqntMode = dmeSingleState.sqntMode === "SQNT" ? "INDEP" : "SQNT";
+      render(snap);
+    };
+    p.querySelector("#s-sk-chan").onclick = () => {
+      dmeSingleState.dispChan = !dmeSingleState.dispChan;
+      render(snap);
+    };
+
+    // Bottom buttons
+    p.querySelector("#btn-dme-single-back").onclick = () => navTo("dme_config");
+    p.querySelector("#btn-dme-single-lrus").onclick = () => navTo("avionics_lru");
+    p.querySelector("#btn-dme-single-tx").onclick = () => {
+      applyDmeSlotHelper({
+        index: 0,
+        bus: txCh,
+        freq_mhz: freqVal,
+        pad: padStr,
+        sdi: sdiVal,
+        ssm: ssmVal,
+        parity: parVal,
+        rate_ms: rateVal,
+        enabled: true,
+      });
+    };
+  }
+
+  // ====================================================================
+  // SCREEN 2: MULTI CHANNEL DME TEST SCREEN
+  // Matches WhatsApp Image 2026-11-18 at 11.24.11 (Aeroflex Figure 18)
+  // ====================================================================
+  function renderDmeMulti(r, s) {
+    const curLine = dmeMultiState.selectedLine || 0;
+    const txCh = dmeMultiState.txBus || s.tx_ch || "A";
+    const rxCh = dmeMultiState.rxBus || s.rx_ch || "A";
+
+    const defaultLines = [
+      { mode: "DF1", ch: 1,   xy: "X", sdi: 0, disp: "ON",  ident: "ON",  nav: "VOR", freq: 134.40, echo: "NONE" },
+      { mode: "DF2", ch: 1,   xy: "X", sdi: 0, disp: "OFF", ident: "OFF", nav: "VOR", freq: 134.40, echo: "NONE" },
+      { mode: "DF3", ch: 1,   xy: "X", sdi: 0, disp: "OFF", ident: "OFF", nav: "VOR", freq: 134.40, echo: "NONE" },
+      { mode: "DF4", ch: 1,   xy: "X", sdi: 0, disp: "OFF", ident: "OFF", nav: "VOR", freq: 134.40, echo: "NONE" },
+      { mode: "DF5", ch: 1,   xy: "X", sdi: 0, disp: "OFF", ident: "OFF", nav: "VOR", freq: 134.40, echo: "NONE" },
+      { mode: "SCAN", ch: 1,  xy: "X", sdi: 0, disp: "OFF", ident: "OFF", nav: "VOR", freq: 134.40, echo: "NONE" },
+    ];
+
+    const lines = defaultLines.map((def, i) => {
+      const stateRow = (dmeMultiState.lines && dmeMultiState.lines[i]) || def;
+      const txSlot = (s.tx && s.tx[txCh] && s.tx[txCh][i]) || null;
+      if (!txSlot || !txSlot.enabled) return stateRow;
+      const f = (txSlot.eng_value != null && Number.isFinite(Number(txSlot.eng_value))) ? Number(txSlot.eng_value) : stateRow.freq;
+      const chInfo = dmeFreqToChannel(f);
+      let pStr = "0100001";
+      if (txSlot.pads && txSlot.pads !== "-") pStr = txSlot.pads.padStart(7, "0");
+      return {
+        mode: stateRow.mode,
+        ch: chInfo.ch,
+        xy: chInfo.xy,
+        sdi: txSlot.sdi != null ? Number(txSlot.sdi) : stateRow.sdi,
+        disp: pStr[1] === "1" ? "ON" : "OFF",
+        ident: pStr[0] === "1" ? "ON" : "OFF",
+        nav: stateRow.nav,
+        freq: f,
+        echo: stateRow.echo || "NONE",
+      };
+    });
+
+    const activeRow = lines[curLine] || lines[0];
+
+    const rxLabs = (s.rx && s.rx[rxCh] && s.rx[rxCh].labels) || [];
+    const curRx202 = rxLabs.find((l) => l.label === "202") || null;
+    const curRx246 = rxLabs.find((l) => l.label === "246") || null;
+    const bnrDist = curRx202 && curRx202.eng_value != null ? Number(curRx202.eng_value).toFixed(1) : "--.-";
+    const bcdIdent = curRx246 ? (curRx246.data_text || "PRES") : "----";
+
+    const p = el("div", "dynapro-chassis");
+    p.innerHTML = `
+      <div class="dynapro-bezel-header">
+        <span class="dynapro-badge"><span style="color:#22c55e">///</span> DYNAPRO &nbsp; 1780A INFOTOUCH DISPLAY</span>
+        <span class="dynapro-target">DME MULTI CHANNEL MODE</span>
+      </div>
+      <div class="dynapro-dme-crt">
+        <div class="dynapro-dme-content">
+          <!-- Top Header Line -->
+          <div class="dynapro-dme-hdr-line">
+            <span>-------- TRANSMITTER CONTROL --------</span>
+            <span>--------- RECEIVED DATA ----------</span>
+          </div>
+          <!-- Subheaders & Multi Rows Table -->
+          <table class="dynapro-dme-table">
+            <thead>
+              <tr style="font-size:12px;">
+                <th colspan="7" style="padding-bottom:0;">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;MODE</th>
+                <th style="padding-bottom:0;">BNR</th>
+                <th colspan="3" style="padding-bottom:0;"></th>
+                <th style="padding-bottom:0;">BCDDIST</th>
+              </tr>
+              <tr>
+                <th style="width:10%;">ECHO</th>
+                <th style="width:10%;">SSM</th>
+                <th style="width:10%;">CHAN</th>
+                <th style="width:8%;">SDI</th>
+                <th style="width:8%;">DISP</th>
+                <th style="width:8%;">IDENT</th>
+                <th style="width:8%;">NAV</th>
+                <th style="width:10%;">DIST</th>
+                <th style="width:7%;">MEM</th>
+                <th style="width:7%;">B/F</th>
+                <th style="width:7%;">DELTA</th>
+                <th style="width:9%;">IDENT</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${lines.map((r, i) => `
+                <tr data-line="${i}" class="${i === curLine ? "active-line" : ""}" style="cursor:pointer;">
+                  <td><span class="dynapro-cell-edit" data-edit="echo" data-idx="${i}">${r.mode === "SCAN" ? "" : r.echo}</span></td>
+                  <td><span class="dynapro-cell-edit" data-edit="mode" data-idx="${i}"><strong>${r.mode}</strong></span></td>
+                  <td><span class="dynapro-cell-edit" data-edit="chan" data-idx="${i}">${r.mode === "SCAN" ? "" : `${r.ch} ${r.xy}`}</span></td>
+                  <td><span class="dynapro-cell-edit" data-edit="sdi" data-idx="${i}">${r.sdi === 0 ? "ALL" : String(r.sdi).padStart(2, "0")}</span></td>
+                  <td><span class="dynapro-cell-edit" data-edit="disp" data-idx="${i}">${r.disp}</span></td>
+                  <td><span class="dynapro-cell-edit" data-edit="ident" data-idx="${i}">${r.ident}</span></td>
+                  <td><span class="dynapro-cell-edit" data-edit="nav" data-idx="${i}">${r.nav}</span></td>
+                  <td><span class="dynapro-cell-readonly ${i === curLine && curRx202 ? "has-data" : ""}">${i === curLine ? bnrDist : "--.-"}</span></td>
+                  <td><span class="dynapro-cell-readonly">--</span></td>
+                  <td><span class="dynapro-cell-readonly">--</span></td>
+                  <td><span class="dynapro-cell-readonly">--</span></td>
+                  <td><span class="dynapro-cell-readonly ${i === curLine && curRx246 ? "has-data" : ""}">${i === curLine ? bcdIdent : "----"}</span></td>
+                </tr>
+              `).join("")}
+            </tbody>
+          </table>
+
+          <!-- Bottom Telemetry Status Line -->
+          <div class="dynapro-multi-status-row">
+            <span>${activeRow.mode === "SCAN" ? "SCAN" : `${activeRow.ch} ${activeRow.xy}`}</span>
+            <span>${bnrDist} NM</span>
+          </div>
+
+          <!-- Bottom 7 Softkeys -->
+          <div class="dynapro-softkeys-row">
+            <!-- 1: [ X / Y ] -->
+            <button type="button" class="dynapro-softkey-btn" id="m-sk-xy">
+              <div class="dynapro-softkey-half ${activeRow.xy === "X" ? "active" : ""}">X</div>
+              <div class="dynapro-softkey-divider"></div>
+              <div class="dynapro-softkey-half ${activeRow.xy === "Y" ? "active" : ""}">Y</div>
+            </button>
+            <!-- 2: [ TX-A / TX-B ] -->
+            <button type="button" class="dynapro-softkey-btn" id="m-sk-tx">
+              <div class="dynapro-softkey-half ${txCh === "A" ? "active" : ""}">TX-A</div>
+              <div class="dynapro-softkey-divider"></div>
+              <div class="dynapro-softkey-half ${txCh === "B" ? "active" : ""}">TX-B</div>
+            </button>
+            <!-- 3: [ RX-A / RX-B ] -->
+            <button type="button" class="dynapro-softkey-btn" id="m-sk-rx">
+              <div class="dynapro-softkey-half ${rxCh === "A" ? "active" : ""}">RX-A</div>
+              <div class="dynapro-softkey-divider"></div>
+              <div class="dynapro-softkey-half ${rxCh === "B" ? "active" : ""}">RX-B</div>
+            </button>
+            <!-- 4: [ SQ/NT / INDEP. ] -->
+            <button type="button" class="dynapro-softkey-btn" id="m-sk-sqnt">
+              <div class="dynapro-softkey-half ${dmeMultiState.sqntMode === "SQNT" ? "active" : ""}">SQ/NT</div>
+              <div class="dynapro-softkey-divider"></div>
+              <div class="dynapro-softkey-half ${dmeMultiState.sqntMode === "INDEP" ? "active" : ""}">INDEP.</div>
+            </button>
+            <!-- 5: [ SQ/NT / CTL ] -->
+            <button type="button" class="dynapro-softkey-btn" id="m-sk-ctl">
+              <div class="dynapro-softkey-half">SQ/NT</div>
+              <div class="dynapro-softkey-divider"></div>
+              <div class="dynapro-softkey-half active">CTL</div>
+            </button>
+            <!-- 6: [ LINE / ADVAN ] -->
+            <button type="button" class="dynapro-softkey-btn" id="m-sk-line">
+              <div class="dynapro-softkey-half">LINE</div>
+              <div class="dynapro-softkey-divider"></div>
+              <div class="dynapro-softkey-half active">ADVAN</div>
+            </button>
+            <!-- 7: [ BCD / IDENT ] -->
+            <button type="button" class="dynapro-softkey-btn" id="m-sk-ident">
+              <div class="dynapro-softkey-half ${activeRow.ident === "ON" ? "active" : ""}">BCD</div>
+              <div class="dynapro-softkey-divider"></div>
+              <div class="dynapro-softkey-half ${activeRow.ident === "ON" ? "active" : ""}">IDENT</div>
+            </button>
+          </div>
+        </div>
+      </div>
+      <div class="dynapro-tactile-bar">
+        <div style="display:flex; gap:8px;">
+          <button type="button" class="dynapro-hw-btn" id="btn-dme-multi-back">&lt; Back to DME Modes</button>
+          <button type="button" class="dynapro-hw-btn" id="btn-dme-multi-lrus">&lt; LRU Select</button>
+        </div>
+        <button type="button" class="dynapro-hw-btn" id="btn-dme-multi-tx" style="color:#4ade80;">Transmit All Lines</button>
+      </div>
+    `;
+    r.appendChild(p);
+
+    // Row selection on click
+    p.querySelectorAll("tr[data-line]").forEach((tr) => {
+      tr.onclick = (e) => {
+        if (e.target.closest(".dynapro-cell-edit")) return;
+        dmeMultiState.selectedLine = parseInt(tr.dataset.line, 10);
+        render(snap);
+      };
+    });
+
+    // Cell editing handlers
+    p.querySelectorAll("[data-edit]").forEach((cell) => {
+      cell.onclick = (e) => {
+        e.stopPropagation();
+        const idx = parseInt(cell.dataset.idx, 10);
+        const act = cell.dataset.edit;
+        const row = lines[idx];
+        dmeMultiState.selectedLine = idx;
+
+        if (act === "echo") {
+          row.echo = row.echo === "NONE" ? "ECHO" : "NONE";
+          dmeMultiState.lines[idx] = row;
+          render(snap);
+        } else if (act === "mode") {
+          const mList = ["DF1", "DF2", "DF3", "DF4", "DF5", "SCAN"];
+          row.mode = mList[(mList.indexOf(row.mode) + 1) % mList.length];
+          dmeMultiState.lines[idx] = row;
+          applyDmeSlotHelper({
+            index: idx,
+            bus: txCh,
+            freq_mhz: row.freq,
+            mode: row.mode,
+            sdi: row.sdi,
+            disp: row.disp === "ON",
+            ident: row.ident === "ON",
+            nav: row.nav,
+            enabled: true,
+          });
+        } else if (act === "chan") {
+          showDmeKeypadModal({
+            title: `SET LINE ${idx + 1} (${row.mode}) CHANNEL`,
+            value: String(row.ch),
+            type: "numeric",
+            hint: `Enter channel 1-126 (Suffix: ${row.xy})`,
+            onApply: (v) => {
+              const chNum = parseInt(v, 10) || row.ch;
+              const newFreq = dmeChannelToFreq(chNum, row.xy);
+              row.ch = chNum;
+              row.freq = newFreq;
+              dmeMultiState.lines[idx] = row;
+              applyDmeSlotHelper({
+                index: idx,
+                bus: txCh,
+                freq_mhz: newFreq,
+                mode: row.mode,
+                sdi: row.sdi,
+                disp: row.disp === "ON",
+                ident: row.ident === "ON",
+                nav: row.nav,
+                enabled: true,
+              });
+            },
+          });
+        } else if (act === "sdi") {
+          row.sdi = (row.sdi + 1) % 4;
+          dmeMultiState.lines[idx] = row;
+          applyDmeSlotHelper({
+            index: idx,
+            bus: txCh,
+            freq_mhz: row.freq,
+            sdi: row.sdi,
+            mode: row.mode,
+            disp: row.disp === "ON",
+            ident: row.ident === "ON",
+            nav: row.nav,
+            enabled: true,
+          });
+        } else if (act === "disp") {
+          row.disp = row.disp === "ON" ? "OFF" : "ON";
+          dmeMultiState.lines[idx] = row;
+          applyDmeSlotHelper({
+            index: idx,
+            bus: txCh,
+            freq_mhz: row.freq,
+            disp: row.disp === "ON",
+            mode: row.mode,
+            sdi: row.sdi,
+            ident: row.ident === "ON",
+            nav: row.nav,
+            enabled: true,
+          });
+        } else if (act === "ident") {
+          row.ident = row.ident === "ON" ? "OFF" : "ON";
+          dmeMultiState.lines[idx] = row;
+          applyDmeSlotHelper({
+            index: idx,
+            bus: txCh,
+            freq_mhz: row.freq,
+            ident: row.ident === "ON",
+            mode: row.mode,
+            sdi: row.sdi,
+            disp: row.disp === "ON",
+            nav: row.nav,
+            enabled: true,
+          });
+        } else if (act === "nav") {
+          const navList = ["VOR", "ILS", "MLS"];
+          row.nav = navList[(navList.indexOf(row.nav) + 1) % navList.length];
+          dmeMultiState.lines[idx] = row;
+          applyDmeSlotHelper({
+            index: idx,
+            bus: txCh,
+            freq_mhz: row.freq,
+            nav: row.nav,
+            mode: row.mode,
+            sdi: row.sdi,
+            disp: row.disp === "ON",
+            ident: row.ident === "ON",
+            enabled: true,
+          });
+        }
+      };
+    });
+
+    // Softkey handlers
+    p.querySelector("#m-sk-line").onclick = () => {
+      dmeMultiState.selectedLine = (curLine + 1) % 6;
+      render(snap);
+    };
+
+    p.querySelector("#m-sk-xy").onclick = () => {
+      const newXY = activeRow.xy === "X" ? "Y" : "X";
+      const newFreq = dmeChannelToFreq(activeRow.ch, newXY);
+      activeRow.xy = newXY;
+      activeRow.freq = newFreq;
+      dmeMultiState.lines[curLine] = activeRow;
+      applyDmeSlotHelper({
+        index: curLine,
+        bus: txCh,
+        freq_mhz: newFreq,
+        mode: activeRow.mode,
+        sdi: activeRow.sdi,
+        disp: activeRow.disp === "ON",
+        ident: activeRow.ident === "ON",
+        nav: activeRow.nav,
+        enabled: true,
+      });
+    };
+
+    p.querySelector("#m-sk-ident").onclick = () => {
+      activeRow.ident = activeRow.ident === "ON" ? "OFF" : "ON";
+      dmeMultiState.lines[curLine] = activeRow;
+      applyDmeSlotHelper({
+        index: curLine,
+        bus: txCh,
+        freq_mhz: activeRow.freq,
+        ident: activeRow.ident === "ON",
+        mode: activeRow.mode,
+        sdi: activeRow.sdi,
+        disp: activeRow.disp === "ON",
+        nav: activeRow.nav,
+        enabled: true,
+      });
+    };
+
+    p.querySelector("#m-sk-tx").onclick = () => {
+      dmeMultiState.txBus = txCh === "A" ? "B" : "A";
+      render(snap);
+    };
+    p.querySelector("#m-sk-rx").onclick = () => {
+      dmeMultiState.rxBus = rxCh === "A" ? "B" : "A";
+      render(snap);
+    };
+    p.querySelector("#m-sk-sqnt").onclick = () => {
+      dmeMultiState.sqntMode = dmeMultiState.sqntMode === "SQNT" ? "INDEP" : "SQNT";
+      render(snap);
+    };
+    p.querySelector("#m-sk-ctl").onclick = () => {
+      dmeMultiState.sqntCtl = dmeMultiState.sqntCtl === "NORM" ? "PULSE" : "NORM";
+      render(snap);
+    };
+
+    // Bottom action buttons
+    p.querySelector("#btn-dme-multi-back").onclick = () => navTo("dme_config");
+    p.querySelector("#btn-dme-multi-lrus").onclick = () => navTo("avionics_lru");
+    p.querySelector("#btn-dme-multi-tx").onclick = async () => {
+      try {
+        for (let i = 0; i < 6; i++) {
+          const rRow = lines[i];
+          await api("/api/arinc/dme/slot", {
+            method: "POST",
+            body: JSON.stringify({
+              index: i,
+              bus: txCh,
+              freq_mhz: rRow.freq,
+              mode: rRow.mode,
+              nav: rRow.nav,
+              disp: rRow.disp === "ON",
+              ident: rRow.ident === "ON",
+              sdi: rRow.sdi,
+              enabled: true,
+            }),
+          });
+        }
+        const updated = await api("/api/arinc/status");
+        render(updated);
+      } catch (e) { alert(e.message); }
+    };
+  }
+
+  // ====================================================================
+  // SCREEN 3: STANDARD NAV CONFIGURATION (STANDARD LRU FORMAT SCREEN)
+  // Matches WhatsApp Image 2026-11-18 at 11.24.11 (1) (Aeroflex Figure 15)
+  // ====================================================================
+  function renderDmeStandard(r, s) {
+    const curSlotIdx = dmeStandardState.activeSlot || 0;
+    const txCh = dmeStandardState.txBus || s.tx_ch || "A";
+    const rxCh = dmeStandardState.rxBus || s.rx_ch || "A";
     const txSlots = (s.tx && s.tx[txCh]) || [];
     const curTx = txSlots[curSlotIdx] || {};
 
@@ -4644,466 +5606,347 @@ function renderCmcChannelsTab(c, r, s) {
     let padStr = "0100001";
     if (curTx.pads && curTx.pads !== "-") {
       padStr = curTx.pads.padStart(7, "0");
-    } else if (curTx.pad3 != null) {
-      padStr = curTx.pad3.toString(2).padStart(3, "0") + "0001";
     }
 
     const rxLabs = (s.rx && s.rx[rxCh] && s.rx[rxCh].labels) || [];
     const curRx035 = rxLabs.find((l) => l.label === "035") || null;
-    const curRx202 = rxLabs.find((l) => l.label === "202") || null;
-    const curRx246 = rxLabs.find((l) => l.label === "246") || null;
 
-    const p = el("div", "panel");
+    const rxDataStr = curRx035 ? (curRx035.eng_value ? `${Number(curRx035.eng_value).toFixed(2)} MHZ` : curRx035.data_text) : "WAITING...";
+    const rxSdiStr = curRx035 ? String(curRx035.sdi || 0).padStart(2, "0") : "--";
+    const rxPadStr = curRx035 ? (curRx035.pads || "-------") : "-------";
+    const rxSsmStr = curRx035 ? (curRx035.ssm || "NML") : "---";
+    const rxParStr = curRx035 ? (curRx035.parity || "ODD") : "---";
+    const rxRateStr = curRx035 ? (curRx035.period_ms || 150) : "---";
+
+    const p = el("div", "dynapro-chassis");
     p.innerHTML = `
-      <div class="lru-toolbar">
-        <div>
-          <div class="panel-title" style="margin-bottom:0.25rem">DME Single Channel Mode</div>
-          <p class="muted">Tuning &amp; Word Monitor (ARINC 709 / CMM Chapter 1 Section 4.B)</p>
-        </div>
-        <div style="display:flex; gap:0.5rem; align-items:center;">
-          <span class="pill pill-live">BUS ${txCh}&rarr;${rxCh}</span>
-          <button type="button" class="btn btn-sm btn-ghost" id="btn-dme-single-back">&lt; Back to DME Menu</button>
-        </div>
+      <div class="dynapro-bezel-header">
+        <span class="dynapro-badge"><span style="color:#22c55e">///</span> DYNAPRO &nbsp; 1780A INFOTOUCH DISPLAY</span>
+        <span class="dynapro-target">DME STANDARD NAV CONFIGURATION</span>
       </div>
-
-      <!-- Slot Selection -->
-      <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:1rem; flex-wrap:wrap;">
-        <span class="muted" style="font-size:0.75rem; text-transform:uppercase; font-weight:600;">Slot:</span>
-        <div style="display:inline-flex; gap:0.35rem; flex-wrap:wrap;">
-          ${[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((i) => `
-            <button type="button" class="btn btn-sm ${i === curSlotIdx ? "" : "btn-ghost"}" data-slot="${i}" style="min-width:3.2rem; font-family:var(--mono);">Slot ${i}</button>
-          `).join("")}
-        </div>
-      </div>
-
-      <!-- Transmitted and Received Words Table (WhatsApp Image 09.32.55) -->
-      <div class="table-wrap" style="margin-bottom:1.25rem;">
-        <table>
-          <thead>
-            <tr>
-              <th>CHANNEL</th><th>FUNCTION</th><th>LABEL</th><th>DATA</th><th>SDI</th><th>PAD</th><th>SSM</th><th>PAR</th><th>RATE (ms)</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr style="background:var(--accent-soft); font-weight:500;">
-              <td><span class="pill" style="background:var(--accent); color:#fff;">TX-${txCh}</span></td>
-              <td>DME FREQ</td>
-              <td class="mono"><strong>035</strong></td>
-              <td class="mono"><strong>${freqVal.toFixed(2)} MHz</strong></td>
-              <td class="mono">${String(sdiVal).padStart(2, "0")}</td>
-              <td class="mono"><strong>${padStr}</strong></td>
-              <td class="mono">${ssmVal}</td>
-              <td class="mono">${parVal}</td>
-              <td class="mono">${rateVal}</td>
-            </tr>
-            <tr>
-              <td><span class="pill" style="background:var(--border); color:var(--text-2);">RX-${rxCh}</span></td>
-              <td>DME FREQ</td>
-              <td class="mono">035</td>
-              <td class="mono">${curRx035 ? (curRx035.data_text || curRx035.eng_value + " MHz") : "WAITING..."}</td>
-              <td class="mono">${curRx035 ? String(curRx035.sdi || 0).padStart(2, "0") : "--"}</td>
-              <td class="mono">${curRx035 ? (curRx035.pads || "-------") : "-------"}</td>
-              <td class="mono">${curRx035 ? (curRx035.ssm || "NML") : "---"}</td>
-              <td class="mono">${curRx035 ? (curRx035.parity || "ODD") : "---"}</td>
-              <td class="mono">${curRx035 ? (curRx035.period_ms || 150) : "---"}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-
-      <!-- Telemetry Summary Cards -->
-      <div class="lru-telemetry-grid">
-        <div class="lru-telemetry-card">
-          <div class="lbl">DME FREQ</div>
-          <div class="val">${freqVal.toFixed(2)} MHz</div>
-        </div>
-        <div class="lru-telemetry-card">
-          <div class="lbl">BNR DIST (202)</div>
-          <div class="val">${curRx202 && curRx202.eng_value != null ? Number(curRx202.eng_value).toFixed(2) + " NM" : (dme.bnr_dist || "—")}</div>
-        </div>
-        <div class="lru-telemetry-card">
-          <div class="lbl">IDENT (246/247)</div>
-          <div class="val">${curRx246 ? (curRx246.data_text || "PRESENT") : (dme.ident || "—")}</div>
-        </div>
-        <div class="lru-telemetry-card">
-          <div class="lbl">BIT RATE</div>
-          <div class="val">${s.bit_rate_kbps || 12.5} kbps</div>
-        </div>
-      </div>
-
-      <!-- Manual Word Parameter Editor (Field Grid) -->
-      <div class="panel" style="background:var(--surface-2); border:1px solid var(--border); margin-bottom:1.25rem; padding:1rem 1.25rem;">
-        <div style="font-weight:600; font-size:0.85rem; margin-bottom:0.75rem; color:var(--text);">
-          Manual Word Parameters (Slot ${curSlotIdx})
-        </div>
-        <div class="field-grid" style="grid-template-columns:repeat(auto-fit, minmax(130px, 1fr)); gap:0.75rem;">
-          <div class="field">
-            <label>PAD (discrete bits)</label>
-            <input type="text" id="inp-single-pad" value="${padStr}" maxlength="16" style="font-family:var(--mono);">
+      <div class="dynapro-dme-crt">
+        <div class="dynapro-dme-content">
+          <!-- Top Header Lines (WhatsApp Image 11.24.11 (1)) -->
+          <div class="dynapro-dme-hdr-line" style="margin-bottom:2px;">
+            <span>          CHANNEL ${txCh}</span>
+            <span>CHANNEL ${rxCh}</span>
           </div>
-          <div class="field">
-            <label>DATA (Freq MHz)</label>
-            <div style="display:flex; gap:0.25rem;">
-              <input type="number" step="0.05" min="100.0" max="1799.9" id="inp-single-freq" value="${freqVal.toFixed(2)}" style="flex:1;">
-              <button type="button" class="btn btn-sm btn-ghost" id="btn-step-dec">-</button>
-              <button type="button" class="btn btn-sm btn-ghost" id="btn-step-inc">+</button>
+          <div class="dynapro-dme-hdr-line" style="margin-bottom:8px;">
+            <span>-- TRANSMITTED WORDS --</span>
+            <span>-- RECEIVED WORDS --</span>
+          </div>
+
+          <!-- Function & Slot Indicator -->
+          <div style="display:flex; justify-content:flex-start; gap:40px; margin-bottom:8px; font-weight:700;">
+            <div>
+              <div style="font-size:12px;">DME</div>
+              <div style="font-size:13.5px;">FREQ</div>
+            </div>
+            <div>
+              <div style="font-size:12px;">SLOT</div>
+              <div style="font-size:13.5px; cursor:pointer;" id="std-slot-cursor">
+                <span class="dynapro-inv-box">${curSlotIdx}</span>
+              </div>
             </div>
           </div>
-          <div class="field">
-            <label>SDI</label>
-            <select id="sel-single-sdi">
-              <option value="0" ${sdiVal === 0 ? "selected" : ""}>00 (All Call)</option>
-              <option value="1" ${sdiVal === 1 ? "selected" : ""}>01</option>
-              <option value="2" ${sdiVal === 2 ? "selected" : ""}>10</option>
-              <option value="3" ${sdiVal === 3 ? "selected" : ""}>11</option>
-            </select>
+
+          <!-- Table with Transmitted and Received Words -->
+          <table class="dynapro-dme-table">
+            <thead>
+              <tr>
+                <th style="width:10%;">CHAN</th>
+                <th style="width:16%;">FUNCT</th>
+                <th style="width:9%;">LABEL</th>
+                <th style="width:18%;">DATA</th>
+                <th style="width:7%;">SDI</th>
+                <th style="width:13%;">PAD</th>
+                <th style="width:8%;">SSM</th>
+                <th style="width:8%;">PAR</th>
+                <th style="width:11%;">RATE(ms)</th>
+              </tr>
+            </thead>
+            <tbody>
+              <!-- Transmitted Word Row (Editable) -->
+              <tr>
+                <td><span class="dynapro-cell-edit" id="std-tx-ch-cell">TX-${txCh}</span></td>
+                <td><span>DME FREQ</span></td>
+                <td><span class="dynapro-cell-edit" id="std-label-cell">035</span></td>
+                <td><span class="dynapro-cell-edit" id="std-data-cell" style="font-weight:800;">${freqVal.toFixed(2)} MHZ</span></td>
+                <td><span class="dynapro-cell-edit" id="std-sdi-cell">${String(sdiVal).padStart(2, "0")}</span></td>
+                <td><span class="dynapro-cell-edit" id="std-pad-cell" style="font-weight:800;">${padStr}</span></td>
+                <td><span class="dynapro-cell-edit" id="std-ssm-cell">${ssmVal}</span></td>
+                <td><span class="dynapro-cell-edit" id="std-par-cell">${parVal}</span></td>
+                <td><span class="dynapro-cell-edit" id="std-rate-cell">${rateVal}</span></td>
+              </tr>
+              <!-- Received Word Row (Strictly Read-Only) -->
+              <tr>
+                <td><span class="dynapro-cell-readonly">RX-${rxCh}</span></td>
+                <td><span class="dynapro-cell-readonly">DME FREQ</span></td>
+                <td><span class="dynapro-cell-readonly">035</span></td>
+                <td><span class="dynapro-cell-readonly ${curRx035 ? "has-data" : ""}">${rxDataStr}</span></td>
+                <td><span class="dynapro-cell-readonly">${rxSdiStr}</span></td>
+                <td><span class="dynapro-cell-readonly">${rxPadStr}</span></td>
+                <td><span class="dynapro-cell-readonly">${rxSsmStr}</span></td>
+                <td><span class="dynapro-cell-readonly">${rxParStr}</span></td>
+                <td><span class="dynapro-cell-readonly">${rxRateStr}</span></td>
+              </tr>
+            </tbody>
+          </table>
+
+          <!-- Middle Rate Status Line -->
+          <div class="dynapro-std-rate-row">
+            <span>${s.bit_rate_kbps || 12.5} KBPS</span>
           </div>
-          <div class="field">
-            <label>SSM</label>
-            <select id="sel-single-ssm">
-              <option value="NML" ${ssmVal === "NML" ? "selected" : ""}>NML (Normal)</option>
-              <option value="NCD" ${ssmVal === "NCD" ? "selected" : ""}>NCD (No Compute)</option>
-              <option value="FT" ${ssmVal === "FT" ? "selected" : ""}>FT (Func Test)</option>
-              <option value="FW" ${ssmVal === "FW" ? "selected" : ""}>FW (Fail Warning)</option>
-            </select>
-          </div>
-          <div class="field">
-            <label>PARITY</label>
-            <select id="sel-single-par">
-              <option value="ODD" ${parVal === "ODD" ? "selected" : ""}>ODD</option>
-              <option value="EVEN" ${parVal === "EVEN" ? "selected" : ""}>EVEN</option>
-            </select>
-          </div>
-          <div class="field">
-            <label>RATE (ms)</label>
-            <input type="number" id="inp-single-rate" min="10" max="5000" value="${rateVal}">
+
+          <!-- Bottom 7 Softkeys -->
+          <div class="dynapro-softkeys-row">
+            <!-- 1: [ DISP / CURSOR ] -->
+            <button type="button" class="dynapro-softkey-btn" id="std-sk-cursor">
+              <div class="dynapro-softkey-half">DISP</div>
+              <div class="dynapro-softkey-divider"></div>
+              <div class="dynapro-softkey-half active">CURSOR</div>
+            </button>
+            <!-- 2: [ DATA / STEP ] -->
+            <button type="button" class="dynapro-softkey-btn" id="std-sk-step">
+              <div class="dynapro-softkey-half">DATA</div>
+              <div class="dynapro-softkey-divider"></div>
+              <div class="dynapro-softkey-half active">STEP &plusmn;${dmeStandardState.stepVal}</div>
+            </button>
+            <!-- 3: [ INC. / DECR ] -->
+            <button type="button" class="dynapro-softkey-btn" id="std-sk-incdec">
+              <div class="dynapro-softkey-half" id="std-sk-half-inc">INC.</div>
+              <div class="dynapro-softkey-divider"></div>
+              <div class="dynapro-softkey-half" id="std-sk-half-dec">DECR</div>
+            </button>
+            <!-- 4: [ MORE / WORDS ] -->
+            <button type="button" class="dynapro-softkey-btn" id="std-sk-more">
+              <div class="dynapro-softkey-half">MORE</div>
+              <div class="dynapro-softkey-divider"></div>
+              <div class="dynapro-softkey-half">WORDS</div>
+            </button>
+            <!-- 5: [ BIT / RATE ] -->
+            <button type="button" class="dynapro-softkey-btn" id="std-sk-bitrate">
+              <div class="dynapro-softkey-half">BIT</div>
+              <div class="dynapro-softkey-divider"></div>
+              <div class="dynapro-softkey-half active">RATE</div>
+            </button>
+            <!-- 6: [ TX-A / TX-B ] -->
+            <button type="button" class="dynapro-softkey-btn" id="std-sk-tx">
+              <div class="dynapro-softkey-half ${txCh === "A" ? "active" : ""}">TX-A</div>
+              <div class="dynapro-softkey-divider"></div>
+              <div class="dynapro-softkey-half ${txCh === "B" ? "active" : ""}">TX-B</div>
+            </button>
+            <!-- 7: [ RX-A / RX-B ] -->
+            <button type="button" class="dynapro-softkey-btn" id="std-sk-rx">
+              <div class="dynapro-softkey-half ${rxCh === "A" ? "active" : ""}">RX-A</div>
+              <div class="dynapro-softkey-divider"></div>
+              <div class="dynapro-softkey-half ${rxCh === "B" ? "active" : ""}">RX-B</div>
+            </button>
           </div>
         </div>
       </div>
-
-      <!-- Bottom Action Bar -->
-      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem; padding-top:0.5rem; border-top:1px solid var(--border);">
-        <div style="display:flex; gap:0.4rem; flex-wrap:wrap;">
-          <button type="button" class="btn btn-sm btn-ghost" id="btn-single-step-val">Step: ±${dmeSingleState.stepVal}</button>
-          <button type="button" class="btn btn-sm btn-ghost" id="btn-single-rate-toggle">${s.bit_rate_kbps || 12.5} kbps</button>
-          <button type="button" class="btn btn-sm btn-ghost" id="btn-single-txbus">TX-${txCh}</button>
-          <button type="button" class="btn btn-sm btn-ghost" id="btn-single-rxbus">RX-${rxCh}</button>
+      <div class="dynapro-tactile-bar">
+        <div style="display:flex; gap:8px;">
+          <button type="button" class="dynapro-hw-btn" id="btn-dme-std-back">&lt; Back to DME Modes</button>
+          <button type="button" class="dynapro-hw-btn" id="btn-dme-std-lrus">&lt; LRU Select</button>
         </div>
-        <div style="display:flex; gap:0.5rem;">
-          <button type="button" class="btn btn-sm" id="btn-single-apply">Transmit Active Slot</button>
-        </div>
+        <button type="button" class="dynapro-hw-btn" id="btn-dme-std-tx" style="color:#4ade80;">Transmit Active Slot</button>
       </div>
     `;
     r.appendChild(p);
 
-    p.querySelectorAll("[data-slot]").forEach(b => {
-      b.onclick = () => {
-        dmeSingleState.activeSlot = parseInt(b.dataset.slot, 10);
-        render(snap);
-      };
-    });
-
-    p.querySelector("#btn-step-dec").onclick = () => {
-      const inp = p.querySelector("#inp-single-freq");
-      inp.value = (Math.max(100.0, parseFloat(inp.value) - dmeSingleState.stepVal)).toFixed(2);
+    // Slot cursor advance
+    const advanceSlot = () => {
+      dmeStandardState.activeSlot = (curSlotIdx + 1) % 10;
+      render(snap);
     };
-    p.querySelector("#btn-step-inc").onclick = () => {
-      const inp = p.querySelector("#inp-single-freq");
-      inp.value = (parseFloat(inp.value) + dmeSingleState.stepVal).toFixed(2);
-    };
+    p.querySelector("#std-slot-cursor").onclick = advanceSlot;
+    p.querySelector("#std-sk-cursor").onclick = advanceSlot;
+    p.querySelector("#std-sk-more").onclick = advanceSlot;
 
-    p.querySelector("#btn-single-step-val").onclick = () => {
-      const steps = [0.05, 0.1, 0.5, 1.0, 5.0];
-      const curIdx = steps.indexOf(dmeSingleState.stepVal);
-      dmeSingleState.stepVal = steps[(curIdx + 1) % steps.length];
-      p.querySelector("#btn-single-step-val").textContent = `Step: ±${dmeSingleState.stepVal}`;
-    };
-
-    p.querySelector("#btn-single-txbus").onclick = () => {
-      dmeSingleState.txBus = txCh === "A" ? "B" : "A";
+    // Step cycle
+    const steps = [0.05, 0.1, 0.5, 1.0, 5.0];
+    p.querySelector("#std-sk-step").onclick = () => {
+      const idx = steps.indexOf(dmeStandardState.stepVal);
+      dmeStandardState.stepVal = steps[(idx + 1) % steps.length];
       render(snap);
     };
 
-    p.querySelector("#btn-single-rxbus").onclick = () => {
-      dmeSingleState.rxBus = rxCh === "A" ? "B" : "A";
-      render(snap);
+    // Increment / Decrement frequency
+    const changeFreqByStep = (sign) => {
+      const newFreq = Math.max(100.0, parseFloat((freqVal + sign * dmeStandardState.stepVal).toFixed(2)));
+      applyDmeSlotHelper({
+        index: curSlotIdx,
+        bus: txCh,
+        freq_mhz: newFreq,
+        pad: padStr,
+        sdi: sdiVal,
+        ssm: ssmVal,
+        parity: parVal,
+        rate_ms: rateVal,
+        enabled: true,
+      });
+    };
+    p.querySelector("#std-sk-half-inc").onclick = (e) => {
+      e.stopPropagation();
+      changeFreqByStep(1);
+    };
+    p.querySelector("#std-sk-half-dec").onclick = (e) => {
+      e.stopPropagation();
+      changeFreqByStep(-1);
+    };
+    p.querySelector("#std-sk-incdec").onclick = () => changeFreqByStep(1);
+
+    // Edit DATA (Frequency) directly
+    p.querySelector("#std-data-cell").onclick = () => {
+      showDmeKeypadModal({
+        title: `SET SLOT ${curSlotIdx} FREQUENCY (MHz)`,
+        value: freqVal.toFixed(2),
+        type: "numeric",
+        hint: "Range: 108.00 - 135.95 MHz",
+        onApply: (v) => {
+          const nf = parseFloat(v) || freqVal;
+          applyDmeSlotHelper({
+            index: curSlotIdx,
+            bus: txCh,
+            freq_mhz: nf,
+            pad: padStr,
+            sdi: sdiVal,
+            ssm: ssmVal,
+            parity: parVal,
+            rate_ms: rateVal,
+            enabled: true,
+          });
+        },
+      });
     };
 
-    p.querySelector("#btn-single-rate-toggle").onclick = async () => {
+    // Edit PAD (7 discrete bits)
+    p.querySelector("#std-pad-cell").onclick = () => {
+      showDmeKeypadModal({
+        title: `EDIT SLOT ${curSlotIdx} PAD (7 DISCRETE BITS)`,
+        value: padStr,
+        type: "pad",
+        hint: "Touch individual bits or type 7 binary digits",
+        onApply: (v) => {
+          const cleanPad = (v || "0100001").padEnd(7, "0").slice(0, 7);
+          applyDmeSlotHelper({
+            index: curSlotIdx,
+            bus: txCh,
+            freq_mhz: freqVal,
+            pad: cleanPad,
+            sdi: sdiVal,
+            ssm: ssmVal,
+            parity: parVal,
+            rate_ms: rateVal,
+            enabled: true,
+          });
+        },
+      });
+    };
+
+    // SDI cycle
+    p.querySelector("#std-sdi-cell").onclick = () => {
+      const nextSdi = (sdiVal + 1) % 4;
+      applyDmeSlotHelper({
+        index: curSlotIdx,
+        bus: txCh,
+        freq_mhz: freqVal,
+        pad: padStr,
+        sdi: nextSdi,
+        ssm: ssmVal,
+        parity: parVal,
+        rate_ms: rateVal,
+        enabled: true,
+      });
+    };
+
+    // SSM cycle
+    const ssmList = ["NML", "NCD", "FT", "FW"];
+    p.querySelector("#std-ssm-cell").onclick = () => {
+      const nextSsm = ssmList[(ssmList.indexOf(ssmVal) + 1) % ssmList.length];
+      applyDmeSlotHelper({
+        index: curSlotIdx,
+        bus: txCh,
+        freq_mhz: freqVal,
+        pad: padStr,
+        sdi: sdiVal,
+        ssm: nextSsm,
+        parity: parVal,
+        rate_ms: rateVal,
+        enabled: true,
+      });
+    };
+
+    // Parity toggle
+    p.querySelector("#std-par-cell").onclick = () => {
+      const nextPar = parVal === "ODD" ? "EVEN" : "ODD";
+      applyDmeSlotHelper({
+        index: curSlotIdx,
+        bus: txCh,
+        freq_mhz: freqVal,
+        pad: padStr,
+        sdi: sdiVal,
+        ssm: ssmVal,
+        parity: nextPar,
+        rate_ms: rateVal,
+        enabled: true,
+      });
+    };
+
+    // Rate edit
+    p.querySelector("#std-rate-cell").onclick = () => {
+      const standardRates = [100, 150, 200, 500, 1000];
+      const nextRate = standardRates[(standardRates.indexOf(rateVal) + 1) % standardRates.length];
+      applyDmeSlotHelper({
+        index: curSlotIdx,
+        bus: txCh,
+        freq_mhz: freqVal,
+        pad: padStr,
+        sdi: sdiVal,
+        ssm: ssmVal,
+        parity: parVal,
+        rate_ms: nextRate,
+        enabled: true,
+      });
+    };
+
+    // Toggle TX & RX channel
+    const toggleTxCh = () => {
+      dmeStandardState.txBus = txCh === "A" ? "B" : "A";
+      render(snap);
+    };
+    const toggleRxCh = () => {
+      dmeStandardState.rxBus = rxCh === "A" ? "B" : "A";
+      render(snap);
+    };
+    p.querySelector("#std-tx-ch-cell").onclick = toggleTxCh;
+    p.querySelector("#std-sk-tx").onclick = toggleTxCh;
+    p.querySelector("#std-sk-rx").onclick = toggleRxCh;
+
+    // Bit rate toggle
+    p.querySelector("#std-sk-bitrate").onclick = async () => {
       const newHigh = !(s.bit_rate_kbps > 50);
       try {
         render(await api("/api/arinc/bitrate", { method: "POST", body: JSON.stringify({ high_speed: newHigh }) }));
       } catch (e) { alert(e.message); }
     };
 
-    p.querySelector("#btn-dme-single-back").onclick = () => navTo("dme_config");
-
-    p.querySelector("#btn-single-apply").onclick = async () => {
-      try {
-        const freq = parseFloat(p.querySelector("#inp-single-freq").value) || 108.00;
-        const padVal = (p.querySelector("#inp-single-pad").value || "0100001").trim();
-        const sdi = parseInt(p.querySelector("#sel-single-sdi").value, 10);
-        const ssm = p.querySelector("#sel-single-ssm").value;
-        const par = p.querySelector("#sel-single-par").value;
-        const rate = parseInt(p.querySelector("#inp-single-rate").value, 10) || 100;
-
-        await api("/api/arinc/dme/slot", {
-          method: "POST",
-          body: JSON.stringify({
-            index: curSlotIdx,
-            bus: txCh,
-            freq_mhz: freq,
-            pad: padVal,
-            sdi: sdi,
-            ssm: ssm,
-            parity: par,
-            rate_ms: rate,
-            enabled: true,
-          }),
-        });
-
-        const updated = await api("/api/arinc/status");
-        render(updated);
-      } catch (e) { alert(e.message); }
-    };
-
-    const triggerApplyOnEnter = (inputEl) => {
-      if (!inputEl) return;
-      inputEl.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") {
-          e.preventDefault();
-          p.querySelector("#btn-single-apply").click();
-        }
+    // Bottom action buttons
+    p.querySelector("#btn-dme-std-back").onclick = () => navTo("dme_config");
+    p.querySelector("#btn-dme-std-lrus").onclick = () => navTo("avionics_lru");
+    p.querySelector("#btn-dme-std-tx").onclick = () => {
+      applyDmeSlotHelper({
+        index: curSlotIdx,
+        bus: txCh,
+        freq_mhz: freqVal,
+        pad: padStr,
+        sdi: sdiVal,
+        ssm: ssmVal,
+        parity: parVal,
+        rate_ms: rateVal,
+        enabled: true,
       });
-    };
-    triggerApplyOnEnter(p.querySelector("#inp-single-pad"));
-    triggerApplyOnEnter(p.querySelector("#inp-single-freq"));
-    triggerApplyOnEnter(p.querySelector("#inp-single-rate"));
-  }
-
-  function renderDmeMulti(r, s) {
-    const dme = s.dme || { rows: [], line: 0 };
-    const curLine = dmeMultiState.selectedLine || 0;
-    const txCh = dmeMultiState.txBus || s.tx_ch || "A";
-    const rxCh = dmeMultiState.rxBus || s.rx_ch || "A";
-
-    const defaultLines = [
-      { mode: "DF1", ch: 1,   xy: "X", sdi: 0, disp: "ON",  ident: "OFF", nav: "VOR", freq: 134.40 },
-      { mode: "DF2", ch: 34,  xy: "Y", sdi: 0, disp: "OFF", ident: "OFF", nav: "VOR", freq: 109.75 },
-      { mode: "DF3", ch: 64,  xy: "X", sdi: 0, disp: "OFF", ident: "OFF", nav: "VOR", freq: 134.00 },
-      { mode: "DF4", ch: 93,  xy: "Y", sdi: 0, disp: "OFF", ident: "OFF", nav: "VOR", freq: 114.65 },
-      { mode: "DF5", ch: 126, xy: "X", sdi: 0, disp: "OFF", ident: "OFF", nav: "VOR", freq: 117.90 },
-      { mode: "SCAN", ch: 1,  xy: "X", sdi: 0, disp: "OFF", ident: "OFF", nav: "VOR", freq: 134.40 },
-    ];
-
-    const lines = defaultLines.map((def, i) => {
-      const serverRow = (dme.rows || []).find((r) => r.slot === i);
-      if (!serverRow) return def;
-      return Object.assign({}, def, {
-        freq: serverRow.freq || def.freq,
-        mode: serverRow.mode || def.mode,
-        nav: serverRow.nav || def.nav,
-        disp: serverRow.disp ? "ON" : "OFF",
-        ident: serverRow.ident ? "ON" : "OFF",
-        sdi: serverRow.sdi != null ? serverRow.sdi : def.sdi,
-        echo: serverRow.echo || "NONE",
-      });
-    });
-
-    const activeRow = lines[curLine] || lines[0];
-
-    const p = el("div", "panel");
-    p.innerHTML = `
-      <div class="lru-toolbar">
-        <div>
-          <div class="panel-title" style="margin-bottom:0.25rem">DME Multi Channel Mode</div>
-          <p class="muted">Directed Frequency Sequencing DF1–DF5 &amp; SCAN (ARINC 709 / CMM Section 4.B)</p>
-        </div>
-        <div style="display:flex; gap:0.5rem; align-items:center;">
-          <span class="pill pill-live">LINE ${curLine + 1} (${activeRow.mode})</span>
-          <button type="button" class="btn btn-sm btn-ghost" id="btn-dme-multi-back">&lt; Back to DME Menu</button>
-        </div>
-      </div>
-
-      <!-- Transmitter Control Table (WhatsApp Image 09.32.56) -->
-      <div class="table-wrap" style="margin-bottom:1.25rem;">
-        <table>
-          <thead>
-            <tr>
-              <th>ECHO</th><th>MODE SSM</th><th>CHAN</th><th>X/Y</th><th>FREQ (MHz)</th><th>SDI</th><th>DISP</th><th>IDENT</th><th>NAV</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${lines.map((row, i) => `
-              <tr data-line="${i}" style="cursor:pointer; ${i === curLine ? "background:var(--accent-soft); font-weight:600;" : ""}">
-                <td>${row.echo || "NONE"}</td>
-                <td class="mono"><strong>${row.mode}</strong></td>
-                <td class="mono">${row.ch}</td>
-                <td class="mono">${row.xy}</td>
-                <td class="mono">${row.freq.toFixed(2)}</td>
-                <td class="mono">${row.sdi === 0 ? "ALL" : String(row.sdi).padStart(2, "0")}</td>
-                <td class="mono">${row.disp}</td>
-                <td class="mono">${row.ident}</td>
-                <td>${row.nav}</td>
-              </tr>
-            `).join("")}
-          </tbody>
-        </table>
-      </div>
-
-      <!-- Telemetry Cards -->
-      <div class="lru-telemetry-grid">
-        <div class="lru-telemetry-card">
-          <div class="lbl">ACTIVE FREQ</div>
-          <div class="val">${activeRow.freq.toFixed(2)} MHz</div>
-        </div>
-        <div class="lru-telemetry-card">
-          <div class="lbl">BNR DIST</div>
-          <div class="val">${dme.bnr_dist || "—"}</div>
-        </div>
-        <div class="lru-telemetry-card">
-          <div class="lbl">BCD DIST</div>
-          <div class="val">— NM</div>
-        </div>
-        <div class="lru-telemetry-card">
-          <div class="lbl">IDENT</div>
-          <div class="val">${dme.ident || "—"}</div>
-        </div>
-      </div>
-
-      <!-- Active Line Parameters Editor -->
-      <div class="panel" style="background:var(--surface-2); border:1px solid var(--border); margin-bottom:1.25rem; padding:1rem 1.25rem;">
-        <div style="font-weight:600; font-size:0.85rem; margin-bottom:0.75rem; color:var(--text);">
-          Active Line Settings: ${activeRow.mode} (Line ${curLine + 1} of 6)
-        </div>
-        <div class="field-grid" style="grid-template-columns:repeat(auto-fit, minmax(130px, 1fr)); gap:0.75rem;">
-          <div class="field">
-            <label>Channel (1-126)</label>
-            <input type="number" min="1" max="126" id="inp-multi-ch" value="${activeRow.ch}">
-          </div>
-          <div class="field">
-            <label>Channel Suffix</label>
-            <select id="sel-multi-xy">
-              <option value="X" ${activeRow.xy === "X" ? "selected" : ""}>X</option>
-              <option value="Y" ${activeRow.xy === "Y" ? "selected" : ""}>Y</option>
-            </select>
-          </div>
-          <div class="field">
-            <label>Calculated Freq (MHz)</label>
-            <input type="number" step="0.05" id="inp-multi-freq" value="${activeRow.freq.toFixed(2)}">
-          </div>
-          <div class="field">
-            <label>SDI</label>
-            <select id="sel-multi-sdi">
-              <option value="0" ${activeRow.sdi === 0 ? "selected" : ""}>00 (All Call)</option>
-              <option value="1" ${activeRow.sdi === 1 ? "selected" : ""}>01</option>
-              <option value="2" ${activeRow.sdi === 2 ? "selected" : ""}>10</option>
-              <option value="3" ${activeRow.sdi === 3 ? "selected" : ""}>11</option>
-            </select>
-          </div>
-          <div class="field">
-            <label>DISP</label>
-            <select id="sel-multi-disp">
-              <option value="ON" ${activeRow.disp === "ON" ? "selected" : ""}>ON</option>
-              <option value="OFF" ${activeRow.disp === "OFF" ? "selected" : ""}>OFF</option>
-            </select>
-          </div>
-          <div class="field">
-            <label>IDENT</label>
-            <select id="sel-multi-ident">
-              <option value="OFF" ${activeRow.ident === "OFF" ? "selected" : ""}>OFF</option>
-              <option value="ON" ${activeRow.ident === "ON" ? "selected" : ""}>ON</option>
-            </select>
-          </div>
-          <div class="field">
-            <label>NAV Mode</label>
-            <select id="sel-multi-nav">
-              <option value="VOR" ${activeRow.nav === "VOR" ? "selected" : ""}>VOR</option>
-              <option value="ILS" ${activeRow.nav === "ILS" ? "selected" : ""}>ILS</option>
-              <option value="MLS" ${activeRow.nav === "MLS" ? "selected" : ""}>MLS</option>
-            </select>
-          </div>
-        </div>
-      </div>
-
-      <!-- Action Toolbar -->
-      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem; padding-top:0.5rem; border-top:1px solid var(--border);">
-        <div style="display:flex; gap:0.4rem; flex-wrap:wrap;">
-          <button type="button" class="btn btn-sm btn-ghost" id="btn-multi-xy-toggle">Toggle X/Y</button>
-          <button type="button" class="btn btn-sm btn-ghost" id="btn-multi-txbus">TX-${txCh}</button>
-          <button type="button" class="btn btn-sm btn-ghost" id="btn-multi-rxbus">RX-${rxCh}</button>
-          <button type="button" class="btn btn-sm btn-ghost" id="btn-multi-advan">Line Advance</button>
-        </div>
-        <div style="display:flex; gap:0.5rem;">
-          <button type="button" class="btn btn-sm" id="btn-multi-apply">Transmit Active Line</button>
-        </div>
-      </div>
-    `;
-    r.appendChild(p);
-
-    p.querySelectorAll("tr[data-line]").forEach(tr => {
-      tr.onclick = () => {
-        dmeMultiState.selectedLine = parseInt(tr.dataset.line, 10);
-        render(snap);
-      };
-    });
-
-    const updateCalculatedFreq = () => {
-      const ch = parseInt(p.querySelector("#inp-multi-ch").value, 10) || 1;
-      const xy = p.querySelector("#sel-multi-xy").value;
-      const f = dmeChannelToFreq(ch, xy);
-      p.querySelector("#inp-multi-freq").value = f.toFixed(2);
-    };
-    p.querySelector("#inp-multi-ch").oninput = updateCalculatedFreq;
-    p.querySelector("#sel-multi-xy").onchange = updateCalculatedFreq;
-
-    p.querySelector("#btn-multi-xy-toggle").onclick = () => {
-      const sel = p.querySelector("#sel-multi-xy");
-      sel.value = sel.value === "X" ? "Y" : "X";
-      updateCalculatedFreq();
-    };
-
-    p.querySelector("#btn-multi-txbus").onclick = () => {
-      dmeMultiState.txBus = txCh === "A" ? "B" : "A";
-      render(snap);
-    };
-
-    p.querySelector("#btn-multi-rxbus").onclick = () => {
-      dmeMultiState.rxBus = rxCh === "A" ? "B" : "A";
-      render(snap);
-    };
-
-    p.querySelector("#btn-multi-advan").onclick = () => {
-      dmeMultiState.selectedLine = (curLine + 1) % 6;
-      render(snap);
-    };
-
-    p.querySelector("#btn-dme-multi-back").onclick = () => navTo("dme_config");
-
-    p.querySelector("#btn-multi-apply").onclick = async () => {
-      try {
-        const freq = parseFloat(p.querySelector("#inp-multi-freq").value) || activeRow.freq;
-        const nav = p.querySelector("#sel-multi-nav").value;
-        const sdi = parseInt(p.querySelector("#sel-multi-sdi").value, 10);
-        const disp = p.querySelector("#sel-multi-disp").value === "ON";
-        const ident = p.querySelector("#sel-multi-ident").value === "ON";
-
-        await api("/api/arinc/dme/slot", {
-          method: "POST",
-          body: JSON.stringify({
-            index: curLine,
-            freq_mhz: freq,
-            mode: activeRow.mode,
-            nav: nav,
-            disp: disp,
-            ident: ident,
-            sdi: sdi,
-            enabled: true,
-          }),
-        });
-        const updated = await api("/api/arinc/status");
-        render(updated);
-      } catch (e) { alert(e.message); }
     };
   }
 

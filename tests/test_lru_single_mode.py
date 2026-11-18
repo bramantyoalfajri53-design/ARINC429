@@ -111,3 +111,44 @@ def test_vor_single_mode_transmit():
     assert res["channel"] == "TX-A"
     assert res["pad"] == "0000"
     assert res["rx_simulation"]["label"] == "000"
+
+
+def test_dme_dynapro_modes_navigation_and_slots():
+    from ate_platform.web.arinc_session import ArincSession
+
+    sess = ArincSession()
+    # Test Single mode
+    s_single = sess.apply_dme_mode("single")
+    assert s_single["dme"]["mode"] == "single"
+    assert s_single["screen_stack"][-1] == "dme_single"
+    assert sess.tx["A"][0].enabled is True
+
+    # Test Multi mode
+    s_multi = sess.apply_dme_mode("multi")
+    assert s_multi["dme"]["mode"] == "multi"
+    assert s_multi["screen_stack"][-1] == "dme_multi"
+    for i in range(5):
+        assert sess.tx["A"][i].enabled is True
+
+    # Test Standard Nav mode
+    s_std = sess.apply_dme_mode("standard")
+    assert s_std["dme"]["mode"] == "standard"
+    assert s_std["screen_stack"][-1] == "dme_standard"
+
+    # Test editing parameters on slot 0
+    res_slot = sess.configure_dme_slot(
+        0,
+        bus="A",
+        freq_mhz=108.50,
+        pad="0100001",
+        sdi=2,
+        ssm="NML",
+        parity="EVEN",
+        rate_ms=150,
+    )
+    sl = sess.tx["A"][0]
+    assert sl.parity == "EVEN"
+    assert sl.rate_ms == 150
+    assert sl.sdi == 2
+    assert sl.eng_value == 108.50
+

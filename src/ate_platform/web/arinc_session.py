@@ -1025,7 +1025,7 @@ class ArincSession:
                 )
                 self.tx[bus][0].rate_ms = 100
             if mode == "standard":
-                self.screen_stack = ["mode_select", "standard", "avionics_lru", "lru_format"]
+                self.screen_stack = ["mode_select", "standard", "avionics_lru", "dme_config", "dme_standard"]
             elif mode == "single":
                 self.screen_stack = ["mode_select", "standard", "avionics_lru", "dme_config", "dme_single"]
             else:
@@ -1082,6 +1082,12 @@ class ArincSession:
                 except Exception:
                     pass
             self._fill_slot_from_spec(bus, int(index), spec, payload, enabled=sl.enabled if enabled is None else enabled)
+            if sdi is not None:
+                self.tx[bus][int(index)].sdi = int(sdi)
+            if ssm:
+                self.tx[bus][int(index)].ssm = ssm
+            if freq_mhz is not None:
+                self.tx[bus][int(index)].eng_value = float(freq_mhz)
             self.tx[bus][int(index)].rate_ms = rate_ms
             self.tx[bus][int(index)].parity = parity.upper()
             self.dme_line = int(index)
