@@ -264,6 +264,8 @@ class ArincSession:
         self.rx_ch: str = "A"
         self.tx_profile: dict[str, str | None] = {b: None for b in BUSES}
         self.rx_profile: dict[str, str | None] = {b: None for b in BUSES}
+        self._sim_override: bool = False
+        self.active_lru_code: str = "709"
         self.time_constant_s: float = 0.0
         self.ln1: dict[str, str] = {"kind": "tx", "bus": "A"}
         self.ln2: dict[str, str] = {"kind": "rx", "bus": "A"}
@@ -1150,6 +1152,101 @@ class ArincSession:
                 "ident": "" if not ident1 else f"{ident1.data_text}{(ident2.data_text if ident2 else '')}",
             }
 
+    def set_simulation_override(self, enabled: bool) -> dict[str, Any]:
+        with self._lock:
+            self._sim_override = bool(enabled)
+            return self._snapshot_locked()
+
+    def check_lru_connected(self, lru_code: str = "709", bus: str = "A") -> dict[str, Any]:
+        bus = channel_letter(bus)
+        now = time.time()
+        with self._lock:
+            self.active_lru_code = lru_code
+            # Explicit simulation mode activated by user
+            if self._sim_override:
+                return {
+                    "connected": True,
+                    "mode": "SIMULATION",
+                    "simulation": True,
+                    "detail": "Simulation Mode active (Software Mock Engine)",
+                    "last_seen_s": 0.0,
+                    "rx_hits": 999,
+                    "bus": bus,
+                    "lru": lru_code,
+                }
+
+            # If hardware driver is not available on host
+            if not HAS_BTIDRIVER:
+                return {
+                    "connected": False,
+                    "mode": "REAL",
+                    "simulation": False,
+                    "detail": "Hardware driver (Ballard BTIDriver) not available on host. Physical device cannot be detected.",
+                    "last_seen_s": None,
+                    "rx_hits": 0,
+                    "bus": bus,
+                    "lru": lru_code,
+                }
+
+            # In Real Hardware mode, ARINC bus must be actively running
+            if not self._running:
+                return {
+                    "connected": False,
+                    "mode": "REAL",
+                    "simulation": False,
+                    "detail": "ARINC 429 Bus is stopped. Start bus to detect physical device.",
+                    "last_seen_s": None,
+                    "rx_hits": 0,
+                    "bus": bus,
+                    "lru": lru_code,
+                }
+
+            # Check receiver on target bus
+            v = self.rx.get(bus)
+            if not v or not v.enabled or not v.last or not v.last.ts:
+                return {
+                    "connected": False,
+                    "mode": "REAL",
+                    "simulation": False,
+                    "detail": f"No signals received on RCVR_{bus}. Check DME cable and power.",
+                    "last_seen_s": None,
+                    "rx_hits": v.hits if v else 0,
+                    "bus": bus,
+                    "lru": lru_code,
+                }
+
+            age = now - v.last.ts
+            if age > STALE_S:
+                return {
+                    "connected": False,
+                    "mode": "REAL",
+                    "simulation": False,
+                    "detail": f"Signal lost on RCVR_{bus} ({age:.1f}s ago). Device disconnected.",
+                    "last_seen_s": round(age, 2),
+                    "rx_hits": v.hits,
+                    "bus": bus,
+                    "lru": lru_code,
+                }
+
+            dme_labels = {"035", "202", "246", "247", "270", "356", "227"}
+            has_dme = any(
+                (now - h.ts) <= STALE_S
+                for lab, h in v.by_label.items()
+                if lab in dme_labels and h.ts
+            )
+
+            return {
+                "connected": True,
+                "mode": "REAL",
+                "simulation": False,
+                "detail": f"Physical DME active on RCVR_{bus} ({v.hits} words, last {age:.2f}s ago)",
+                "last_seen_s": round(age, 2),
+                "rx_hits": v.hits,
+                "bus": bus,
+                "lru": lru_code,
+                "specific_dme_labels": has_dme,
+            }
+
     def _snapshot_locked(self) -> dict[str, Any]:
         return self.snapshot()
 
@@ -1399,6 +1496,8 @@ class ArincSession:
                 "bus": bus_out,
                 "tx": tx_out,
                 "rx": rx_out,
+                "lru_connection": self.check_lru_connected(self.active_lru_code or "709", bus="A"),
+                "simulation_override": self._sim_override,
             }
 
     def start(self) -> None:
@@ -1443,7 +1542,7 @@ class ArincSession:
                     prev = last_tx_time.get(key, 0.0)
                     if now - prev >= rate_s:
                         last_tx_time[key] = now
-                        if cfg.rx_enable:
+                        if cfg.rx_enable and (self._sim_override or cfg.selftest):
                             try:
                                 self.ingest_rx_word(bus, slot.raw)
                             except Exception:

@@ -160,6 +160,10 @@ class ArincProfileUpsertBody(BaseModel):
     labels: list[ArincLabelSpecBody]
 
 
+class ArincSimulationBody(BaseModel):
+    enabled: bool
+
+
 class ArincTrapBody(BaseModel):
     bus: str = Field(default="A", max_length=1)
     label: str = Field(min_length=1, max_length=8)
@@ -429,6 +433,21 @@ def create_app(
         arinc = get_arinc()
         arinc.stop()
         return arinc.snapshot()
+
+    @app.post("/api/arinc/simulation")
+    def api_arinc_simulation(body: ArincSimulationBody, _sid: str = Depends(require_session)):
+        arinc = get_arinc()
+        return arinc.set_simulation_override(body.enabled)
+
+    @app.get("/api/arinc/device/detect")
+    def api_arinc_device_detect(lru: str = "709", bus: str = "A", _sid: str = Depends(require_session)):
+        arinc = get_arinc()
+        return arinc.check_lru_connected(lru_code=lru, bus=bus)
+
+    @app.post("/api/arinc/device/detect")
+    def api_arinc_device_detect_post(lru: str = "709", bus: str = "A", _sid: str = Depends(require_session)):
+        arinc = get_arinc()
+        return arinc.check_lru_connected(lru_code=lru, bus=bus)
 
     @app.post("/api/arinc/bitrate")
     def api_arinc_bitrate(body: ArincBitRateBody, _sid: str = Depends(require_session)):

@@ -105,3 +105,35 @@ def test_arinc_start_stop_in_simulation(client: TestClient):
     r2 = client.post("/api/arinc/stop")
     assert r2.status_code == 200
     assert r2.json().get("running") is False
+
+
+def test_cfds_device_detect_and_simulation_mode(client: TestClient):
+    _login(client)
+    # 1. Real Device Mode without physical device -> Disconnected
+    r = client.get("/api/arinc/device/detect?lru=709&bus=A")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["mode"] == "REAL"
+    assert data["connected"] is False
+
+    # 2. Enable Simulation Mode explicitly
+    r_sim = client.post("/api/arinc/simulation", json={"enabled": True})
+    assert r_sim.status_code == 200
+
+    # 3. Detect in Simulation Mode -> Connected as SIMULATION
+    r_detect_sim = client.get("/api/arinc/device/detect?lru=709&bus=A")
+    assert r_detect_sim.status_code == 200
+    sim_data = r_detect_sim.json()
+    assert sim_data["mode"] == "SIMULATION"
+    assert sim_data["connected"] is True
+    assert sim_data["simulation"] is True
+
+    # 4. Disable Simulation Mode -> Reverts to Real Device Mode without hardware -> Disconnected
+    r_unsim = client.post("/api/arinc/simulation", json={"enabled": False})
+    assert r_unsim.status_code == 200
+
+    r_detect_revert = client.get("/api/arinc/device/detect?lru=709&bus=A")
+    assert r_detect_revert.status_code == 200
+    revert_data = r_detect_revert.json()
+    assert revert_data["mode"] == "REAL"
+    assert revert_data["connected"] is False
