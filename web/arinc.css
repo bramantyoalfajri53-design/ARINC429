@@ -1292,12 +1292,13 @@ tr.slot-off td { color: var(--muted); }
 .dynapro-inner-box {
   border: 2px solid #22c55e;
   border-radius: 4px;
-  padding: 16px 20px;
+  padding: 14px 20px;
   flex: 1;
   display: flex;
   flex-direction: column;
   position: relative;
   text-shadow: 0 0 3px rgba(34, 197, 94, 0.6);
+  min-height: 380px;
 }
 
 .dynapro-screen-header {
@@ -1307,7 +1308,7 @@ tr.slot-off td { color: var(--muted); }
   font-size: 16px;
   font-weight: 700;
   letter-spacing: 2px;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
   text-transform: uppercase;
 }
 
@@ -1319,19 +1320,23 @@ tr.slot-off td { color: var(--muted); }
   font-size: 13px;
   font-weight: 700;
   color: #22c55e;
+  padding: 1px 4px;
+  border: 1px solid transparent;
+  border-radius: 2px;
 }
 
 .dynapro-screen-nxt.rev {
   background: #22c55e;
   color: #000000;
-  padding: 0 4px;
+  padding: 1px 4px;
   border-radius: 2px;
+  font-weight: 800;
 }
 
 .dynapro-screen-sub {
   text-align: center;
-  font-size: 13px;
-  margin-bottom: 12px;
+  font-size: 14px;
+  margin-bottom: 8px;
   letter-spacing: 1px;
 }
 
@@ -1367,14 +1372,17 @@ tr.slot-off td { color: var(--muted); }
 .dynapro-menu-grid {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  margin-top: auto;
+  justify-content: space-between;
+  flex: 1;
+  margin-top: 4px;
+  min-height: 280px;
 }
 
 .dynapro-menu-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  height: 38px;
 }
 
 .dynapro-menu-item-btn {
@@ -1409,13 +1417,17 @@ tr.slot-off td { color: var(--muted); }
 
 .dynapro-key-num {
   font-weight: 800;
+  min-width: 14px;
+  display: inline-block;
 }
 
 .dynapro-key-right {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 700;
   color: #22c55e;
   padding-right: 6px;
+  min-width: 14px;
+  text-align: right;
 }
 
 .dynapro-tactile-bar {

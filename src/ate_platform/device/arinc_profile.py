@@ -240,7 +240,15 @@ def label_spec_to_dict(ls: LabelSpec) -> dict[str, Any]:
 
 
 def load_profile(profile_id: str) -> Profile:
-    path = PROFILES_DIR / f"{profile_id}.yaml"
+    alias_map = {
+        "freq": "dme",
+        "dme_freq": "dme",
+        "single": "dme",
+        "multi": "dme",
+    }
+    clean_id = str(profile_id or "").strip().lower()
+    clean_id = alias_map.get(clean_id, clean_id)
+    path = PROFILES_DIR / f"{clean_id}.yaml"
     if not path.is_file():
         raise FileNotFoundError(f"Unknown profile: {profile_id}")
     raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}

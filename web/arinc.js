@@ -73,9 +73,45 @@ const CFDS_LRU_MENUS = {
           { key: "6", letter: "F", label: "<RETURN", action: "exit" },
         ]
       },
+      "menu_2": {
+        title: "DME-0",
+        subtitle: "menu 2",
+        items: [
+          { key: "1", letter: "A", blank: true },
+          { key: "2", letter: "B", label: "<FORMAT NON-VOLATILE", action: "screen:format_nvm" },
+          { key: "3", letter: "C", label: "<ERASE NON-VOLATILE", action: "screen:erase_nvm" },
+          { key: "4", letter: "D", blank: true },
+          { key: "5", letter: "E", blank: true },
+          { key: "6", letter: "F", label: "<RETURN", action: "screen:main" },
+        ]
+      },
+      "format_nvm": {
+        title: "DME-0",
+        subtitle: "menu 2",
+        items: [
+          { key: "1", letter: "A", blank: true },
+          { key: "2", letter: "B", label: "0000 bytes bad", isText: true },
+          { key: "3", letter: "C", label: "NVM FORMATTED OK", isText: true },
+          { key: "4", letter: "D", blank: true },
+          { key: "5", letter: "E", blank: true },
+          { key: "6", letter: "F", label: "<RETURN", action: "screen:menu_2" },
+        ]
+      },
+      "erase_nvm": {
+        title: "DME-0",
+        subtitle: "menu 2",
+        items: [
+          { key: "1", letter: "A", blank: true },
+          { key: "2", letter: "B", label: "0000 bytes bad", isText: true },
+          { key: "3", letter: "C", label: "NVM ERASED OK", isText: true },
+          { key: "4", letter: "D", blank: true },
+          { key: "5", letter: "E", blank: true },
+          { key: "6", letter: "F", label: "<RETURN", action: "screen:menu_2" },
+        ]
+      },
       "last_leg": {
         title: "DME-0",
-        subtitle: "last leg report\\ndate: jan01",
+        subtitle: "last leg report\ndate: jan01",
         lines: [
           { type: "header", text: "    gmt     ata" },
           { type: "info", text: "    dme-0 transceiver (2)" },
@@ -87,7 +123,7 @@ const CFDS_LRU_MENUS = {
       },
       "prev_legs": {
         title: "DME-0",
-        subtitle: "previous legs report\\n--------------------",
+        subtitle: "previous legs report\n--------------------",
         lines: [
           { type: "header", text: "  leg date    gmt   ata" },
           { type: "info", text: "  dme-0 transceiver" },
@@ -130,10 +166,11 @@ const CFDS_LRU_MENUS = {
         title: "DME-0",
         subtitle: "shop data",
         items: [
+          { key: "1", letter: "A", blank: true },
           { key: "2", letter: "B", label: "<ENTER SHOP VISIT", action: "screen:shop_visit" },
           { key: "3", letter: "C", label: "<DISPLAY FAULT DATA", action: "screen:fault_data" },
           { key: "4", letter: "D", label: "<SOFTWARE ID", action: "screen:software_id" },
-          { key: "5", letter: "E", label: "<SPECIAL FUNCTIONS", action: "screen:special_func" },
+          { key: "5", letter: "E", label: "<SPECIAL FUNCTIONS", action: "screen:special_func_agc" },
           { key: "6", letter: "F", label: "<RETURN", action: "screen:main" },
         ]
       },
@@ -175,51 +212,16 @@ const CFDS_LRU_MENUS = {
           { key: "6", letter: "F", label: "<RETURN", action: "screen:shop_data" }
         ]
       },
-      "special_func": {
-        title: "DME-0",
-        subtitle: "special functions",
-        items: [
-          { key: "2", letter: "B", label: "<SPECIAL FUNC-AGC", action: "screen:special_func_agc" },
-          { key: "3", letter: "C", label: "<BUS IN TEST", action: "screen:bus_in_test" },
-          { key: "4", letter: "D", label: "<FIXED XMIT RATE OFF/ON", action: "toggle:xmit_rate" },
-          { key: "5", letter: "E", label: "<MENU 2", action: "screen:menu_2" },
-          { key: "6", letter: "F", label: "<RETURN", action: "screen:shop_data" },
-        ]
-      },
       "special_func_agc": {
         title: "DME-0",
-        subtitle: "special  func-agc",
+        subtitle: "special func-agc",
         items: [
-          { key: "1", letter: "A", label: "", blank: true },
+          { key: "1", letter: "A", blank: true },
           { key: "2", letter: "B", label: "current value agc {AGC_VAL}", isText: true },
-          { key: "3", letter: "C", label: "<FULL  GAIN   FF", action: "set_agc:FF" },
-          { key: "4", letter: "D", label: "<MID   GAIN   A0", action: "set_agc:A0" },
-          { key: "5", letter: "E", label: "<MIN   GAIN   00", action: "set_agc:00" },
-          { key: "6", letter: "F", label: "<RETURN", action: "screen:special_func" },
-        ]
-      },
-      "menu_2": {
-        title: "DME-0",
-        subtitle: "menu 2",
-        items: [
-          { key: "1", letter: "A", label: "", blank: true },
-          { key: "2", letter: "B", label: "<FORMAT NON-VOLATILE", action: "screen:non_vol_result" },
-          { key: "3", letter: "C", label: "<ERASE  NON-VOLATILE", action: "screen:non_vol_result" },
-          { key: "4", letter: "D", label: "", blank: true },
-          { key: "5", letter: "E", label: "", blank: true },
-          { key: "6", letter: "F", label: "<RETURN", action: "screen:special_func" },
-        ]
-      },
-      "non_vol_result": {
-        title: "DME-0",
-        subtitle: "",
-        items: [
-          { key: "1", letter: "A", label: "", blank: true },
-          { key: "2", letter: "B", label: "0000 bytes bad", isText: true },
-          { key: "3", letter: "C", label: "", blank: true },
-          { key: "4", letter: "D", label: "", blank: true },
-          { key: "5", letter: "E", label: "", blank: true },
-          { key: "6", letter: "F", label: "<RETURN", action: "screen:menu_2" },
+          { key: "3", letter: "C", label: "<FULL GAIN FF", action: "set_agc:FF" },
+          { key: "4", letter: "D", label: "<MID GAIN A0", action: "set_agc:A0" },
+          { key: "5", letter: "E", label: "<MIN GAIN 00", action: "set_agc:00" },
+          { key: "6", letter: "F", label: "<RETURN", action: "screen:shop_data" },
         ]
       },
       "bus_in_test": {
@@ -1996,9 +1998,9 @@ function renderCrtGreenScreen(container, lru, activeScreen, currentSub, r, s, is
           if (item.blank) {
             return `
               <div class="dynapro-menu-row">
-                <span class="dynapro-menu-item-text" style="display:inline-flex;align-items:center;gap:8px;padding:4px 10px;visibility:hidden">
+                <span class="dynapro-menu-item-text" style="display:inline-flex;align-items:center;gap:12px;padding:4px 8px;">
                   <span class="dynapro-key-num">${escAttr(item.key)}</span>
-                  <span class="dynapro-key-label">-</span>
+                  <span class="dynapro-key-label" style="visibility:hidden">-</span>
                 </span>
                 <span class="dynapro-key-right">${escAttr(item.letter || '')}</span>
               </div>
@@ -2007,9 +2009,9 @@ function renderCrtGreenScreen(container, lru, activeScreen, currentSub, r, s, is
           if (item.isText) {
             return `
               <div class="dynapro-menu-row">
-                <span class="dynapro-menu-item-text" style="display:inline-flex;align-items:center;gap:8px;padding:4px 10px;color:#22c55e">
+                <span class="dynapro-menu-item-text" style="display:inline-flex;align-items:center;gap:12px;padding:4px 8px;color:#22c55e">
                   <span class="dynapro-key-num">${escAttr(item.key)}</span>
-                  <span class="dynapro-key-label" style="font-weight:700">${escAttr(labelText)}</span>
+                  <span class="dynapro-key-label" style="font-weight:700;margin-left:8px;">${escAttr(labelText)}</span>
                 </span>
                 <span class="dynapro-key-right">${escAttr(item.letter || '')}</span>
               </div>
@@ -2035,14 +2037,31 @@ function renderCrtGreenScreen(container, lru, activeScreen, currentSub, r, s, is
         <span class="dynapro-screen-title">${escAttr(title)}</span>
         <div style="display:flex;align-items:center;gap:6px">
           ${isSimMode ? '<span class="dynapro-sim-crt-tag">&lt;SIMULATION&gt;</span>' : ''}
-          <span class="dynapro-screen-nxt ${cfdsState.nxtReverseVideo ? 'rev' : ''}">NXT</span>
+          <span class="dynapro-screen-nxt ${cfdsState.nxtReverseVideo ? 'rev' : ''}" id="crt-nxt-btn" style="cursor:pointer;" title="Toggle Next Page / Menu">NXT</span>
         </div>
       </div>
-      ${subtitle ? `<div class="dynapro-screen-sub">${subtitle.split(String.fromCharCode(10)).map(str => escAttr(str)).join("<br>")}</div>` : ''}
+      ${subtitle ? `<div class="dynapro-screen-sub">${subtitle.split("\n").map(str => escAttr(str)).join("<br>")}</div>` : ''}
       ${linesHtml}
       ${itemsHtml}
     </div>
   `;
+
+  // Attach NXT click handler
+  const nxtBtn = container.querySelector("#crt-nxt-btn");
+  if (nxtBtn) {
+    nxtBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      cfdsState.nxtReverseVideo = !cfdsState.nxtReverseVideo;
+      if (cfdsState.selectedLru && (cfdsState.selectedLru.code === "709" || cfdsState.selectedLru.name === "DME")) {
+        if (cfdsState.lruSubScreen === "main") {
+          cfdsState.lruSubScreen = "menu_2";
+        } else if (cfdsState.lruSubScreen === "menu_2") {
+          cfdsState.lruSubScreen = "main";
+        }
+      }
+      renderCfdsHub(r, s);
+    });
+  }
 
   // Attach interactive click handlers for menu items
   container.querySelectorAll("button[data-act]").forEach(btn => {
