@@ -206,6 +206,14 @@ class ArincDmeSlotBody(BaseModel):
     enabled: bool | None = None
 
 
+class ArincDmeHandshakeBody(BaseModel):
+    bus: str = Field(default="A", max_length=1)
+    freq_mhz: float = Field(default=134.40, ge=100.0, le=140.0)
+    rate_ms: int = Field(default=100, ge=10, le=5000)
+    arm_stimulus: bool = True
+    sim_scenario: str = Field(default="auto", max_length=32)
+
+
 class ArincMmrMenuBody(BaseModel):
     menu: str = Field(min_length=1, max_length=8)
 
@@ -686,6 +694,30 @@ def create_app(
                 parity=body.parity,
                 rate_ms=body.rate_ms,
                 enabled=body.enabled,
+            )
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/arinc/dme/handshake")
+    def api_arinc_dme_handshake(body: ArincDmeHandshakeBody, _sid: str = Depends(require_session)):
+        try:
+            return get_arinc().dme_handshake_diagnostic(
+                bus=body.bus,
+                freq_mhz=body.freq_mhz,
+                rate_ms=body.rate_ms,
+                arm_stimulus=body.arm_stimulus,
+                sim_scenario=body.sim_scenario,
+            )
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/arinc/dme/diagnostic")
+    def api_arinc_dme_diagnostic(bus: str = "A", sim_scenario: str = "auto", _sid: str = Depends(require_session)):
+        try:
+            return get_arinc().dme_handshake_diagnostic(
+                bus=bus,
+                arm_stimulus=False,
+                sim_scenario=sim_scenario,
             )
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc

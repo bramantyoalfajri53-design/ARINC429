@@ -1886,3 +1886,218 @@ tr.slot-off td { color: var(--muted); }
   margin-top: 12px;
 }
 
+
+/* ==================================================================== */
+/* DME Live Handshake & Echo Diagnostic Workbench Styles */
+/* ==================================================================== */
+
+.dme-diag-status-banner {
+  padding: 1.1rem 1.5rem;
+  border-radius: var(--radius-md);
+  margin-bottom: 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border: 1px solid transparent;
+  transition: all 0.3s ease;
+}
+
+.dme-diag-status-banner.status-ok {
+  background: rgba(34, 197, 94, 0.12);
+  border-color: rgba(34, 197, 94, 0.35);
+  color: #15803d;
+}
+
+.dme-diag-status-banner.status-warn {
+  background: rgba(245, 158, 11, 0.12);
+  border-color: rgba(245, 158, 11, 0.35);
+  color: #b45309;
+}
+
+.dme-diag-status-banner.status-danger {
+  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.35);
+  color: #b91c1c;
+}
+
+.dme-diag-banner-main {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.dme-diag-status-icon {
+  font-size: 1.8rem;
+  line-height: 1;
+}
+
+.dme-diag-status-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+.dme-diag-status-detail {
+  font-size: 0.875rem;
+  margin-top: 0.25rem;
+  opacity: 0.9;
+}
+
+.dme-diag-telemetry-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.dme-diag-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 1.1rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.dme-diag-card-title {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--text-2);
+  margin-bottom: 0.5rem;
+  letter-spacing: 0.5px;
+}
+
+.dme-diag-card-value {
+  font-size: 1.6rem;
+  font-weight: 800;
+  color: var(--text);
+  font-family: var(--font-mono);
+  line-height: 1.2;
+}
+
+.dme-diag-card-sub {
+  font-size: 0.8rem;
+  margin-top: 0.4rem;
+  color: var(--text-2);
+}
+
+.dme-diag-tag-ok {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: #22c55e;
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.dme-diag-tag-warn {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: #f59e0b;
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.dme-diag-tag-danger {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: #ef4444;
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.dme-raw-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+  margin-top: 0.75rem;
+}
+
+.dme-raw-table th {
+  text-align: left;
+  padding: 0.6rem 0.8rem;
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--border);
+}
+
+.dme-raw-table td {
+  padding: 0.65rem 0.8rem;
+  border-bottom: 1px solid var(--border);
+  font-family: var(--font-mono);
+}
+
+.dme-bitfield-pill {
+  display: inline-block;
+  padding: 2px 6px;
+  font-size: 0.78rem;
+  border-radius: 3px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  letter-spacing: 0.5px;
+}
+
+.dme-checklist-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 1.25rem;
+  margin-top: 1.5rem;
+}
+
+.dme-checklist-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.dme-checklist-row:last-child {
+  border-bottom: none;
+}
+
+.dme-checklist-bullet {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 700;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.dme-checklist-body {
+  flex: 1;
+}
+
+.dme-checklist-item-title {
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--text);
+}
+
+.dme-checklist-item-expected {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--accent);
+  margin: 2px 0;
+}
+
+.dme-checklist-item-action {
+  font-size: 0.8rem;
+  color: var(--text-2);
+}

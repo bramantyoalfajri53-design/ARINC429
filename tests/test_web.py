@@ -137,3 +137,42 @@ def test_cfds_device_detect_and_simulation_mode(client: TestClient):
     revert_data = r_detect_revert.json()
     assert revert_data["mode"] == "REAL"
     assert revert_data["connected"] is False
+
+
+def test_dme_handshake_diagnostic(client: TestClient):
+    _login(client)
+    # 1. Trigger handshake with 134.40 MHz (ATC-1400A Chan 1X) in simulation
+    r = client.post("/api/arinc/dme/handshake", json={
+        "bus": "A",
+        "freq_mhz": 134.40,
+        "rate_ms": 100,
+        "arm_stimulus": True,
+        "sim_scenario": "active",
+    })
+    assert r.status_code == 200
+    data = r.json()
+    assert data["status_code"] == "CONNECTED_ACTIVE"
+    assert data["status_level"] == "ok"
+    assert "DME CONNECTED & ACTIVE" in data["status"]
+    assert data["freq_mhz"] == 134.40
+    assert data["bnr_distance"]["dist_nm"] == 50.0
+    assert data["echo"]["status"] == "ECHO OK"
+    assert len(data["words"]) >= 2
+    assert "formatted_bin" in data["words"][0]
+    assert data["checklist"] is not None
+
+    # 2. Get diagnostic in loopback scenario
+    r_diag = client.get("/api/arinc/dme/diagnostic?bus=A&sim_scenario=loopback_only")
+    assert r_diag.status_code == 200
+    diag_data = r_diag.json()
+    assert diag_data["status_code"] == "LOOPBACK"
+    assert diag_data["status_level"] == "warn"
+    assert "LOOPBACK" in diag_data["status"]
+
+    # 3. Disconnected scenario
+    r_disc = client.get("/api/arinc/dme/diagnostic?bus=A&sim_scenario=disconnected")
+    assert r_disc.status_code == 200
+    disc_data = r_disc.json()
+    assert disc_data["status_code"] == "DISCONNECTED"
+    assert disc_data["status_level"] == "danger"
+    assert "DISCONNECTED" in disc_data["status"]

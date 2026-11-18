@@ -335,38 +335,32 @@ def dme_pack(
     ident: bool = False,
     pad_bits: int | str | None = None,
 ) -> int:
-    """BCD frequency (MHz x 100) with DME control bits in 11-17 (bits 0-6 of data19)."""
-    _need_bti()
-    tenths = int(round(float(freq_mhz) * 100.0))
-    word = bti429.BCDPutMant(0, tenths, 5, 0)
-    data = int(bti429.FldGetData(word)) & DATA_MASK19
+    """ARINC 709 BCD frequency (108.00 - 135.95 MHz) with control bits in 11-17 (bits 0-6 of data19)."""
+    mhz_int = int(freq_mhz)
+    fract = int(round((freq_mhz - mhz_int) * 100))
+    bit_50k = 1 if (fract % 10 == 5) else 0
+    b_100k = (fract // 10) & 0xF
+    b_1m = (mhz_int % 10) & 0xF
+    b_10m = ((mhz_int // 10) % 10) & 0x7
+    freq12 = (b_10m << 9) | (b_1m << 5) | (b_100k << 1) | bit_50k
+
     if pad_bits is not None:
         if isinstance(pad_bits, str):
             clean = pad_bits.strip().replace(" ", "")
             p_val = int(clean, 2) if (clean and all(c in "01" for c in clean)) else int(clean, 0)
         else:
             p_val = int(pad_bits)
-        data = (data & ~0x7F) | (p_val & 0x7F)
     else:
         m_val = DME_MODE_BITS.get(str(mode).upper(), 1) & 0x7
         n_val = (DME_NAV_BITS.get(str(nav).upper(), 0) & 0x3) << 3
         d_val = (1 if disp else 0) << 5
         i_val = (1 if ident else 0) << 6
         p_val = m_val | n_val | d_val | i_val
-        data = (data & ~0x7F) | p_val
-    return data
+    return ((freq12 << 7) | (p_val & 0x7F)) & DATA_MASK19
 
 
 def dme_unpack(data19: int) -> dict[str, Any]:
-    _need_bti()
     d = int(data19) & DATA_MASK19
-    clean_d = d & ~0x7F
-    word = bti429.FldPutData(0, clean_d)
-    try:
-        mant = int(bti429.BCDGetMant(word, 5))
-        freq = mant / 100.0
-    except Exception:
-        freq = 0.0
     mode_i = d & 0x7
     nav_i = (d >> 3) & 0x3
     mode = next((k for k, v in DME_MODE_BITS.items() if v == mode_i), f"M{mode_i}")
@@ -375,6 +369,14 @@ def dme_unpack(data19: int) -> dict[str, Any]:
     ident = bool((d >> 6) & 1)
     pad_bits = d & 0x7F
     pads = format(pad_bits, "07b")
+
+    freq12 = (d >> 7) & 0xFFF
+    bit_50k = freq12 & 1
+    b_100k = (freq12 >> 1) & 0xF
+    b_1m = (freq12 >> 5) & 0xF
+    b_10m = (freq12 >> 9) & 0x7
+    freq = round(100.0 + (b_10m * 10.0) + b_1m + (b_100k * 0.1) + (bit_50k * 0.05), 2)
+
     return {
         "freq_mhz": freq,
         "mode": mode,

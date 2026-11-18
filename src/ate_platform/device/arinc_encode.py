@@ -348,3 +348,210 @@ def decode_word(word: int, *, profile: str = "auto") -> DecodedWord:
         data_text=f"0x{data19:05X}",
         engineering={"data19": data19},
     )
+
+
+def dissect_arinc_word(word: int) -> dict[str, Any]:
+    """Dissect a 32-bit ARINC 429 word into constituent fields with binary & parity checks."""
+    w = int(word) & 0xFFFFFFFF
+    lab = w & 0xFF
+    lab_oct = format(lab, "o").zfill(3)
+    sdi = (w >> 8) & 0x3
+    data19 = (w >> 10) & 0x7FFFF
+    ssm = (w >> 29) & 0x3
+    p_bit = (w >> 31) & 1
+    
+    popcount = bin(w).count("1")
+    is_odd = (popcount % 2 == 1)
+    
+    bin_p = format(p_bit, "01b")
+    bin_ssm = format(ssm, "02b")
+    bin_data = format(data19, "019b")
+    bin_sdi = format(sdi, "02b")
+    bin_label = format(lab, "08b")
+    
+    formatted_bin = f"{bin_p} | {bin_ssm} | {bin_data} | {bin_sdi} | {bin_label}"
+    
+    return {
+        "raw": w,
+        "hex": f"0x{w:08X}",
+        "label": lab,
+        "label_octal": lab_oct,
+        "sdi": sdi,
+        "data19": data19,
+        "ssm": ssm,
+        "p_bit": p_bit,
+        "parity_odd": is_odd,
+        "parity_status": "ODD_OK" if is_odd else "PARITY_ERROR",
+        "bin_p": bin_p,
+        "bin_ssm": bin_ssm,
+        "bin_data": bin_data,
+        "bin_sdi": bin_sdi,
+        "bin_label": bin_label,
+        "formatted_bin": formatted_bin,
+    }
+
+
+def encode_dme_frequency_035(
+    freq_mhz: float = 134.40,
+    *,
+    mode: str = "DF1",
+    sdi: int = 0,
+    disp: bool = True,
+    ident: bool = False,
+    nav: str = "VOR",
+    ssm: int = 0,
+    odd_parity: bool = True,
+) -> int:
+    """Encode ARINC 709 DME Frequency word (Label 035).
+    
+    Parameters per ARINC 709 / Aeroflex JcAIR T1200B:
+    - Label 035 (bits 1-8)
+    - SDI (bits 9-10): default 00 (All Call)
+    - Mode (bits 11-13 / data19 bits 0-2): 001 for DF1
+    - Nav (bits 14-15 / data19 bits 3-4): 00 for VOR
+    - DISP (bit 16 / data19 bit 5): 1 (requests BCD distance)
+    - IDENT (bit 17 / data19 bit 6): 0 or 1
+    - Frequency (bits 18-29 / data19 bits 7-18): 12-bit BCD (108.00 - 135.95 MHz)
+    - SSM (bits 30-31): default 00 (Normal Operation)
+    - Parity (bit 32): Odd Parity
+    """
+    _need_bti()
+    mhz_int = int(freq_mhz)
+    fract = int(round((freq_mhz - mhz_int) * 100))
+    bit_50k = 1 if (fract % 10 == 5) else 0
+    b_100k = (fract // 10) & 0xF
+    b_1m = (mhz_int % 10) & 0xF
+    b_10m = ((mhz_int // 10) % 10) & 0x7
+    freq12 = (b_10m << 9) | (b_1m << 5) | (b_100k << 1) | bit_50k
+    
+    mode_map = {"STBY": 0, "DF1": 1, "DF2": 2, "DF3": 3, "DF4": 4, "DF5": 5, "SCAN": 6}
+    m_val = mode_map.get(str(mode).upper(), 1) & 0x7
+    nav_map = {"VOR": 0, "ILS": 1, "MLS": 2, "UND": 3}
+    n_val = (nav_map.get(str(nav).upper(), 0) & 0x3) << 3
+    d_val = (1 if disp else 0) << 5
+    i_val = (1 if ident else 0) << 6
+    p_val = m_val | n_val | d_val | i_val
+    
+    data19 = (freq12 << 7) | p_val
+    
+    word = bti429.FldPutLabel(0, 0o035)
+    word = bti429.FldPutSDI(word, int(sdi) & 0x3)
+    word = bti429.FldPutData(word, data19)
+    word = bti429.BCDPutSSM(word, int(ssm) & 0x3)
+    word = bti429.FldPutParBit(word)
+    if not odd_parity:
+        word ^= 1 << 31
+    return int(word) & 0xFFFFFFFF
+
+
+def decode_dme_frequency_035(word_or_data19: int) -> dict[str, Any]:
+    """Decode ARINC 709 DME Frequency word (Label 035) or its 19-bit data field."""
+    val = int(word_or_data19)
+    if val > 0x7FFFF:
+        data19 = (val >> 10) & 0x7FFFF
+        sdi = (val >> 8) & 0x3
+        ssm = (val >> 29) & 0x3
+        parity_odd = word_parity_odd(val)
+    else:
+        data19 = val & 0x7FFFF
+        sdi = 0
+        ssm = 0
+        parity_odd = True
+
+    mode_bits = data19 & 0x7
+    nav_bits = (data19 >> 3) & 0x3
+    disp_bit = (data19 >> 5) & 1
+    ident_bit = (data19 >> 6) & 1
+
+    freq12 = (data19 >> 7) & 0xFFF
+    bit_50k = freq12 & 1
+    b_100k = (freq12 >> 1) & 0xF
+    b_1m = (freq12 >> 5) & 0xF
+    b_10m = (freq12 >> 9) & 0x7
+    freq_mhz = round(100.0 + (b_10m * 10.0) + b_1m + (b_100k * 0.1) + (bit_50k * 0.05), 2)
+
+    mode_map_inv = {0: "STBY", 1: "DF1", 2: "DF2", 3: "DF3", 4: "DF4", 5: "DF5", 6: "SCAN"}
+    nav_map_inv = {0: "VOR", 1: "ILS", 2: "MLS", 3: "UND"}
+
+    return {
+        "freq_mhz": freq_mhz,
+        "mode": mode_map_inv.get(mode_bits, f"M{mode_bits}"),
+        "nav": nav_map_inv.get(nav_bits, "UND"),
+        "disp": bool(disp_bit),
+        "ident": bool(ident_bit),
+        "sdi": sdi,
+        "ssm": ssm,
+        "pad_bits": data19 & 0x7F,
+        "pads": format(data19 & 0x7F, "07b"),
+        "parity_odd": parity_odd,
+    }
+
+
+def decode_dme_distance_202(word: int) -> dict[str, Any]:
+    """Decode ARINC 709 DME BNR Distance (Label 202).
+    
+    Bits 14-29 (16 bits) encode distance in NM (LSB = 0.0048828125 NM or 1/128 NM).
+    Bits 30-31 SSM: 11=NML, 01=NCD, 10=FT, 00=FW/FAIL.
+    """
+    _need_bti()
+    w = int(word) & 0xFFFFFFFF
+    label = int(bti429.FldGetLabel(w))
+    sdi = int(bti429.FldGetSDI(w))
+    ssm = get_ssm_bits(w)
+    ssm_names = {3: "NML", 1: "NCD", 2: "FT", 0: "FAIL"}
+    ssm_str = ssm_names.get(ssm, "FAIL")
+    
+    mask16 = 0xFFFF
+    counts = (w >> 13) & mask16
+    dist_nm = round(float(counts) * 0.0048828125, 2)
+    if dist_nm > 400.0:
+        dist_nm = round(float(counts) * (1.0 / 128.0), 2)
+        
+    parity_odd = word_parity_odd(w)
+    return {
+        "label": label,
+        "label_octal": label_octal_str(label),
+        "sdi": sdi,
+        "ssm": ssm,
+        "ssm_name": ssm_str,
+        "dist_nm": dist_nm,
+        "dist_text": f"{dist_nm:.1f} NM" if ssm_str != "NCD" else "NCD",
+        "parity_odd": parity_odd,
+        "raw": w,
+    }
+
+
+def decode_dme_distance_201(word: int) -> dict[str, Any]:
+    """Decode ARINC 709 DME BCD Distance (Label 201).
+    
+    4 or 5 BCD digits in data19: tenths or hundredths of NM.
+    Bits 30-31 SSM: 00=Plus(NML), 01=NCD, 10=FT, 11=Minus.
+    """
+    _need_bti()
+    w = int(word) & 0xFFFFFFFF
+    label = int(bti429.FldGetLabel(w))
+    sdi = int(bti429.FldGetSDI(w))
+    ssm = get_ssm_bits(w)
+    ssm_names = {0: "NML", 1: "NCD", 2: "FT", 3: "FAIL"}
+    ssm_str = ssm_names.get(ssm, "FAIL")
+    
+    try:
+        mant = int(bti429.BCDGetMant(w, 5))
+        dist_nm = round(mant / 100.0, 2)
+        if dist_nm > 400.0:
+            dist_nm = round(mant / 10.0, 1)
+    except Exception:
+        dist_nm = 0.0
+        
+    parity_odd = word_parity_odd(w)
+    return {
+        "label": label,
+        "label_octal": label_octal_str(label),
+        "sdi": sdi,
+        "ssm": ssm,
+        "ssm_name": ssm_str,
+        "dist_nm": dist_nm,
+        "dist_text": f"{dist_nm:.1f} NM" if ssm_str != "NCD" else "NCD",
+        "parity_odd": parity_odd,
+        "raw": w,
+    }

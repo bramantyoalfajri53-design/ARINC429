@@ -3663,6 +3663,7 @@ function renderCmcChannelsTab(c, r, s) {
       user_configure: "User Configure", setup_txrx: "Setup TX/RX",
       avionics_lru: "Avionics LRU", lru_format: "LRU Format",
       dme_config: "DME Config", dme_single: "DME Single", dme_multi: "DME Multi", dme_standard: "DME Standard Nav",
+      dme_diagnostic: "DME Live Diagnostic",
       mmr_menu: "MMR", mmr_format: "MMR Format",
       cfds_lru: "CFDS LRU", cfds_edit_tx: "Edit TX", cfds_op_modes: "Op Modes",
       cfds_config_channels: "Config Channels",
@@ -3766,6 +3767,9 @@ function renderCmcChannelsTab(c, r, s) {
     }
     lastViewKey = key;
     renderBreadcrumb(s.screen_stack);
+    if (view !== "dme_diagnostic") {
+      stopDmeDiagTimer();
+    }
     const r = root();
     r.innerHTML = "";
     if (view === "mode_select") renderModeSelect(r, s);
@@ -3777,6 +3781,7 @@ function renderCmcChannelsTab(c, r, s) {
     else if (view === "dme_single") renderDmeSingle(r, s);
     else if (view === "dme_multi") renderDmeMulti(r, s);
     else if (view === "dme_standard" || (view === "lru_format" && (s.active_profile === "dme" || s.dme_mode === "standard"))) renderDmeStandard(r, s);
+    else if (view === "dme_diagnostic") renderDmeDiagnostic(r, s);
     else if (view === "lru_format" || view === "mmr_format") renderFormatScreen(r, s);
     else if (view === "mmr_menu") renderMmrMenu(r, s);
     else if (view === "cfds") renderCfdsHub(r, s);
@@ -4789,7 +4794,10 @@ function renderCmcChannelsTab(c, r, s) {
           <div class="panel-title" style="margin-bottom:.35rem">DME &bull; ARINC 709 Test Modes</div>
           <p class="muted">Select DME test mode according to Aeroflex T1200 manual</p>
         </div>
-        <button type="button" class="btn btn-ghost" id="btn-dme-cfg-back">&lt; Back to LRUs</button>
+        <div style="display:flex; gap:8px;">
+          <button type="button" class="btn btn-outline" id="btn-dme-live-diag">⚡ Live Diagnostic &amp; Echo</button>
+          <button type="button" class="btn btn-ghost" id="btn-dme-cfg-back">&lt; Back to LRUs</button>
+        </div>
       </div>
       <div class="hub-grid" style="max-width:960px; margin:1.5rem auto;">
         <div class="mode-card" id="btn-dme-mode-single">
@@ -4806,6 +4814,11 @@ function renderCmcChannelsTab(c, r, s) {
           <div class="tag">MODE 3</div>
           <h2>Standard Nav Configuration</h2>
           <p>Standard navigation words configuration, BNR distance and BCD station identifier</p>
+        </div>
+        <div class="mode-card" id="btn-dme-card-diag" style="border:1px dashed var(--accent);">
+          <div class="tag" style="background:var(--accent); color:#fff;">DIAGNOSTIC</div>
+          <h2>Live Handshake &amp; Echo Diagnostic</h2>
+          <p>Real-time ARINC 709 handshake, 32-bit protocol analyzer, parity verify, and wiring troubleshooting.</p>
         </div>
       </div>
     `;
@@ -4826,6 +4839,8 @@ function renderCmcChannelsTab(c, r, s) {
         render(await api("/api/arinc/dme/mode", { method: "POST", body: JSON.stringify({ mode: "standard" }) }));
       } catch (e) { alert(e.message); }
     };
+    p.querySelector("#btn-dme-live-diag").onclick = () => pushScreen("dme_diagnostic");
+    p.querySelector("#btn-dme-card-diag").onclick = () => pushScreen("dme_diagnostic");
     p.querySelector("#btn-dme-cfg-back").onclick = () => navTo("avionics_lru");
   }
 
@@ -4876,6 +4891,7 @@ function renderCmcChannelsTab(c, r, s) {
           <span class="pill pill-run">BUS TX-${txCh} &bull; RX-${rxCh}</span>
           <button type="button" class="btn btn-ghost btn-sm" id="btn-dme-single-back">&lt; Back to DME Modes</button>
           <button type="button" class="btn btn-ghost btn-sm" id="btn-dme-single-lrus">&lt; LRU Select</button>
+          <button type="button" class="btn btn-outline btn-sm" id="btn-dme-single-diag">⚡ Live Diagnostic</button>
           <button type="button" class="btn btn-sm" id="btn-dme-single-tx">Transmit Active Word</button>
         </div>
       </div>
@@ -5196,6 +5212,7 @@ function renderCmcChannelsTab(c, r, s) {
     // Bottom buttons
     p.querySelector("#btn-dme-single-back").onclick = () => navTo("dme_config");
     p.querySelector("#btn-dme-single-lrus").onclick = () => navTo("avionics_lru");
+    p.querySelector("#btn-dme-single-diag").onclick = () => pushScreen("dme_diagnostic");
     p.querySelector("#btn-dme-single-tx").onclick = () => {
       applyDmeSlotHelper({
         index: 0,
@@ -5951,6 +5968,388 @@ function renderCmcChannelsTab(c, r, s) {
         enabled: true,
       });
     };
+  }
+
+  // ====================================================================
+  // DME LIVE HANDSHAKE & ECHO DIAGNOSTIC WORKBENCH
+  // ARINC 709 Hardware-in-the-Loop Protocol Verification & Analyzer
+  // ====================================================================
+
+  let dmeDiagState = {
+    bus: "A",
+    freqMhz: 134.40,
+    rateMs: 100,
+    stimulusActive: true,
+    simScenario: "auto",
+    timer: null,
+  };
+
+  function stopDmeDiagTimer() {
+    if (dmeDiagState.timer) {
+      clearInterval(dmeDiagState.timer);
+      dmeDiagState.timer = null;
+    }
+  }
+
+  async function triggerDmeHandshake(arm = true) {
+    try {
+      const data = await api("/api/arinc/dme/handshake", {
+        method: "POST",
+        body: JSON.stringify({
+          bus: dmeDiagState.bus,
+          freq_mhz: dmeDiagState.freqMhz,
+          rate_ms: dmeDiagState.rateMs,
+          arm_stimulus: arm,
+          sim_scenario: dmeDiagState.simScenario,
+        }),
+      });
+      updateDmeDiagDom(data);
+    } catch (e) {
+      console.warn("Handshake error:", e);
+    }
+  }
+
+  async function pollDmeDiagnostic() {
+    try {
+      const data = await api(`/api/arinc/dme/diagnostic?bus=${encodeURIComponent(dmeDiagState.bus)}&sim_scenario=${encodeURIComponent(dmeDiagState.simScenario)}`);
+      updateDmeDiagDom(data);
+    } catch (e) {
+      console.warn("Diag poll error:", e);
+    }
+  }
+
+  function updateDmeDiagDom(data) {
+    if (!data) return;
+    const banner = $("dme-diag-banner");
+    if (!banner) return;
+
+    // Status Banner
+    const lvl = data.status_level || "danger";
+    banner.className = `dme-diag-status-banner status-${lvl}`;
+    const iconEl = $("dme-diag-icon");
+    if (iconEl) {
+      iconEl.textContent = lvl === "ok" ? "🟢" : (lvl === "warn" ? "🟡" : "🔴");
+    }
+    const titleEl = $("dme-diag-title");
+    if (titleEl) titleEl.textContent = data.status || "UNKNOWN STATUS";
+    const detailEl = $("dme-diag-detail");
+    if (detailEl) detailEl.textContent = data.detail || "";
+
+    const modeTag = $("dme-diag-mode-tag");
+    if (modeTag) {
+      modeTag.textContent = data.is_real_hardware ? "PHYSICAL BENCH" : "SIMULATION ENGINE";
+      modeTag.className = data.is_real_hardware ? "dme-diag-tag-ok" : "dme-diag-tag-warn";
+    }
+
+    // Telemetry Cards
+    const echoStatusEl = $("dme-diag-echo-status");
+    if (echoStatusEl) {
+      const echo = data.echo || {};
+      const eStat = echo.status || "NONE";
+      const tagCls = eStat === "ECHO OK" ? "dme-diag-tag-ok" : (eStat === "NONE" ? "dme-diag-tag-warn" : "dme-diag-tag-danger");
+      echoStatusEl.innerHTML = `<span class="${tagCls}">${eStat}</span> ${echo.freq_mhz ? `${Number(echo.freq_mhz).toFixed(2)} MHz` : "--"}`;
+      $("dme-diag-echo-sub").textContent = `Mode: ${echo.mode || "--"} | Age: ${echo.last_seen_s != null ? `${echo.last_seen_s}s` : "n/a"}`;
+    }
+
+    const bnrDistEl = $("dme-diag-bnr-val");
+    if (bnrDistEl) {
+      const bnr = data.bnr_distance || {};
+      bnrDistEl.textContent = bnr.dist_text || "--.- NM";
+      $("dme-diag-bnr-sub").textContent = `SSM: ${bnr.ssm || "NONE"} | Age: ${bnr.last_seen_s != null ? `${bnr.last_seen_s}s` : "n/a"}`;
+    }
+
+    const bcdDistEl = $("dme-diag-bcd-val");
+    if (bcdDistEl) {
+      const bcd = data.bcd_distance || {};
+      bcdDistEl.textContent = bcd.dist_text || "----";
+      $("dme-diag-bcd-sub").textContent = `SSM: ${bcd.ssm || "NONE"} | Age: ${bcd.last_seen_s != null ? `${bcd.last_seen_s}s` : "n/a"}`;
+    }
+
+    const identEl = $("dme-diag-ident-val");
+    if (identEl) {
+      const idt = data.ident || {};
+      identEl.textContent = idt.ident_text || "----";
+      $("dme-diag-ident-sub").textContent = `Label 246/247 | Age: ${idt.last_seen_s != null ? `${idt.last_seen_s}s` : "n/a"}`;
+    }
+
+    // Warning alert
+    const warnBox = $("dme-diag-warn-box");
+    if (warnBox) {
+      if (data.wiring_warning) {
+        warnBox.style.display = "block";
+        warnBox.innerHTML = `<strong>${data.wiring_warning}</strong>`;
+      } else {
+        warnBox.style.display = "none";
+      }
+    }
+
+    // Raw Words Table
+    const tbody = $("dme-diag-words-tbody");
+    if (tbody) {
+      const words = data.words || [];
+      if (!words.length) {
+        tbody.innerHTML = `<tr><td colspan="8" class="muted" style="text-align:center; padding:1.5rem;">No words captured yet on RCVR_${data.bus}. Ensure TX stimulus is armed or DME is powered.</td></tr>`;
+      } else {
+        tbody.innerHTML = words.map((w) => {
+          const dirPill = w.direction === "TX" ? `<span class="pill pill-run">TX</span>` : `<span class="pill pill-sub">RX</span>`;
+          const parTag = w.parity_odd ? `<span class="dme-diag-tag-ok">ODD_OK</span>` : `<span class="dme-diag-tag-danger">PARITY_ERR</span>`;
+          return `
+            <tr>
+              <td>${dirPill}</td>
+              <td style="font-weight:600;">${w.name || "-"}</td>
+              <td><strong>${w.label_octal || "-"}</strong></td>
+              <td>${w.sdi != null ? String(w.sdi).padStart(2, "0") : "--"}</td>
+              <td style="color:var(--accent); font-weight:700;">${w.hex}</td>
+              <td><span class="dme-bitfield-pill">${w.formatted_bin || "-"}</span></td>
+              <td>${parTag}</td>
+              <td class="muted">${w.age_s != null ? `${w.age_s}s` : "now"}</td>
+            </tr>
+          `;
+        }).join("");
+      }
+    }
+  }
+
+  function renderDmeDiagnostic(r, s) {
+    stopDmeDiagTimer();
+    const p = el("div", "panel");
+    p.innerHTML = `
+      <div class="lru-toolbar">
+        <div>
+          <div class="panel-title" style="margin-bottom:.35rem">DME Live Handshake &amp; Echo Diagnostic</div>
+          <p class="muted">ARINC 709 Hardware-in-the-Loop Handshake, 32-bit Protocol Analyzer &amp; Bench Wiring Check</p>
+        </div>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <span class="pill pill-run">12.5 kbps Low Speed</span>
+          <button type="button" class="btn btn-ghost btn-sm" id="btn-dme-diag-back">&lt; Back to DME Modes</button>
+        </div>
+      </div>
+
+      <!-- Live Connection Banner -->
+      <div id="dme-diag-banner" class="dme-diag-status-banner status-warn">
+        <div class="dme-diag-banner-main">
+          <div class="dme-diag-status-icon" id="dme-diag-icon">⏳</div>
+          <div>
+            <div class="dme-diag-status-title" id="dme-diag-title">INITIALIZING DIAGNOSTIC...</div>
+            <div class="dme-diag-status-detail" id="dme-diag-detail">Checking ARINC 429 bus status and arming stimulus...</div>
+          </div>
+        </div>
+        <div style="text-align:right;">
+          <span id="dme-diag-mode-tag" class="dme-diag-tag-ok">CHECKING...</span>
+        </div>
+      </div>
+
+      <!-- Controls & Stimulus Configuration -->
+      <div class="dme-diag-card" style="margin-bottom:1.5rem;">
+        <div class="dme-diag-card-title">Handshake Stimulus Configuration (TX Label 035)</div>
+        <div style="display:flex; gap:1.2rem; flex-wrap:wrap; align-items:center;">
+          <div>
+            <label style="font-size:0.75rem; font-weight:700; color:var(--text-2); display:block; margin-bottom:4px;">TEST FREQUENCY</label>
+            <div class="btn-group" id="diag-freq-group">
+              <button type="button" class="btn btn-sm ${dmeDiagState.freqMhz === 134.40 ? "" : "btn-ghost"}" id="btn-freq-134">134.40 MHz (Chan 1X)</button>
+              <button type="button" class="btn btn-sm ${dmeDiagState.freqMhz === 108.00 ? "" : "btn-ghost"}" id="btn-freq-108">108.00 MHz (Chan 17X)</button>
+              <button type="button" class="btn btn-sm btn-ghost" id="btn-freq-custom">Custom</button>
+            </div>
+          </div>
+          <div>
+            <label style="font-size:0.75rem; font-weight:700; color:var(--text-2); display:block; margin-bottom:4px;">ARINC 429 BUS</label>
+            <div class="btn-group">
+              <button type="button" class="btn btn-sm ${dmeDiagState.bus === "A" ? "" : "btn-ghost"}" id="btn-bus-a">CH A</button>
+              <button type="button" class="btn btn-sm ${dmeDiagState.bus === "B" ? "" : "btn-ghost"}" id="btn-bus-b">CH B</button>
+            </div>
+          </div>
+          <div>
+            <label style="font-size:0.75rem; font-weight:700; color:var(--text-2); display:block; margin-bottom:4px;">SIMULATION SCENARIO</label>
+            <select class="input" id="sel-diag-sim" style="padding:4px 8px; font-size:0.85rem;">
+              <option value="auto" ${dmeDiagState.simScenario === "auto" ? "selected" : ""}>Auto (Hardware / Active)</option>
+              <option value="active" ${dmeDiagState.simScenario === "active" ? "selected" : ""}>Active DME (50.0 NM Range)</option>
+              <option value="loopback_only" ${dmeDiagState.simScenario === "loopback_only" ? "selected" : ""}>Loopback / TX Echo Only</option>
+              <option value="disconnected" ${dmeDiagState.simScenario === "disconnected" ? "selected" : ""}>Disconnected (No RX)</option>
+            </select>
+          </div>
+          <div style="margin-left:auto; display:flex; gap:8px;">
+            <button type="button" class="btn btn-sm" id="btn-diag-transmit">⚡ Retransmit Stimulus (100ms)</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Warning Alert Box -->
+      <div id="dme-diag-warn-box" style="display:none; padding:12px 16px; margin-bottom:1.5rem; background:rgba(239,68,68,0.1); border:1px solid #ef4444; border-radius:6px; color:#b91c1c; font-size:0.9rem;">
+      </div>
+
+      <!-- Decoded Telemetry Cards -->
+      <div class="dme-diag-telemetry-grid">
+        <div class="dme-diag-card">
+          <div class="dme-diag-card-title">1. Frequency Echo (Label 035)</div>
+          <div class="dme-diag-card-value" id="dme-diag-echo-status">--</div>
+          <div class="dme-diag-card-sub" id="dme-diag-echo-sub">Verifying tuning loopback</div>
+        </div>
+        <div class="dme-diag-card">
+          <div class="dme-diag-card-title">2. BNR Distance (Label 202)</div>
+          <div class="dme-diag-card-value" id="dme-diag-bnr-val">--.- NM</div>
+          <div class="dme-diag-card-sub" id="dme-diag-bnr-sub">Binary distance telemetry</div>
+        </div>
+        <div class="dme-diag-card">
+          <div class="dme-diag-card-title">3. BCD Distance (Label 201)</div>
+          <div class="dme-diag-card-value" id="dme-diag-bcd-val">----</div>
+          <div class="dme-diag-card-sub" id="dme-diag-bcd-sub">BCD distance display</div>
+        </div>
+        <div class="dme-diag-card">
+          <div class="dme-diag-card-title">4. Ground Station Ident</div>
+          <div class="dme-diag-card-value" id="dme-diag-ident-val">----</div>
+          <div class="dme-diag-card-sub" id="dme-diag-ident-sub">Morse / Alpha Ident</div>
+        </div>
+      </div>
+
+      <!-- Raw 32-Bit Word Protocol Analyzer -->
+      <div class="dme-diag-card">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <div>
+            <div class="dme-diag-card-title">Live 32-Bit Word Protocol Analyzer</div>
+            <div style="font-size:0.75rem; color:var(--text-2);">
+              Field Breakdown: <code>P (bit 32) | SSM (bits 31-30) | DATA (bits 29-11) | SDI (bits 10-9) | LABEL (bits 8-1)</code>
+            </div>
+          </div>
+          <button type="button" class="btn btn-ghost btn-sm" id="btn-refresh-raw">Refresh</button>
+        </div>
+        <div style="overflow-x:auto;">
+          <table class="dme-raw-table">
+            <thead>
+              <tr>
+                <th style="width:60px;">DIR</th>
+                <th>SIGNAL / NAME</th>
+                <th style="width:80px;">LABEL</th>
+                <th style="width:60px;">SDI</th>
+                <th style="width:120px;">HEX (32-BIT)</th>
+                <th>BINARY FIELD BREAKDOWN (P | SSM | DATA | SDI | LABEL)</th>
+                <th style="width:100px;">PARITY</th>
+                <th style="width:80px;">AGE</th>
+              </tr>
+            </thead>
+            <tbody id="dme-diag-words-tbody">
+              <tr><td colspan="8" class="muted" style="text-align:center; padding:1.5rem;">Listening on ARINC 429 Bus...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Physical Test Bench Troubleshooting Checklist -->
+      <div class="dme-checklist-card">
+        <div class="dme-diag-card-title" style="margin-bottom:0.75rem;">
+          📋 Hardware-in-the-Loop Physical Troubleshooting Checklist (Tailored to Bench Units)
+        </div>
+        <div id="dme-checklist-container">
+          <div class="dme-checklist-row">
+            <div class="dme-checklist-bullet">1</div>
+            <div class="dme-checklist-body">
+              <div class="dme-checklist-item-title">DFIU T1203 Rear OPERATION Switch</div>
+              <div class="dme-checklist-item-expected">Expected: MANUAL</div>
+              <div class="dme-checklist-item-action">Check toggle switch at rear panel of Kustom Electronics T1203 DFIU. Ensure it is set to MANUAL (not REMOTE).</div>
+            </div>
+          </div>
+          <div class="dme-checklist-row">
+            <div class="dme-checklist-bullet">2</div>
+            <div class="dme-checklist-body">
+              <div class="dme-checklist-item-title">ARINC 429 Wiring (Panel TX to DFIU INPUTS)</div>
+              <div class="dme-checklist-item-expected">Expected: CH A POS/NEG/GND &rarr; DME A-FREQ FUNCT SELECT-A</div>
+              <div class="dme-checklist-item-action">Ensure blue (POS/HI), white (NEG/LO), and yellow (GND) lines from panel CH 0/CH A are connected to DFIU ARINC 429 INPUTS.</div>
+            </div>
+          </div>
+          <div class="dme-checklist-row">
+            <div class="dme-checklist-bullet">3</div>
+            <div class="dme-checklist-body">
+              <div class="dme-checklist-item-title">ARINC 429 Wiring (DFIU OUTPUTS to Panel RX)</div>
+              <div class="dme-checklist-item-expected">Expected: DME A-DISTANCE DATA-1 &rarr; CH A POS/NEG/GND</div>
+              <div class="dme-checklist-item-action">Ensure reply lines from DFIU ARINC 429 OUTPUTS (DME A-DISTANCE DATA-1) are firmly seated in panel CH A RX.</div>
+            </div>
+          </div>
+          <div class="dme-checklist-row">
+            <div class="dme-checklist-bullet">4</div>
+            <div class="dme-checklist-body">
+              <div class="dme-checklist-item-title">Collins DME-900 Breakout Box 56-1189-22</div>
+              <div class="dme-checklist-item-expected">Expected: SUPPRESSOR CLOSED, Thumbwheels 001</div>
+              <div class="dme-checklist-item-action">Verify SUPPRESSOR toggle is CLOSED. Verify 100-pin ATE connector latch is fully locked.</div>
+            </div>
+          </div>
+          <div class="dme-checklist-row">
+            <div class="dme-checklist-bullet">5</div>
+            <div class="dme-checklist-body">
+              <div class="dme-checklist-item-title">IFR ATC-1400A RF Simulator</div>
+              <div class="dme-checklist-item-expected">Expected: Channel 0001 TAC X (134.40 MHz), RANGE 50.00 NM, RF Level -86 dBm</div>
+              <div class="dme-checklist-item-action">Ensure ATC-1400A is set to Channel 1X / 134.40 MHz, RANGE 50.00 NM, and RF coax is connected to DME-900 ANTENNA port.</div>
+            </div>
+          </div>
+          <div class="dme-checklist-row">
+            <div class="dme-checklist-bullet">6</div>
+            <div class="dme-checklist-body">
+              <div class="dme-checklist-item-title">28VDC Power Supply</div>
+              <div class="dme-checklist-item-expected">Expected: +28.0 VDC Active</div>
+              <div class="dme-checklist-item-action">Ensure 28VDC power supply feeding DFIU T1203 and DME-900 is turned ON and delivering steady 28.0 VDC.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+    r.appendChild(p);
+
+    // Event listeners
+    p.querySelector("#btn-dme-diag-back").onclick = () => {
+      stopDmeDiagTimer();
+      navTo("dme_config");
+    };
+
+    p.querySelector("#btn-freq-134").onclick = () => {
+      dmeDiagState.freqMhz = 134.40;
+      renderDmeDiagnostic(r, s);
+    };
+
+    p.querySelector("#btn-freq-108").onclick = () => {
+      dmeDiagState.freqMhz = 108.00;
+      renderDmeDiagnostic(r, s);
+    };
+
+    p.querySelector("#btn-freq-custom").onclick = () => {
+      showDmeKeypadModal({
+        title: "SET DME FREQ (MHz)",
+        value: dmeDiagState.freqMhz.toFixed(2),
+        type: "numeric",
+        hint: "Enter frequency in MHz (e.g. 134.40 or 108.00)",
+        onApply: (v) => {
+          const num = parseFloat(v);
+          if (Number.isFinite(num) && num >= 100.0 && num <= 140.0) {
+            dmeDiagState.freqMhz = Number(num.toFixed(2));
+            renderDmeDiagnostic(r, s);
+          }
+        },
+      });
+    };
+
+    p.querySelector("#btn-bus-a").onclick = () => {
+      dmeDiagState.bus = "A";
+      renderDmeDiagnostic(r, s);
+    };
+
+    p.querySelector("#btn-bus-b").onclick = () => {
+      dmeDiagState.bus = "B";
+      renderDmeDiagnostic(r, s);
+    };
+
+    p.querySelector("#sel-diag-sim").onchange = (e) => {
+      dmeDiagState.simScenario = e.target.value;
+      triggerDmeHandshake(true);
+    };
+
+    p.querySelector("#btn-diag-transmit").onclick = () => {
+      triggerDmeHandshake(true);
+    };
+
+    p.querySelector("#btn-refresh-raw").onclick = () => {
+      pollDmeDiagnostic();
+    };
+
+    // Initial trigger & start 500ms polling
+    triggerDmeHandshake(true);
+    dmeDiagState.timer = setInterval(pollDmeDiagnostic, 500);
   }
 
   function renderMmrMenu(r, s) {

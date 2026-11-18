@@ -28,6 +28,11 @@ from ate_platform.device.arinc_encode import (
     parse_label,
     split_pad,
     ssm_name_from_bits,
+    dissect_arinc_word,
+    encode_dme_frequency_035,
+    decode_dme_frequency_035,
+    decode_dme_distance_202,
+    decode_dme_distance_201,
 )
 from ate_platform.device.arinc_profile import (
     CATALOG,
@@ -1186,6 +1191,360 @@ class ArincSession:
                 "bnr_dist": None if dist_stale else dist.data_text,
                 "ident": "" if not ident1 else f"{ident1.data_text}{(ident2.data_text if ident2 else '')}",
             }
+
+    def dme_handshake_diagnostic(
+        self,
+        bus: str = "A",
+        freq_mhz: float = 134.40,
+        rate_ms: int = 100,
+        arm_stimulus: bool = True,
+        sim_scenario: str = "auto",
+    ) -> dict[str, Any]:
+        """Perform real-time DME Live Handshake & Echo Diagnostic per ARINC 709.
+
+        Stimulus (TX to DME):
+        - 12.5 kbps Low Speed, Odd Parity
+        - Label 035 transmitted every 100 ms with:
+          * Frequency: freq_mhz (default 134.40 MHz or 108.00 MHz)
+          * Mode: DF1 (bits 13-11 = 001)
+          * SDI: 00 (All Call)
+          * DISP: 1 (bit 16, request BCD distance)
+          * SSM: 00 (Normal Operation)
+          * Parity: Odd Parity
+
+        Detection & Validation (RX from DME):
+        - Real-time listening with 2.5-second timeout window
+        - Label 035 (Echo Frequency): 'ECHO OK', 'ECHO ERR', 'NONE'
+        - Label 202 (BNR Distance): NM & SSM (NML, NCD, FT, FAIL)
+        - Label 201 (BCD Distance): NM & SSM
+        - Label 246/247 (Station Ident): character string
+
+        Status:
+        - 'DISCONNECTED / NO RX (Timeout 2.5s)'
+        - 'LOOPBACK / TX ECHO ONLY'
+        - 'DME CONNECTED & ACTIVE'
+        """
+        bus = channel_letter(bus)
+        now = time.time()
+        timeout_s = 2.5
+
+        # 1. Set 12.5 kbps Low Speed for standard ARINC 709 DME and ensure channel is enabled
+        self.set_bit_rate(high_speed=False, buses=[bus])
+        with self._lock:
+            self.channel[bus].tx_enable = True
+            self.channel[bus].rx_enable = True
+            self.rx[bus].enabled = True
+
+        # 2. Arm stimulus if requested
+        tx_word_raw = None
+        if arm_stimulus:
+            tx_word_raw = encode_dme_frequency_035(
+                freq_mhz=freq_mhz,
+                mode="DF1",
+                sdi=0,
+                disp=True,
+                ident=False,
+                nav="VOR",
+                ssm=0,
+                odd_parity=True,
+            )
+            self.configure_dme_slot(
+                0,
+                bus=bus,
+                freq_mhz=freq_mhz,
+                mode="DF1",
+                nav="VOR",
+                disp=True,
+                ident=False,
+                sdi=0,
+                ssm="NML",
+                pad="0100001",
+                parity="ODD",
+                rate_ms=rate_ms,
+                enabled=True,
+            )
+            if not self._running:
+                self.start()
+
+        # 3. Simulation engine response injection (when running in simulation mode or requested)
+        is_real = HAS_BTIDRIVER and not self._sim_override
+        if not is_real:
+            scenario = sim_scenario if sim_scenario != "auto" else "active"
+            self.clear_rx_hits(bus)
+            if scenario == "active":
+                # Ingest RX 035 (matching freq, DF1)
+                echo_raw = encode_dme_frequency_035(
+                    freq_mhz=freq_mhz,
+                    mode="DF1",
+                    sdi=0,
+                    disp=True,
+                    ident=False,
+                    nav="VOR",
+                    ssm=0,
+                    odd_parity=True,
+                )
+                self.ingest_rx_word(bus, echo_raw, ts=now)
+
+                # Ingest RX 202 (BNR Distance: 50.0 NM matching ATC-1400A bench setting!)
+                bnr_counts = int(round(50.0 / 0.0048828125))
+                w202 = (0o202) | ((bnr_counts & 0xFFFF) << 13) | (3 << 29)  # SSM=3 (NML)
+                w202 = bti429.FldPutParBit(w202) if bti429 else w202
+                self.ingest_rx_word(bus, w202, ts=now)
+
+                # Ingest RX 201 (BCD Distance: 50.0 NM)
+                w201 = bti429.FldPutLabel(0, 0o201) if bti429 else 0o201
+                if bti429:
+                    w201 = bti429.BCDPutMant(w201, 5000, 5, 0)
+                    w201 = bti429.BCDPutSSM(w201, 0)
+                    w201 = bti429.FldPutParBit(w201)
+                self.ingest_rx_word(bus, w201, ts=now)
+
+                # Ingest RX 246 (Station Ident: "PRES")
+                w246 = bti429.FldPutLabel(0, 0o246) if bti429 else 0o246
+                if bti429:
+                    w246 = bti429.FldPutData(w246, 0x14053)
+                    w246 = bti429.BCDPutSSM(w246, 0)
+                    w246 = bti429.FldPutParBit(w246)
+                self.ingest_rx_word(bus, w246, ts=now)
+            elif scenario == "loopback_only":
+                echo_raw = encode_dme_frequency_035(
+                    freq_mhz=freq_mhz,
+                    mode="DF1",
+                    sdi=0,
+                    disp=True,
+                    ident=False,
+                    nav="VOR",
+                    ssm=0,
+                    odd_parity=True,
+                )
+                self.ingest_rx_word(bus, echo_raw, ts=now)
+            elif scenario == "disconnected":
+                self.clear_rx_hits(bus)
+
+        # 4. Analyze RX bus state
+        with self._lock:
+            v = self.rx.get(bus)
+            last_hit = v.last if v else None
+            last_hit_ts = last_hit.ts if last_hit else None
+            last_seen_s = round(now - last_hit_ts, 2) if last_hit_ts else None
+            rx_hits = v.hits if v else 0
+
+            is_fresh = last_seen_s is not None and last_seen_s <= timeout_s
+
+            rx035 = v.by_label.get("035") if v else None
+            rx202 = v.by_label.get("202") if v else None
+            rx201 = v.by_label.get("201") if v else None
+            rx246 = v.by_label.get("246") if v else None
+            rx247 = v.by_label.get("247") if v else None
+
+            sl0 = self.tx[bus][0] if self.tx.get(bus) else None
+            if sl0 and sl0.enabled and sl0.raw:
+                tx_word_raw = sl0.raw
+
+        rx035_fresh = bool(rx035 and rx035.ts and (now - rx035.ts) <= timeout_s)
+        rx202_fresh = bool(rx202 and rx202.ts and (now - rx202.ts) <= timeout_s)
+        rx201_fresh = bool(rx201 and rx201.ts and (now - rx201.ts) <= timeout_s)
+        rx246_fresh = bool(rx246 and rx246.ts and (now - rx246.ts) <= timeout_s)
+        rx247_fresh = bool(rx247 and rx247.ts and (now - rx247.ts) <= timeout_s)
+
+        # 5. Connection State Classification
+        if not is_fresh or rx_hits == 0:
+            status = "DISCONNECTED / NO RX (Timeout 2.5s)"
+            status_code = "DISCONNECTED"
+            status_level = "danger"
+            detail = f"No ARINC 429 words received on RCVR_{bus} within {timeout_s}s timeout."
+        elif rx035_fresh and not (rx202_fresh or rx201_fresh):
+            status = "LOOPBACK / TX ECHO ONLY"
+            status_code = "LOOPBACK"
+            status_level = "warn"
+            detail = "Label 035 (Tuning Echo) received, but NO distance telemetry (Label 202/201) from Collins DME-900."
+        elif rx035_fresh and (rx202_fresh or rx201_fresh):
+            status = "DME CONNECTED & ACTIVE"
+            status_code = "CONNECTED_ACTIVE"
+            status_level = "ok"
+            detail = f"Collins DME-900 active on RCVR_{bus}. Distance & Echo verified."
+        else:
+            status = "DATA DETECTED / NO DME LOCK"
+            status_code = "UNKNOWN_STREAM"
+            status_level = "warn"
+            detail = f"Received {rx_hits} words on RCVR_{bus}, but standard ARINC 709 burst is incomplete."
+
+        # 6. Echo Frequency Validation (Label 035)
+        echo_status = "NONE"
+        rx_echo_freq = None
+        rx_echo_mode = None
+        rx_echo_age = None
+        if rx035_fresh:
+            rx_echo_age = round(now - rx035.ts, 2)
+            d035 = decode_dme_frequency_035(rx035.raw)
+            rx_echo_freq = d035.get("freq_mhz")
+            rx_echo_mode = d035.get("mode")
+            if rx_echo_freq is not None and abs(rx_echo_freq - freq_mhz) < 0.05:
+                echo_status = "ECHO OK"
+            else:
+                echo_status = "ECHO ERR"
+
+        # 7. BNR Distance (Label 202)
+        bnr_dist_nm = None
+        bnr_dist_text = "--.- NM"
+        bnr_ssm = "NONE"
+        bnr_age = None
+        if rx202_fresh:
+            bnr_age = round(now - rx202.ts, 2)
+            d202 = decode_dme_distance_202(rx202.raw)
+            bnr_dist_nm = d202["dist_nm"]
+            bnr_dist_text = d202["dist_text"]
+            bnr_ssm = d202["ssm_name"]
+
+        # 8. BCD Distance (Label 201)
+        bcd_dist_nm = None
+        bcd_dist_text = "----"
+        bcd_ssm = "NONE"
+        bcd_age = None
+        if rx201_fresh:
+            bcd_age = round(now - rx201.ts, 2)
+            d201 = decode_dme_distance_201(rx201.raw)
+            bcd_dist_nm = d201["dist_nm"]
+            bcd_dist_text = d201["dist_text"]
+            bcd_ssm = d201["ssm_name"]
+
+        # 9. Ground Station Ident (Label 246 / 247)
+        ident_text = "----"
+        ident_age = None
+        if rx246_fresh:
+            ident_age = round(now - rx246.ts, 2)
+            id1 = rx246.data_text or ""
+            id2 = rx247.data_text if (rx247_fresh and rx247.data_text) else ""
+            ident_text = f"{id1}{id2}".strip() or "PRES"
+
+        # 10. Raw 32-bit Word Protocol Inspector
+        words_list: list[dict[str, Any]] = []
+        has_parity_error = False
+
+        if tx_word_raw is not None:
+            dis_tx = dissect_arinc_word(tx_word_raw)
+            dis_tx["name"] = f"TX 035 (DME FREQ {freq_mhz:.2f} MHz)"
+            dis_tx["direction"] = "TX"
+            words_list.append(dis_tx)
+
+        if rx035_fresh:
+            dis_rx035 = dissect_arinc_word(rx035.raw)
+            dis_rx035["name"] = f"RX 035 (ECHO {rx_echo_freq or ''} MHz {rx_echo_mode or ''})"
+            dis_rx035["direction"] = "RX"
+            dis_rx035["age_s"] = rx_echo_age
+            if not dis_rx035["parity_odd"]:
+                has_parity_error = True
+            words_list.append(dis_rx035)
+
+        if rx202_fresh:
+            dis_rx202 = dissect_arinc_word(rx202.raw)
+            dis_rx202["name"] = f"RX 202 (BNR DIST {bnr_dist_text} [{bnr_ssm}])"
+            dis_rx202["direction"] = "RX"
+            dis_rx202["age_s"] = bnr_age
+            if not dis_rx202["parity_odd"]:
+                has_parity_error = True
+            words_list.append(dis_rx202)
+
+        if rx201_fresh:
+            dis_rx201 = dissect_arinc_word(rx201.raw)
+            dis_rx201["name"] = f"RX 201 (BCD DIST {bcd_dist_text} [{bcd_ssm}])"
+            dis_rx201["direction"] = "RX"
+            dis_rx201["age_s"] = bcd_age
+            if not dis_rx201["parity_odd"]:
+                has_parity_error = True
+            words_list.append(dis_rx201)
+
+        if rx246_fresh:
+            dis_rx246 = dissect_arinc_word(rx246.raw)
+            dis_rx246["name"] = f"RX 246 (IDENT {ident_text})"
+            dis_rx246["direction"] = "RX"
+            dis_rx246["age_s"] = ident_age
+            if not dis_rx246["parity_odd"]:
+                has_parity_error = True
+            words_list.append(dis_rx246)
+
+        # Troubleshooting checklist recommendations tailored to the bench photos
+        checklist = [
+            {
+                "item": "DFIU T1203 Rear OPERATION Switch",
+                "expected": "MANUAL",
+                "action": "Ensure toggle switch at rear panel of Kustom Electronics T1203 is set to MANUAL (not REMOTE).",
+            },
+            {
+                "item": "ARINC 429 Wiring (Panel TX to DFIU)",
+                "expected": f"CH {bus} TX -> DME A-FREQ FUNCT SELECT-A",
+                "action": "Verify POS (HI), NEG (LO), and GND lines firmly seated in DFIU ARINC 429 INPUTS.",
+            },
+            {
+                "item": "ARINC 429 Wiring (DFIU to Panel RX)",
+                "expected": f"DME A-DISTANCE DATA-1 -> CH {bus} RX",
+                "action": "Verify POS (HI), NEG (LO), and GND lines firmly seated in DFIU ARINC 429 OUTPUTS.",
+            },
+            {
+                "item": "Breakout Box 56-1189-22 Controls",
+                "expected": "SUPPRESSOR CLOSED, Thumbwheels 001",
+                "action": "Verify SUPPRESSOR toggle is CLOSED and ATE 100-pin locking connector is firmly engaged.",
+            },
+            {
+                "item": "IFR ATC-1400A RF Simulator",
+                "expected": "0001 TAC X (134.40 MHz), RF Level -86 dBm, Reply Eff > 50%",
+                "action": "Set ATC-1400A to Channel 1X / 134.40 MHz, RANGE 50.00 NM, and verify RF coax connected to DME antenna port.",
+            },
+            {
+                "item": "28VDC Power Supply",
+                "expected": "28.0 VDC (+ and - terminals energized)",
+                "action": "Ensure DFIU T1203 and Collins DME-900 28VDC power supply is switched ON.",
+            },
+        ]
+
+        wiring_warning = None
+        if has_parity_error:
+            wiring_warning = (
+                "⚠️ PARITY ERROR DETECTED: ARINC 429 POS (HI) and NEG (LO) wires may be inverted "
+                "on the terminal block, or baud rate is unsynchronized (12.5 kbps vs 100 kbps)."
+            )
+
+        return {
+            "status": status,
+            "status_code": status_code,
+            "status_level": status_level,
+            "detail": detail,
+            "bus": bus,
+            "freq_mhz": freq_mhz,
+            "rate_ms": rate_ms,
+            "timeout_s": timeout_s,
+            "last_seen_s": last_seen_s,
+            "rx_hits": rx_hits,
+            "is_real_hardware": is_real,
+            "simulation": not is_real,
+            "echo": {
+                "status": echo_status,
+                "freq_mhz": rx_echo_freq,
+                "mode": rx_echo_mode,
+                "last_seen_s": rx_echo_age,
+            },
+            "bnr_distance": {
+                "dist_nm": bnr_dist_nm,
+                "dist_text": bnr_dist_text,
+                "ssm": bnr_ssm,
+                "last_seen_s": bnr_age,
+            },
+            "bcd_distance": {
+                "dist_nm": bcd_dist_nm,
+                "dist_text": bcd_dist_text,
+                "ssm": bcd_ssm,
+                "last_seen_s": bcd_age,
+            },
+            "ident": {
+                "ident_text": ident_text,
+                "last_seen_s": ident_age,
+            },
+            "words": words_list,
+            "has_parity_error": has_parity_error,
+            "wiring_warning": wiring_warning,
+            "checklist": checklist,
+            "timestamp": time.strftime("%H:%M:%S", time.localtime(now)),
+        }
 
     def set_simulation_override(self, enabled: bool) -> dict[str, Any]:
         with self._lock:
