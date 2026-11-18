@@ -49,6 +49,17 @@ from ate_platform.device.arinc_profile import (
 from ate_platform.device.label_dict import decode_received, format_display, library_catalog, lookup_label
 from ate_platform.paths import REPO_ROOT
 
+try:
+    from btidriver import bticard, bti429, DriverError
+    HAS_BTIDRIVER = bool(bticard is not None and bti429 is not None)
+except ImportError:
+    HAS_BTIDRIVER = False
+    bticard = None
+    bti429 = None
+
+    class DriverError(Exception):
+        pass
+
 logger = logging.getLogger("ate_platform.arinc.session")
 
 BUSES = ("A", "B", "C", "D")
@@ -221,7 +232,12 @@ class ArincSession:
         core: int = 0,
         netlist_path: str | Path | None = None,
         high_speed: bool = False,
+        simulation: bool | None = None,
     ) -> None:
+        if simulation is None:
+            self.simulation_mode = not HAS_BTIDRIVER
+        else:
+            self.simulation_mode = bool(simulation) or (not HAS_BTIDRIVER)
         self.cardnum = card
         self.corenum = core
         self.netlist_path = netlist_path or (
@@ -1386,17 +1402,53 @@ class ArincSession:
             }
 
     def start(self) -> None:
-        require_btidriver()
+        if not self.simulation_mode:
+            require_btidriver()
         with self._lock:
             if self._running:
                 return
             self._stop.clear()
             self._error = None
+            target = self._sim_worker if self.simulation_mode else self._worker
             self._thread = threading.Thread(
-                target=self._worker, name="arinc-session", daemon=True
+                target=target, name="arinc-session", daemon=True
             )
             self._running = True
             self._thread.start()
+
+    def _sim_worker(self) -> None:
+        with self._lock:
+            self._channels_meta = {
+                "phys_tx": {b: idx for idx, b in enumerate(BUSES)},
+                "phys_rx": {b: idx for idx, b in enumerate(BUSES)},
+                "log_tx": {b: idx for idx, b in enumerate(BUSES)},
+                "log_rx": {b: idx for idx, b in enumerate(BUSES)},
+            }
+        last_tx_time: dict[tuple[str, int], float] = {}
+        while not self._stop.is_set():
+            now = time.monotonic()
+            with self._lock:
+                bus_cfgs = {b: self.channel[b] for b in BUSES}
+                tx_slots = {b: list(self.tx[b]) for b in BUSES}
+
+            for bus in BUSES:
+                cfg = bus_cfgs[bus]
+                if not cfg.tx_enable:
+                    continue
+                for slot in tx_slots[bus]:
+                    if not (slot.enabled and slot.raw):
+                        continue
+                    rate_s = max(0.01, float(slot.rate_ms) / 1000.0)
+                    key = (bus, slot.index)
+                    prev = last_tx_time.get(key, 0.0)
+                    if now - prev >= rate_s:
+                        last_tx_time[key] = now
+                        if cfg.rx_enable:
+                            try:
+                                self.ingest_rx_word(bus, slot.raw)
+                            except Exception:
+                                pass
+            time.sleep(0.02)
 
     def stop(self) -> None:
         self._stop.set()

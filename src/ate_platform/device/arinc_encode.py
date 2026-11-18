@@ -8,7 +8,61 @@ from typing import Any
 try:
     from btidriver import bti429
 except ImportError:  # pragma: no cover
-    bti429 = None  # type: ignore
+    class _SimBti429:
+        @staticmethod
+        def FldPutLabel(w, lab): return (int(w) & ~0xFF) | (int(lab) & 0xFF)
+        @staticmethod
+        def FldGetLabel(w): return int(w) & 0xFF
+        @staticmethod
+        def FldPutSDI(w, sdi): return (int(w) & ~(0x3 << 8)) | ((int(sdi) & 0x3) << 8)
+        @staticmethod
+        def FldGetSDI(w): return (int(w) >> 8) & 0x3
+        @staticmethod
+        def FldPutData(w, data): return (int(w) & ~(0x7FFFF << 10)) | ((int(data) & 0x7FFFF) << 10)
+        @staticmethod
+        def FldGetData(w): return (int(w) >> 10) & 0x7FFFF
+        @staticmethod
+        def BCDPutSSM(w, ssm): return (int(w) & ~(0x3 << 29)) | ((int(ssm) & 0x3) << 29)
+        @staticmethod
+        def BCDGetSSM(w): return (int(w) >> 29) & 0x3
+        @staticmethod
+        def BNRPutSSM(w, ssm): return (int(w) & ~(0x3 << 29)) | ((int(ssm) & 0x3) << 29)
+        @staticmethod
+        def BNRGetSSM(w): return (int(w) >> 29) & 0x3
+        @staticmethod
+        def FldPutParBit(w):
+            w = int(w) & 0x7FFFFFFF
+            cnt = bin(w).count('1')
+            par = 0 if (cnt % 2 == 1) else 1
+            return w | (par << 31)
+        @staticmethod
+        def BCDPutMant(w, val, digits, dec=0):
+            v = int(val); bcd = 0; shift = 0
+            while v > 0 and shift < (digits * 4):
+                bcd |= ((v % 10) << shift); v //= 10; shift += 4
+            return (int(w) & ~(0x7FFFF << 10)) | ((bcd & 0x7FFFF) << 10)
+        @staticmethod
+        def BCDGetMant(w, digits, dec=0):
+            bcd = (int(w) >> 10) & 0x7FFFF; val = 0; mult = 1
+            for _ in range(digits): val += (bcd & 0xF) * mult; mult *= 10; bcd >>= 4
+            return val
+        @staticmethod
+        def BNRPutValue(val, w, bits, lsb):
+            counts = int(round(float(val) / float(lsb or 1.0)))
+            mask = (1 << bits) - 1
+            c = (counts + (1 << bits)) & mask if counts < 0 else (counts & mask)
+            shift = 29 - bits
+            return (int(w) & ~(mask << shift)) | (c << shift)
+        @staticmethod
+        def BNRGetValue(w, bits, lsb):
+            shift = 29 - bits
+            mask = (1 << bits) - 1
+            raw = (int(w) >> shift) & mask
+            if raw & (1 << (bits - 1)):
+                raw -= (1 << bits)
+            return float(raw) * float(lsb or 1.0)
+
+    bti429 = _SimBti429()
 
 
 SSM_NAMES = {

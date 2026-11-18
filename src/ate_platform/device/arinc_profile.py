@@ -25,7 +25,7 @@ from ate_platform.device.arinc_encode import (
 try:
     from btidriver import bti429
 except ImportError:  # pragma: no cover
-    bti429 = None  # type: ignore
+    from ate_platform.device.arinc_encode import bti429
 
 PROFILES_DIR = REPO_ROOT / "profiles" / "arinc"
 _ID_RE = re.compile(r"^[a-z][a-z0-9_]{0,47}$")

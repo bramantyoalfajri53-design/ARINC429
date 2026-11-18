@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { LRU_DEFINITIONS } from "../config/lruRegistry";
+import { LruMultiChannelModeView } from "./LruMultiChannelModeView";
 import { LruSingleChannelModeView } from "./LruSingleChannelModeView";
 
 export type StandardSubScreen =
@@ -64,7 +65,11 @@ export function AvionicsLruContainer({ onBackToChannels }: AvionicsLruContainerP
               className={`retro-lru-btn ${selectedLruId === l.id ? "selected" : ""}`}
               onClick={() => {
                 setSelectedLruId(l.id);
-                setCurrentScreen("LRU_MODE_SELECT");
+                if (l.id === "DME") {
+                  setCurrentScreen("LRU_MODE_SELECT");
+                } else {
+                  setCurrentScreen("SINGLE_CHANNEL_MODE");
+                }
               }}
             >
               <span className="lru-code">{l.code}</span>
@@ -149,61 +154,26 @@ export function AvionicsLruContainer({ onBackToChannels }: AvionicsLruContainerP
     );
   }
 
-  // 5. MULTI CHANNEL MODE (Figure 18 / Photo 4) - Structure preserved
+  // 5. MULTI CHANNEL MODE (Figure 18 / Photo 4) - Full Dynamic Multi-Frequency Control
   if (currentScreen === "MULTI_CHANNEL_MODE") {
     return (
-      <div className="retro-dynapro-container">
-        <div className="retro-screen-title">
-          {selectedLru.id} MULTI CHANNEL TEST MODE (ARINC 604 / T1200B)
-        </div>
-        <div className="retro-notice-card">
-          <p>
-            <strong>MULTI CHANNEL MODE</strong> is configured for {selectedLru.standard_lru}.
-          </p>
-          <p style={{ fontSize: "12px", color: "#a3e635" }}>
-            Transmits multiple directed frequency channels (DF1 to DF5 &amp; SCAN) according to Aeroflex Manual Section 4.B (Figure 18).
-          </p>
-        </div>
-
-        <div className="retro-bottom-nav">
-          <button
-            type="button"
-            className="retro-fkey nav-btn"
-            onClick={() => setCurrentScreen("LRU_MODE_SELECT")}
-          >
-            &larr; BACK TO MODE SELECTION
-          </button>
-        </div>
-      </div>
+      <LruMultiChannelModeView
+        lru={selectedLru}
+        onBackToConfig={() => setCurrentScreen("LRU_MODE_SELECT")}
+        onBackToMenu={() => setCurrentScreen("AVIONICS_LRU_MENU")}
+      />
     );
   }
 
-  // 6. STANDARD NAV CONFIGURATION (Standard LRU Format)
+  // 6. STANDARD NAV CONFIGURATION (Figure 15 / Standard 10-Slot Nav Configuration)
   if (currentScreen === "STANDARD_NAV_CONFIG") {
     return (
-      <div className="retro-dynapro-container">
-        <div className="retro-screen-title">
-          {selectedLru.id} STANDARD NAV CONFIGURATION (Figure 15)
-        </div>
-        <div className="retro-notice-card">
-          <p>
-            <strong>STANDARD NAV CONFIGURATION</strong> for {selectedLru.standard_lru}.
-          </p>
-          <p style={{ fontSize: "12px", color: "#a3e635" }}>
-            Standard 10-slot ARINC 429 navigation tuning and receiver trap configuration.
-          </p>
-        </div>
-
-        <div className="retro-bottom-nav">
-          <button
-            type="button"
-            className="retro-fkey nav-btn"
-            onClick={() => setCurrentScreen("LRU_MODE_SELECT")}
-          >
-            &larr; BACK TO MODE SELECTION
-          </button>
-        </div>
-      </div>
+      <LruSingleChannelModeView
+        lru={selectedLru}
+        isStandardNav={true}
+        onBackToConfig={() => setCurrentScreen("LRU_MODE_SELECT")}
+        onBackToMenu={() => setCurrentScreen("AVIONICS_LRU_MENU")}
+      />
     );
   }
 

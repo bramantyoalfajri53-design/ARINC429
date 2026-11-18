@@ -94,3 +94,14 @@ def test_plans_listed(client: TestClient):
     assert r.status_code == 200
     names = {p["name"] for p in r.json()["plans"]}
     assert "dummy.yaml" in names
+
+
+def test_arinc_start_stop_in_simulation(client: TestClient):
+    _login(client)
+    r = client.post("/api/arinc/start")
+    assert r.status_code == 200, r.text
+    snap = r.json()
+    assert snap.get("running") is True
+    r2 = client.post("/api/arinc/stop")
+    assert r2.status_code == 200
+    assert r2.json().get("running") is False

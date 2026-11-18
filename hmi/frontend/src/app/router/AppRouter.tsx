@@ -37,6 +37,7 @@ export function AppRouter() {
       return <LabelLibraryPage />;
     case "/power":
       return <PowerConsolePage />;
+    case "/arinc":
     case "/":
     default:
       return <ModeSelectPage onSelectMode={(path) => navigateToRoute(path)} />;

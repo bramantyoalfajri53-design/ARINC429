@@ -823,61 +823,57 @@ button:disabled {
 }
 
 /* ========================================================================= */
-/* RETRO DYNAPRO 1780A INFOTOUCH CRT STYLES (STANDARD AVIONICS LRU MODE)     */
+/* MODERN AVIONICS LRU STANDARD MODE STYLING (AEROFLEX T1200 / CMM)          */
 /* ========================================================================= */
 
 .retro-dynapro-container {
-  background: #06120b;
-  border: 4px solid #143522;
-  border-radius: 12px;
-  box-shadow: inset 0 0 40px rgba(0, 255, 128, 0.08), 0 8px 24px rgba(0, 0, 0, 0.4);
-  padding: 24px;
-  font-family: "JetBrains Mono", monospace, monospace;
-  color: #10b981;
+  background: var(--surface, #ffffff);
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: 10px;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
+  padding: 20px 24px;
+  font-family: inherit;
+  color: var(--text, #0f172a);
   display: flex;
   flex-direction: column;
   gap: 18px;
   position: relative;
-  overflow: hidden;
 }
 
 .retro-screen-title {
   text-align: center;
   font-size: 16px;
-  font-weight: 800;
-  letter-spacing: 1.5px;
-  color: #34d399;
-  text-shadow: 0 0 8px rgba(52, 211, 153, 0.5);
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: var(--text, #0f172a);
   margin-bottom: 8px;
 }
 
-/* CRT Screen Split Buttons (Select Menu - Figure 6) */
+/* Screen Split Buttons (Select Menu) */
 .retro-menu-split-grid {
   display: flex;
   justify-content: center;
-  gap: 36px;
-  padding: 40px 20px;
+  gap: 24px;
+  padding: 30px 20px;
 }
 
 .retro-crt-big-btn {
-  background: #022c19;
-  color: #34d399;
-  border: 2px solid #059669;
+  background: var(--surface, #ffffff);
+  color: var(--text, #0f172a);
+  border: 1px solid var(--border, #cbd5e1);
   border-radius: 8px;
-  padding: 30px 40px;
-  font-size: 16px;
-  font-weight: 800;
-  letter-spacing: 1px;
+  padding: 24px 36px;
+  font-size: 15px;
+  font-weight: 700;
   cursor: pointer;
   line-height: 1.4;
-  box-shadow: 0 0 16px rgba(16, 185, 129, 0.25);
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
   transition: all 0.15s ease-in-out;
 }
 
 .retro-crt-big-btn:hover {
-  background: #059669;
-  color: #041f11;
-  box-shadow: 0 0 24px rgba(52, 211, 153, 0.6);
+  border-color: var(--accent, #0d9488);
+  box-shadow: 0 10px 25px rgba(15, 23, 42, 0.08);
   transform: translateY(-2px);
 }
 
@@ -890,8 +886,8 @@ button:disabled {
 }
 
 .retro-lru-btn {
-  background: #052115;
-  border: 1px solid #047857;
+  background: var(--surface, #ffffff);
+  border: 1px solid var(--border, #e2e8f0);
   border-radius: 8px;
   padding: 14px 18px;
   text-align: left;
@@ -899,67 +895,67 @@ button:disabled {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  color: #a7f3d0;
+  color: var(--text, #0f172a);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
   transition: all 0.15s;
 }
 
 .retro-lru-btn:hover,
 .retro-lru-btn.selected {
-  background: #064e3b;
-  border-color: #34d399;
-  box-shadow: 0 0 12px rgba(52, 211, 153, 0.3);
+  border-color: var(--accent, #0d9488);
+  box-shadow: 0 4px 12px rgba(13, 148, 136, 0.15);
+  background: var(--accent-soft, #f0fdfa);
 }
 
 .retro-lru-btn .lru-code {
   font-size: 11px;
-  color: #6ee7b7;
-  font-weight: bold;
+  color: var(--accent, #0d9488);
+  font-weight: 700;
+  font-family: var(--mono, monospace);
 }
 
 .retro-lru-btn .lru-id-badge {
   font-size: 16px;
   font-weight: 800;
-  color: #34d399;
+  color: var(--text, #0f172a);
 }
 
 .retro-lru-btn .lru-full-name {
   font-size: 12px;
-  color: #9ca3af;
+  color: var(--muted, #64748b);
 }
 
-/* Mode Choice Grid (Figure 16 / Photo 2) */
+/* Mode Choice Grid */
 .retro-mode-choice-grid {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 24px;
-  padding: 30px 10px;
+  gap: 20px;
+  padding: 24px 10px;
 }
 
 .retro-mode-top-row {
   display: flex;
-  gap: 28px;
+  gap: 20px;
 }
 
 .retro-crt-mode-btn {
-  background: #042918;
-  color: #34d399;
-  border: 2px solid #059669;
-  border-radius: 6px;
-  padding: 22px 32px;
+  background: var(--surface, #ffffff);
+  color: var(--text, #0f172a);
+  border: 1px solid var(--border, #cbd5e1);
+  border-radius: 8px;
+  padding: 20px 28px;
   font-size: 14px;
-  font-weight: 800;
+  font-weight: 700;
   line-height: 1.4;
-  letter-spacing: 0.5px;
   cursor: pointer;
-  box-shadow: 0 0 12px rgba(16, 185, 129, 0.2);
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
   transition: all 0.15s;
 }
 
 .retro-crt-mode-btn:hover {
-  background: #10b981;
-  color: #022112;
-  box-shadow: 0 0 20px rgba(52, 211, 153, 0.5);
+  border-color: var(--accent, #0d9488);
+  box-shadow: 0 8px 20px rgba(13, 148, 136, 0.15);
   transform: translateY(-2px);
 }
 
@@ -972,7 +968,7 @@ button:disabled {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 16px;
-  border-bottom: 1px solid #134e4a;
+  border-bottom: 1px solid var(--border, #e2e8f0);
   padding-bottom: 12px;
 }
 
@@ -983,10 +979,11 @@ button:disabled {
 }
 
 .retro-header-title {
-  font-size: 12px;
-  letter-spacing: 1px;
-  color: #6ee7b7;
-  font-weight: 700;
+  font-size: 11px;
+  letter-spacing: 0.5px;
+  color: var(--muted, #64748b);
+  font-weight: 600;
+  text-transform: uppercase;
 }
 
 .retro-header-sub {
@@ -994,131 +991,129 @@ button:disabled {
   justify-content: space-between;
   align-items: center;
   font-size: 14px;
-  font-weight: 800;
-  color: #34d399;
+  font-weight: 700;
+  color: var(--text, #0f172a);
 }
 
 .retro-slot-badge {
   font-size: 11px;
-  border: 1px solid #059669;
+  border: 1px solid var(--border, #cbd5e1);
   padding: 2px 8px;
   border-radius: 4px;
-  background: #022314;
+  background: var(--surface-2, #f8fafb);
+  color: var(--text, #0f172a);
 }
 
 .retro-slot-num {
   font-size: 13px;
-  color: #00ffff;
-  font-weight: bold;
+  color: var(--accent, #0d9488);
+  font-weight: 700;
 }
 
 /* CRT Data Table */
 .retro-table-container {
   overflow-x: auto;
-  border: 1px solid #064e3b;
+  border: 1px solid var(--border, #e2e8f0);
   border-radius: 6px;
-  background: #031c12;
+  background: var(--surface, #ffffff);
 }
 
 .retro-crt-table {
   width: 100%;
   border-collapse: collapse;
   font-size: 13px;
-  letter-spacing: 0.5px;
 }
 
 .retro-crt-table th {
-  background: #052e1f;
-  color: #6ee7b7;
+  background: var(--surface-2, #f8fafb);
+  color: var(--muted, #64748b);
   padding: 8px 10px;
   text-align: left;
-  border-bottom: 1px solid #047857;
-  font-size: 11.5px;
-  font-weight: 700;
+  border-bottom: 1px solid var(--border, #e2e8f0);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
 }
 
 .retro-crt-table td {
   padding: 8px 10px;
-  border-bottom: 1px solid #0f3928;
-  color: #34d399;
+  border-bottom: 1px solid var(--border, #e2e8f0);
+  color: var(--text, #0f172a);
 }
 
 .retro-tx-row {
-  background: rgba(16, 185, 129, 0.08);
+  background: var(--accent-soft, #f0fdfa);
 }
 
 .retro-rx-row {
-  background: rgba(6, 78, 59, 0.25);
-  color: #a7f3d0;
+  background: transparent;
+  color: var(--text, #0f172a);
 }
 
 .retro-chan-pill {
-  font-weight: bold;
+  font-weight: 700;
   padding: 2px 6px;
   border-radius: 4px;
   font-size: 11px;
 }
 
 .retro-chan-pill.tx {
-  background: #044e3a;
-  color: #00ffff;
-  border: 1px solid #0d9488;
+  background: var(--accent, #0d9488);
+  color: #ffffff;
 }
 
 .retro-chan-pill.rx {
-  background: #064e3b;
-  color: #10b981;
-  border: 1px solid #059669;
+  background: var(--border, #cbd5e1);
+  color: var(--text, #0f172a);
 }
 
 .retro-num {
-  font-family: "JetBrains Mono", monospace;
-  font-weight: bold;
+  font-family: var(--mono, monospace);
+  font-weight: 600;
 }
 
 .retro-editable.cursor-active {
-  box-shadow: inset 0 0 8px rgba(0, 255, 255, 0.4);
-  background: rgba(0, 255, 255, 0.08);
-  outline: 1px dashed #00ffff;
+  box-shadow: inset 0 0 4px rgba(13, 148, 136, 0.4);
+  background: rgba(13, 148, 136, 0.08);
+  outline: 1px dashed var(--accent, #0d9488);
 }
 
 .retro-table-input {
-  background: #021a10;
-  border: 1px solid #059669;
-  color: #00ffff;
-  font-family: inherit;
+  background: var(--surface, #ffffff);
+  border: 1px solid var(--border, #cbd5e1);
+  color: var(--text, #0f172a);
+  font-family: var(--mono, monospace);
   font-size: 12.5px;
-  font-weight: bold;
+  font-weight: 600;
   padding: 3px 6px;
   border-radius: 4px;
 }
 
 .retro-table-select {
-  background: #021a10;
-  border: 1px solid #059669;
-  color: #00ffff;
+  background: var(--surface, #ffffff);
+  border: 1px solid var(--border, #cbd5e1);
+  color: var(--text, #0f172a);
   font-family: inherit;
   font-size: 12px;
-  font-weight: bold;
+  font-weight: 600;
   padding: 3px 6px;
   border-radius: 4px;
 }
 
 .retro-clickable-cell {
   cursor: pointer;
-  color: #00ffff;
+  color: var(--accent, #0d9488);
   text-decoration: underline;
   padding: 2px 6px;
-  background: #032d1d;
   border-radius: 3px;
 }
 
-/* DME Telemetry Bar */
+/* Telemetry Bar */
 .retro-dme-telemetry {
   display: flex;
-  gap: 18px;
-  background: #042416;
-  border: 1px solid #059669;
+  gap: 14px;
+  background: var(--surface-2, #f8fafb);
+  border: 1px solid var(--border, #e2e8f0);
   border-radius: 6px;
   padding: 8px 16px;
   flex-wrap: wrap;
@@ -1131,13 +1126,14 @@ button:disabled {
 }
 
 .retro-telem-item .telem-label {
-  color: #6ee7b7;
+  color: var(--muted, #64748b);
   font-weight: 600;
 }
 
 .retro-telem-item .telem-val {
-  color: #00ffff;
-  font-weight: 800;
+  color: var(--accent, #0d9488);
+  font-weight: 700;
+  font-family: var(--mono, monospace);
 }
 
 /* Alert Boxes */
@@ -1149,70 +1145,69 @@ button:disabled {
 }
 
 .retro-alert-box.success {
-  background: #064e3b;
-  border: 1px solid #34d399;
-  color: #a7f3d0;
+  background: #f0fdf4;
+  border: 1px solid #86efac;
+  color: #166534;
 }
 
 .retro-alert-box.error {
-  background: #450a0a;
-  border: 1px solid #f87171;
-  color: #fecaca;
+  background: #fef2f2;
+  border: 1px solid #fca5a5;
+  color: #991b1b;
 }
 
-/* Retro Dynapro F-Key Bar (Bottom) */
+/* F-Key Bar (Bottom) */
 .retro-fkey-bar {
   display: flex;
   gap: 8px;
   overflow-x: auto;
-  padding-top: 8px;
-  border-top: 1px solid #134e4a;
+  padding-top: 10px;
+  border-top: 1px solid var(--border, #e2e8f0);
 }
 
 .retro-fkey {
-  background: #042918;
-  border: 1px solid #059669;
-  color: #34d399;
+  background: var(--surface, #ffffff);
+  border: 1px solid var(--border, #cbd5e1);
+  color: var(--text, #0f172a);
   border-radius: 4px;
   padding: 8px 12px;
   font-family: inherit;
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
   text-align: center;
   line-height: 1.25;
   cursor: pointer;
   min-width: 82px;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
   transition: all 0.15s;
 }
 
 .retro-fkey:hover {
-  background: #059669;
-  color: #031d10;
-  box-shadow: 0 0 10px rgba(52, 211, 153, 0.5);
+  border-color: var(--accent, #0d9488);
+  color: var(--accent, #0d9488);
 }
 
 .retro-fkey.active {
-  background: #10b981;
-  color: #022013;
+  background: var(--accent, #0d9488);
+  color: #ffffff;
+  border-color: var(--accent, #0d9488);
 }
 
 .retro-fkey.transmit-btn {
-  background: #065f46;
-  border-color: #34d399;
+  background: var(--accent, #0d9488);
+  border-color: var(--accent, #0d9488);
   color: #ffffff;
-  font-weight: 800;
+  font-weight: 700;
 }
 
 .retro-fkey.transmit-btn:hover {
-  background: #10b981;
-  color: #000000;
+  background: #0f766e;
 }
 
 .retro-fkey.nav-btn {
-  background: #134e4a;
-  border-color: #0d9488;
-  color: #a7f3d0;
+  background: var(--surface-2, #f8fafb);
+  border-color: var(--border, #cbd5e1);
+  color: var(--text-2, #475569);
 }
 
 .retro-bottom-nav {
@@ -1222,8 +1217,8 @@ button:disabled {
 }
 
 .retro-notice-card {
-  background: #042918;
-  border: 1px dashed #059669;
+  background: var(--surface-2, #f8fafb);
+  border: 1px dashed var(--border, #cbd5e1);
   border-radius: 6px;
   padding: 24px;
   line-height: 1.6;

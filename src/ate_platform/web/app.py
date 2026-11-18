@@ -221,7 +221,7 @@ def create_app(
         server = DeviceServer(station, simulation=simulation)
         server.start()
         runs = RunManager(server, out_dir=out_dir)
-        arinc = ArincSession()
+        arinc = ArincSession(simulation=simulation)
         state["server"] = server
         state["runs"] = runs
         state["arinc"] = arinc
@@ -701,18 +701,13 @@ def create_app(
     try:
         from features.cfds.router import router as cfds_router
         from features.cmc.router import router as cmc_router
-        from features.standard.router import router as standard_router
         app.include_router(cfds_router)
         app.include_router(cmc_router)
-        app.include_router(standard_router)
     except Exception as exc:
-        logger.warning("Could not mount cfds/cmc/standard routers: %s", exc)
+        logger.warning("Could not mount cfds/cmc routers: %s", exc)
 
     if WEB_ROOT.is_dir():
         app.mount("/static", StaticFiles(directory=str(WEB_ROOT)), name="static")
-        dist_dir = WEB_ROOT / "dist"
-        if dist_dir.is_dir():
-            app.mount("/dist", StaticFiles(directory=str(dist_dir), html=True), name="dist")
 
     @app.get("/")
     def index():
@@ -727,6 +722,26 @@ def create_app(
         if not path.is_file():
             raise HTTPException(status_code=404, detail="ARINC page missing")
         return FileResponse(path)
+
+    @app.get("/standard")
+    def standard_page():
+        path = WEB_ROOT / "arinc.html"
+        if not path.is_file():
+            raise HTTPException(status_code=404, detail="ARINC page missing")
+        return FileResponse(path)
+
+    @app.get("/api/arinc429/status")
+    def api_arinc429_status(_sid: str = Depends(require_session)):
+        return get_arinc().snapshot()
+
+    @app.post("/api/arinc429/mode")
+    def api_arinc429_mode(body: ArincModeBody, _sid: str = Depends(require_session)):
+        arinc = get_arinc()
+        try:
+            arinc.set_mode(body.mode)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return arinc.snapshot()
 
     return app
 

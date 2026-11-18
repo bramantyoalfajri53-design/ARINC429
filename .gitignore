@@ -52,3 +52,5 @@ htmlcov/
 # Temporary & backup
 *.ate
 *.bak
+ate-platform/
+scratch/

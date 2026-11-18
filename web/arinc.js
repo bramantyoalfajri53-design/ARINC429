@@ -40,6 +40,1336 @@ const CFDS_LRU_TABLE = [
   { code: "755", name: "MMR",   description: "Multi Mode Receiver" },
 ];
 
+
+try {
+  const _storedCfdsLrus = localStorage.getItem("cfds_custom_lrus");
+  if (_storedCfdsLrus) {
+    const _parsed = JSON.parse(_storedCfdsLrus);
+    _parsed.forEach(c => {
+      if (!CFDS_LRU_TABLE.some(x => x.code === c.code && x.name === c.name)) {
+        CFDS_LRU_TABLE.push(c);
+      }
+    });
+  }
+} catch (_e) {}
+
+// ====================================================================
+// CFDS LRU BITE MENU DICTIONARIES (AEROFLEX T1200B / ABD0018 / ABD0048)
+// Authentic menu trees for each LRU based on Aeroflex Manual Section 4.F & CMM
+// ====================================================================
+
+const CFDS_LRU_MENUS = {
+  "709": {
+    title: "DME-0",
+    screens: {
+      "main": {
+        title: "DME-0",
+        items: [
+          { key: "1", letter: "A", label: "<LAST LEG REPORT", action: "screen:last_leg" },
+          { key: "2", letter: "B", label: "<PREVIOUS LEGS REPORT", action: "screen:prev_legs" },
+          { key: "3", letter: "C", label: "<LRU IDENTIFICATION", action: "screen:lru_id" },
+          { key: "4", letter: "D", label: "<TEST", action: "screen:test" },
+          { key: "5", letter: "E", label: "<SHOP DATA", action: "screen:shop_data" },
+          { key: "6", letter: "F", label: "<RETURN", action: "exit" },
+        ]
+      },
+      "last_leg": {
+        title: "DME-0",
+        subtitle: "last leg report\\ndate: jan01",
+        lines: [
+          { type: "header", text: "    gmt     ata" },
+          { type: "info", text: "    dme-0 transceiver (2)" },
+          { type: "data", text: "3   0000    34-51-33" },
+        ],
+        items: [
+          { key: "6", letter: "F", label: "<RETURN", action: "screen:main" }
+        ]
+      },
+      "prev_legs": {
+        title: "DME-0",
+        subtitle: "previous legs report\\n--------------------",
+        lines: [
+          { type: "header", text: "  leg date    gmt   ata" },
+          { type: "info", text: "  dme-0 transceiver" },
+          { type: "data", text: "-01 jan00   0000  34-51-33" },
+          { type: "info", text: "  dme-0 transceiver (2)" },
+          { type: "data", text: "-02 jan00   0000  34-51-33" },
+        ],
+        items: [
+          { key: "6", letter: "F", label: "<RETURN", action: "screen:main" }
+        ]
+      },
+      "lru_id": {
+        title: "DME-0",
+        subtitle: "lru identification",
+        lines: [
+          { type: "info", text: "transceiver p/n:" },
+          { type: "data", text: "  822-0329-001" },
+          { type: "info", text: "serial number: 1204" },
+          { type: "info", text: "modification dot: 1-4" },
+          { type: "info", text: "equipment: COL-DME-709" }
+        ],
+        items: [
+          { key: "6", letter: "F", label: "<RETURN", action: "screen:main" }
+        ]
+      },
+      "test": {
+        title: "DME-0",
+        subtitle: "test",
+        lines: [
+          { type: "info", text: "dme-0 no data from" },
+          { type: "info", text: "        control source" },
+          { type: "data", text: "ata:  34-51-23" },
+          { type: "status", text: "BITE TEST COMPLETE: SYSTEM NORMAL" }
+        ],
+        items: [
+          { key: "6", letter: "F", label: "<RETURN", action: "screen:main" }
+        ]
+      },
+      "shop_data": {
+        title: "DME-0",
+        subtitle: "shop data",
+        items: [
+          { key: "2", letter: "B", label: "<ENTER SHOP VISIT", action: "screen:shop_visit" },
+          { key: "3", letter: "C", label: "<DISPLAY FAULT DATA", action: "screen:fault_data" },
+          { key: "4", letter: "D", label: "<SOFTWARE ID", action: "screen:software_id" },
+          { key: "5", letter: "E", label: "<SPECIAL FUNCTIONS", action: "screen:special_func" },
+          { key: "6", letter: "F", label: "<RETURN", action: "screen:main" },
+        ]
+      },
+      "shop_visit": {
+        title: "DME-0",
+        subtitle: "enter shop visit",
+        lines: [
+          { type: "info", text: "SHOP CODE: N12345" },
+          { type: "info", text: "DATE: 11/18/26" },
+          { type: "info", text: "STATION: GMF-AEROASIA" },
+          { type: "data", text: "VISIT RECORD STORED OK" }
+        ],
+        items: [
+          { key: "6", letter: "F", label: "<RETURN", action: "screen:shop_data" }
+        ]
+      },
+      "fault_data": {
+        title: "DME-0",
+        subtitle: "display fault data",
+        lines: [
+          { type: "info", text: "NO FAULT DATA RECORDED" },
+          { type: "data", text: "NVM LOG COUNTER: 000" },
+          { type: "info", text: "INTERNAL BUS CHECKSUM: PASS" }
+        ],
+        items: [
+          { key: "6", letter: "F", label: "<RETURN", action: "screen:shop_data" }
+        ]
+      },
+      "software_id": {
+        title: "DME-0",
+        subtitle: "software id",
+        lines: [
+          { type: "info", text: "software p/n:" },
+          { type: "data", text: "  COL-DME-709-01" },
+          { type: "info", text: "crc checksum: 0x9B42" },
+          { type: "info", text: "release: REV 02.1" }
+        ],
+        items: [
+          { key: "6", letter: "F", label: "<RETURN", action: "screen:shop_data" }
+        ]
+      },
+      "special_func": {
+        title: "DME-0",
+        subtitle: "special functions",
+        items: [
+          { key: "2", letter: "B", label: "<SPECIAL FUNC-AGC", action: "screen:special_func_agc" },
+          { key: "3", letter: "C", label: "<BUS IN TEST", action: "screen:bus_in_test" },
+          { key: "4", letter: "D", label: "<FIXED XMIT RATE OFF/ON", action: "toggle:xmit_rate" },
+          { key: "5", letter: "E", label: "<MENU 2", action: "screen:menu_2" },
+          { key: "6", letter: "F", label: "<RETURN", action: "screen:shop_data" },
+        ]
+      },
+      "special_func_agc": {
+        title: "DME-0",
+        subtitle: "special  func-agc",
+        items: [
+          { key: "1", letter: "A", label: "", blank: true },
+          { key: "2", letter: "B", label: "current value agc {AGC_VAL}", isText: true },
+          { key: "3", letter: "C", label: "<FULL  GAIN   FF", action: "set_agc:FF" },
+          { key: "4", letter: "D", label: "<MID   GAIN   A0", action: "set_agc:A0" },
+          { key: "5", letter: "E", label: "<MIN   GAIN   00", action: "set_agc:00" },
+          { key: "6", letter: "F", label: "<RETURN", action: "screen:special_func" },
+        ]
+      },
+      "menu_2": {
+        title: "DME-0",
+        subtitle: "menu 2",
+        items: [
+          { key: "1", letter: "A", label: "", blank: true },
+          { key: "2", letter: "B", label: "<FORMAT NON-VOLATILE", action: "screen:non_vol_result" },
+          { key: "3", letter: "C", label: "<ERASE  NON-VOLATILE", action: "screen:non_vol_result" },
+          { key: "4", letter: "D", label: "", blank: true },
+          { key: "5", letter: "E", label: "", blank: true },
+          { key: "6", letter: "F", label: "<RETURN", action: "screen:special_func" },
+        ]
+      },
+      "non_vol_result": {
+        title: "DME-0",
+        subtitle: "",
+        items: [
+          { key: "1", letter: "A", label: "", blank: true },
+          { key: "2", letter: "B", label: "0000 bytes bad", isText: true },
+          { key: "3", letter: "C", label: "", blank: true },
+          { key: "4", letter: "D", label: "", blank: true },
+          { key: "5", letter: "E", label: "", blank: true },
+          { key: "6", letter: "F", label: "<RETURN", action: "screen:menu_2" },
+        ]
+      },
+      "bus_in_test": {
+        title: "DME-0",
+        subtitle: "bus in test",
+        lines: [
+          { type: "info", text: "ARINC 429 BUS RX-A: 12.5 KBPS OK" },
+          { type: "info", text: "ARINC 429 BUS RX-B: STANDBY" },
+          { type: "data", text: "PARITY ERRORS: 000" },
+          { type: "status", text: "BUS TIMING: 100% COMPLIANT" }
+        ],
+        items: [
+          { key: "6", letter: "F", label: "<RETURN", action: "screen:special_func" }
+        ]
+      }
+    }
+  },
+  "707": {
+    title: "LRA-1",
+    screens: {
+      "main": {
+        title: "LRA-1",
+        items: [
+          { key: "1", letter: "A", label: "<LAST LEG REPORT", action: "screen:last_leg" },
+          { key: "2", letter: "B", label: "<PREVIOUS LEGS REPORT", action: "screen:prev_legs" },
+          { key: "3", letter: "C", label: "<LRU IDENTIFICATION", action: "screen:lru_id" },
+          { key: "4", letter: "D", label: "<RADIO ALTITUDE TEST", action: "screen:test" },
+          { key: "5", letter: "E", label: "<PIN MATRIX & DISCRETES", action: "screen:discretes" },
+          { key: "6", letter: "F", label: "<RETURN", action: "exit" },
+        ]
+      },
+      "last_leg": {
+        title: "LRA-1",
+        subtitle: "last leg report\\nata 34-42",
+        lines: [
+          { type: "header", text: "  time   fault description       ata" },
+          { type: "info", text: "  0842   radio altitude lockout  34-42-01" },
+          { type: "data", text: "  status: class 2 maintenance alert" },
+        ],
+        items: [{ key: "6", letter: "F", label: "<RETURN", action: "screen:main" }]
+      },
+      "prev_legs": {
+        title: "LRA-1",
+        subtitle: "previous legs report",
+        lines: [
+          { type: "header", text: "  leg date    gmt   ata      fault" },
+          { type: "data", text: "-01 16nov   1420  34-42-01 squitter fail" },
+          { type: "data", text: "-04 14nov   0915  34-42-05 flag warning" }
+        ],
+        items: [{ key: "6", letter: "F", label: "<RETURN", action: "screen:main" }]
+      },
+      "lru_id": {
+        title: "LRA-1",
+        subtitle: "lru identification",
+        lines: [
+          { type: "info", text: "transceiver p/n: 822-0402-002" },
+          { type: "info", text: "serial number:   94021" },
+          { type: "info", text: "software id:     LRA-707-04" },
+          { type: "data", text: "ata chapter:     34-42-00" }
+        ],
+        items: [{ key: "6", letter: "F", label: "<RETURN", action: "screen:main" }]
+      },
+      "test": {
+        title: "LRA-1",
+        subtitle: "radio altitude test",
+        lines: [
+          { type: "info", text: "simulated altitude ramp:" },
+          { type: "data", text: "  0 ft -> 100 ft -> 2500 ft" },
+          { type: "info", text: "decision height discrete: TRIGGERED" },
+          { type: "status", text: "SYSTEM STATUS: BITE TEST PASSED" }
+        ],
+        items: [{ key: "6", letter: "F", label: "<RETURN", action: "screen:main" }]
+      },
+      "discretes": {
+        title: "LRA-1",
+        subtitle: "pin matrix & discretes",
+        lines: [
+          { type: "info", text: "gear down discrete:  GROUND (ACTIVE)" },
+          { type: "info", text: "program pin p1-14:   OPEN" },
+          { type: "info", text: "aid bit status:      ENABLE (0)" },
+          { type: "data", text: "abd0048 pin status:  ALL NORMAL" }
+        ],
+        items: [{ key: "6", letter: "F", label: "<RETURN", action: "screen:main" }]
+      }
+    }
+  },
+  "708": {
+    title: "WXR-1",
+    screens: {
+      "main": {
+        title: "WXR-1",
+        items: [
+          { key: "1", letter: "A", label: "<LAST LEG REPORT", action: "screen:last_leg" },
+          { key: "2", letter: "B", label: "<PREVIOUS LEGS REPORT", action: "screen:prev_legs" },
+          { key: "3", letter: "C", label: "<LRU IDENTIFICATION", action: "screen:lru_id" },
+          { key: "4", letter: "D", label: "<RADAR TEST & CAL", action: "screen:test" },
+          { key: "5", letter: "E", label: "<WINDSHEAR / TURB TEST", action: "screen:windshear" },
+          { key: "6", letter: "F", label: "<RETURN", action: "exit" },
+        ]
+      },
+      "last_leg": {
+        title: "WXR-1",
+        subtitle: "last leg report\\nata 34-41",
+        lines: [
+          { type: "header", text: "  time   fault description       ata" },
+          { type: "info", text: "  0210   antenna scan rate low   34-41-11" },
+          { type: "data", text: "  transmitter power: 125W OK" }
+        ],
+        items: [{ key: "6", letter: "F", label: "<RETURN", action: "screen:main" }]
+      },
+      "prev_legs": {
+        title: "WXR-1",
+        subtitle: "previous legs report",
+        lines: [
+          { type: "header", text: "  leg date    gmt   ata      fault" },
+          { type: "data", text: "-02 15nov   1804  34-41-11 pedestal warn" }
+        ],
+        items: [{ key: "6", letter: "F", label: "<RETURN", action: "screen:main" }]
+      },
+      "lru_id": {
+        title: "WXR-1",
+        subtitle: "lru identification",
+        lines: [
+          { type: "info", text: "r/t unit p/n:    622-5132-001" },
+          { type: "info", text: "antenna p/n:     622-5134-001" },
+          { type: "data", text: "software ver:    OPS-WXR-3.1" }
+        ],
+        items: [{ key: "6", letter: "F", label: "<RETURN", action: "screen:main" }]
+      },
+      "test": {
+        title: "WXR-1",
+        subtitle: "radar test & calibration",
+        lines: [
+          { type: "info", text: "receiver gain cal:   0.0 dB NOMINAL" },
+          { type: "info", text: "afc loop lock:       ACQUIRED" },
+          { type: "data", text: "pedestal pitch/roll: STABILIZED" },
+          { type: "status", text: "RADAR BITE STATUS: PASSED" }
+        ],
+        items: [{ key: "6", letter: "F", label: "<RETURN", action: "screen:main" }]
+      },
+      "windshear": {
+        title: "WXR-1",
+        subtitle: "windshear / turb test",
+        lines: [
+          { type: "info", text: "predictive windshear: ARMED" },
+          { type: "info", text: "turbulence detection: ACTIVE" },
+          { type: "data", text: "simulated microburst: DETECTED" },
+          { type: "status", text: "ALERT DISCRETE: PASSED" }
+        ],
+        items: [{ key: "6", letter: "F", label: "<RETURN", action: "screen:main" }]
+      }
+    }
+  },
+  "710": {
+    title: "ILS-1",
+    screens: {
+      "main": {
+        title: "ILS-1",
+        items: [
+          { key: "1", letter: "A", label: "<LAST LEG REPORT", action: "screen:last_leg" },
+          { key: "2", letter: "B", label: "<PREVIOUS LEGS REPORT", action: "screen:prev_legs" },
+          { key: "3", letter: "C", label: "<LRU IDENTIFICATION", action: "screen:lru_id" },
+          { key: "4", letter: "D", label: "<LOC / GS CENTER TEST", action: "screen:test" },
+          { key: "5", letter: "E", label: "<MARKER BEACON TEST", action: "screen:marker" },
+          { key: "6", letter: "F", label: "<RETURN", action: "exit" },
+        ]
+      },
+      "last_leg": {
+        title: "ILS-1",
+        subtitle: "last leg report\\nata 34-36",
+        lines: [
+          { type: "header", text: "  time   fault description       ata" },
+          { type: "info", text: "  0000   NO FAULT LOGGED         34-36-00" }
+        ],
+        items: [{ key: "6", letter: "F", label: "<RETURN", action: "screen:main" }]
+      },
+      "prev_legs": {
+        title: "ILS-1",
+        subtitle: "previous legs report",
+        lines: [{ type: "info", text: "NO INTERMITTENT FAULTS IN NVM" }],
+        items: [{ key: "6", letter: "F", label: "<RETURN", action: "screen:main" }]
+      },
+      "lru_id": {
+        title: "ILS-1",
+        subtitle: "lru identification",
+        lines: [
+          { type: "info", text: "receiver p/n:    822-0299-001" },
+          { type: "data", text: "collins ils-710 / cat iii" }
+        ],
+        items: [{ key: "6", letter: "F", label: "<RETURN", action: "screen:main" }]
+      },
+      "test": {
+        title: "ILS-1",
+        subtitle: "loc / gs center test",
+        lines: [
+          { type: "info", text: "localizer centering:   0.000 DDM (0 uA)" },
+          { type: "info", text: "glide slope centering: 0.000 DDM (0 uA)" },
+          { type: "status", text: "ILS FLAGS: OUT OF VIEW (VALID)" }
+        ],
+        items: [{ key: "6", letter: "F", label: "<RETURN", action: "screen:main" }]
+      },
+      "marker": {
+        title: "ILS-1",
+        subtitle: "marker beacon test",
+        lines: [
+          { type: "info", text: "outer marker (400 Hz):   PASS" },
+          { type: "info", text: "middle marker (1300 Hz): PASS" },
+          { type: "info", text: "inner marker (3000 Hz):  PASS" }
+        ],
+        items: [{ key: "6", letter: "F", label: "<RETURN", action: "screen:main" }]
+      }
+    }
+  },
+  "711": {
+    title: "VOR-1",
+    screens: {
+      "main": {
+        title: "VOR-1",
+        items: [
+          { key: "1", letter: "A", label: "<LAST LEG REPORT", action: "screen:last_leg" },
+          { key: "2", letter: "B", label: "<PREVIOUS LEGS REPORT", action: "screen:prev_legs" },
+          { key: "3", letter: "C", label: "<LRU IDENTIFICATION", action: "screen:lru_id" },
+          { key: "4", letter: "D", label: "<BEARING ACCURACY TEST", action: "screen:test" },
+          { key: "5", letter: "E", label: "<AUDIO & IDENT TEST", action: "screen:audio" },
+          { key: "6", letter: "F", label: "<RETURN", action: "exit" },
+        ]
+      },
+      "last_leg": {
+        title: "VOR-1",
+        subtitle: "last leg report",
+        lines: [{ type: "info", text: "LAST LEG NORMAL / NO FAULT" }],
+        items: [{ key: "6", letter: "F", label: "<RETURN", action: "screen:main" }]
+      },
+      "prev_legs": {
+        title: "VOR-1",
+        subtitle: "previous legs report",
+        lines: [{ type: "info", text: "BEARING RESOLVER LOG: 0 ERRORS" }],
+        items: [{ key: "6", letter: "F", label: "<RETURN", action: "screen:main" }]
+      },
+      "lru_id": {
+        title: "VOR-1",
+        subtitle: "lru identification",
+        lines: [
+          { type: "info", text: "unit p/n: 822-0300-001" },
+          { type: "data", text: "collins vor-711 receiver" }
+        ],
+        items: [{ key: "6", letter: "F", label: "<RETURN", action: "screen:main" }]
+      },
+      "test": {
+        title: "VOR-1",
+        subtitle: "bearing accuracy test",
+        lines: [
+          { type: "info", text: "000 DEG REF PHASE: ERROR < 0.2 DEG" },
+          { type: "info", text: "090 DEG REF PHASE: ERROR < 0.2 DEG" },
+          { type: "info", text: "180 DEG REF PHASE: ERROR < 0.2 DEG" },
+          { type: "status", text: "BEARING TRACKING: 100% OK" }
+        ],
+        items: [{ key: "6", letter: "F", label: "<RETURN", action: "screen:main" }]
+      },
+      "audio": {
+        title: "VOR-1",
+        subtitle: "audio & ident test",
+        lines: [
+          { type: "info", text: "1020 Hz MORSE IDENT: DECODED OK" },
+          { type: "data", text: "STATION IDENT: SEA" }
+        ],
+        items: [{ key: "6", letter: "F", label: "<RETURN", action: "screen:main" }]
+      }
+    }
+  },
+  "712": {
+    title: "ADF-1",
+    screens: {
+      "main": {
+        title: "ADF-1",
+        items: [
+          { key: "1", letter: "A", label: "<LAST LEG REPORT", action: "screen:last_leg" },
+          { key: "2", letter: "B", label: "<PREVIOUS LEGS REPORT", action: "screen:prev_legs" },
+          { key: "3", letter: "C", label: "<LRU IDENTIFICATION", action: "screen:lru_id" },
+          { key: "4", letter: "D", label: "<SENSE / LOOP ANT TEST", action: "screen:test" },
+          { key: "5", letter: "E", label: "<BFO & AUDIO TEST", action: "screen:audio" },
+          { key: "6", letter: "F", label: "<RETURN", action: "exit" },
+        ]
+      },
+      "last_leg": {
+        title: "ADF-1",
+        subtitle: "last leg report",
+        lines: [{ type: "info", text: "SENSE ANTENNA ATTENUATION: NORMAL" }],
+        items: [{ key: "6", letter: "F", label: "<RETURN", action: "screen:main" }]
+      },
+      "prev_legs": {
+        title: "ADF-1",
+        subtitle: "previous legs report",
+        lines: [{ type: "info", text: "QUADRATURE ERROR LOG: CLEAR" }],
+        items: [{ key: "6", letter: "F", label: "<RETURN", action: "screen:main" }]
+      },
+      "lru_id": {
+        title: "ADF-1",
+        subtitle: "lru identification",
+        lines: [
+          { type: "info", text: "unit p/n: 822-0301-002" },
+          { type: "data", text: "collins adf-712 receiver" }
+        ],
+        items: [{ key: "6", letter: "F", label: "<RETURN", action: "screen:main" }]
+      },
+      "test": {
+        title: "ADF-1",
+        subtitle: "sense / loop antenna test",
+        lines: [
+          { type: "info", text: "LOOP DRIVE MOTOR: SLEW 45 DEG/S OK" },
+          { type: "status", text: "BEARING RESOLVER: LOCKED" }
+        ],
+        items: [{ key: "6", letter: "F", label: "<RETURN", action: "screen:main" }]
+      },
+      "audio": {
+        title: "ADF-1",
+        subtitle: "bfo & audio test",
+        lines: [
+          { type: "info", text: "BFO INJECTION (1000 Hz): PASS" },
+          { type: "data", text: "AUDIO OUTPUT LEVEL: 100 mW @ 600 OHM" }
+        ],
+        items: [{ key: "6", letter: "F", label: "<RETURN", action: "screen:main" }]
+      }
+    }
+  },
+  "716": {
+    title: "VHF-1",
+    screens: {
+      "main": {
+        title: "VHF-1",
+        items: [
+          { key: "1", letter: "A", label: "<LAST LEG REPORT", action: "screen:last_leg" },
+          { key: "2", letter: "B", label: "<PREVIOUS LEGS REPORT", action: "screen:prev_legs" },
+          { key: "3", letter: "C", label: "<LRU IDENTIFICATION", action: "screen:lru_id" },
+          { key: "4", letter: "D", label: "<TRANSMITTER TEST", action: "screen:test" },
+          { key: "5", letter: "E", label: "<SQUELCH SENSITIVITY TEST", action: "screen:squelch" },
+          { key: "6", letter: "F", label: "<RETURN", action: "exit" },
+        ]
+      },
+      "last_leg": {
+        title: "VHF-1",
+        subtitle: "last leg report\\nata 23-11",
+        lines: [{ type: "info", text: "TX CYCLES: 142 | TIMEOUT FAULTS: 0" }],
+        items: [{ key: "6", letter: "F", label: "<RETURN", action: "screen:main" }]
+      },
+      "prev_legs": {
+        title: "VHF-1",
+        subtitle: "previous legs report",
+        lines: [{ type: "info", text: "MAX PA TEMPERATURE: 52 C (NORMAL)" }],
+        items: [{ key: "6", letter: "F", label: "<RETURN", action: "screen:main" }]
+      },
+      "lru_id": {
+        title: "VHF-1",
+        subtitle: "lru identification",
+        lines: [
+          { type: "info", text: "transceiver p/n: 822-1047-001" },
+          { type: "data", text: "collins vhf-900 series" }
+        ],
+        items: [{ key: "6", letter: "F", label: "<RETURN", action: "screen:main" }]
+      },
+      "test": {
+        title: "VHF-1",
+        subtitle: "transmitter test",
+        lines: [
+          { type: "info", text: "CARRIER POWER: 27.5 WATTS (SPEC: >25W)" },
+          { type: "info", text: "MODULATION DEPTH: 85% AM" },
+          { type: "status", text: "SIDE-TONE MONITOR: VERIFIED" }
+        ],
+        items: [{ key: "6", letter: "F", label: "<RETURN", action: "screen:main" }]
+      },
+      "squelch": {
+        title: "VHF-1",
+        subtitle: "squelch sensitivity test",
+        lines: [
+          { type: "info", text: "SQUELCH OPEN: 1.8 uV @ 10 dB SINAD" },
+          { type: "data", text: "CARRIER OVERRIDE: ACTIVE" }
+        ],
+        items: [{ key: "6", letter: "F", label: "<RETURN", action: "screen:main" }]
+      }
+    }
+  },
+  "718": {
+    title: "ATC-1",
+    screens: {
+      "main": {
+        title: "ATC-1",
+        items: [
+          { key: "1", letter: "A", label: "<LAST LEG REPORT", action: "screen:last_leg" },
+          { key: "2", letter: "B", label: "<PREVIOUS LEGS REPORT", action: "screen:prev_legs" },
+          { key: "3", letter: "C", label: "<LRU IDENTIFICATION", action: "screen:lru_id" },
+          { key: "4", letter: "D", label: "<MODE S INTERROGATION TEST", action: "screen:test" },
+          { key: "5", letter: "E", label: "<ALTITUDE ENCODE TEST", action: "screen:alt_encode" },
+          { key: "6", letter: "F", label: "<RETURN", action: "exit" },
+        ]
+      },
+      "last_leg": {
+        title: "ATC-1",
+        subtitle: "last leg report\\nata 34-52",
+        lines: [{ type: "info", text: "TOP ANTENNA: OK | BOTTOM ANTENNA: OK" }],
+        items: [{ key: "6", letter: "F", label: "<RETURN", action: "screen:main" }]
+      },
+      "prev_legs": {
+        title: "ATC-1",
+        subtitle: "previous legs report",
+        lines: [{ type: "info", text: "REPLY RATE LIMITER: 0 EVENTS" }],
+        items: [{ key: "6", letter: "F", label: "<RETURN", action: "screen:main" }]
+      },
+      "lru_id": {
+        title: "ATC-1",
+        subtitle: "lru identification",
+        lines: [
+          { type: "info", text: "transponder p/n: 822-1338-001" },
+          { type: "data", text: "icao address: 7C142B" }
+        ],
+        items: [{ key: "6", letter: "F", label: "<RETURN", action: "screen:main" }]
+      },
+      "test": {
+        title: "ATC-1",
+        subtitle: "mode s interrogation test",
+        lines: [
+          { type: "info", text: "UF0 SHORT SURVEILLANCE: REPLY DF0 OK" },
+          { type: "info", text: "UF4 ALTITUDE REQUEST:   REPLY DF4 OK" },
+          { type: "status", text: "TRANSPONDER BITE: PASSED" }
+        ],
+        items: [{ key: "6", letter: "F", label: "<RETURN", action: "screen:main" }]
+      },
+      "alt_encode": {
+        title: "ATC-1",
+        subtitle: "altitude encode test",
+        lines: [
+          { type: "info", text: "ARINC LABEL 203: 32,000 FT" },
+          { type: "data", text: "GILHAM CODE ENCODE: VALID" }
+        ],
+        items: [{ key: "6", letter: "F", label: "<RETURN", action: "screen:main" }]
+      }
+    }
+  },
+  "719": {
+    title: "HF-1",
+    screens: {
+      "main": {
+        title: "HF-1",
+        items: [
+          { key: "1", letter: "A", label: "<LAST LEG REPORT", action: "screen:last_leg" },
+          { key: "2", letter: "B", label: "<PREVIOUS LEGS REPORT", action: "screen:prev_legs" },
+          { key: "3", letter: "C", label: "<LRU IDENTIFICATION", action: "screen:lru_id" },
+          { key: "4", letter: "D", label: "<COUPLER TUNE TEST", action: "screen:test" },
+          { key: "5", letter: "E", label: "<POWER AMPLIFIER TEST", action: "screen:power" },
+          { key: "6", letter: "F", label: "<RETURN", action: "exit" },
+        ]
+      },
+      "last_leg": {
+        title: "HF-1",
+        subtitle: "last leg report\\nata 23-12",
+        lines: [{ type: "info", text: "COUPLER TUNE FAULTS: 0" }],
+        items: [{ key: "6", letter: "F", label: "<RETURN", action: "screen:main" }]
+      },
+      "prev_legs": {
+        title: "HF-1",
+        subtitle: "previous legs report",
+        lines: [{ type: "info", text: "TUNE TIME AVERAGE: 3.2 SECONDS" }],
+        items: [{ key: "6", letter: "F", label: "<RETURN", action: "screen:main" }]
+      },
+      "lru_id": {
+        title: "HF-1",
+        subtitle: "lru identification",
+        lines: [
+          { type: "info", text: "transceiver p/n: 822-0330-001" },
+          { type: "data", text: "coupler p/n:     822-0331-001" }
+        ],
+        items: [{ key: "6", letter: "F", label: "<RETURN", action: "screen:main" }]
+      },
+      "test": {
+        title: "HF-1",
+        subtitle: "coupler tune test",
+        lines: [
+          { type: "info", text: "TUNE FREQUENCY: 13.3300 MHz" },
+          { type: "info", text: "VSWR AFTER TUNE: 1.15:1" },
+          { type: "status", text: "COUPLER DISCRETE: TUNED (PASS)" }
+        ],
+        items: [{ key: "6", letter: "F", label: "<RETURN", action: "screen:main" }]
+      },
+      "power": {
+        title: "HF-1",
+        subtitle: "power amplifier test",
+        lines: [
+          { type: "info", text: "100W PEP SSB TRANSMITTER: 104 WATTS" },
+          { type: "data", text: "HARMONIC SUPPRESSION: -55 dBc" }
+        ],
+        items: [{ key: "6", letter: "F", label: "<RETURN", action: "screen:main" }]
+      }
+    }
+  },
+  "723": {
+    title: "GPWS-1",
+    screens: {
+      "main": {
+        title: "GPWS-1",
+        items: [
+          { key: "1", letter: "A", label: "<LAST LEG REPORT", action: "screen:last_leg" },
+          { key: "2", letter: "B", label: "<PREVIOUS LEGS REPORT", action: "screen:prev_legs" },
+          { key: "3", letter: "C", label: "<LRU IDENTIFICATION", action: "screen:lru_id" },
+          { key: "4", letter: "D", label: "<VOICE WARNING TEST", action: "screen:test" },
+          { key: "5", letter: "E", label: "<TERRAIN DATABASE STATUS", action: "screen:terrain" },
+          { key: "6", letter: "F", label: "<RETURN", action: "exit" },
+        ]
+      },
+      "last_leg": {
+        title: "GPWS-1",
+        subtitle: "last leg report\\nata 34-48",
+        lines: [{ type: "info", text: "ALERT RECORD: NO WARNINGS LOGGED" }],
+        items: [{ key: "6", letter: "F", label: "<RETURN", action: "screen:main" }]
+      },
+      "prev_legs": {
+        title: "GPWS-1",
+        subtitle: "previous legs report",
+        lines: [{ type: "info", text: "MODE 1-7 EXCURSIONS: ZERO" }],
+        items: [{ key: "6", letter: "F", label: "<RETURN", action: "screen:main" }]
+      },
+      "lru_id": {
+        title: "GPWS-1",
+        subtitle: "lru identification",
+        lines: [
+          { type: "info", text: "computer p/n: 965-0976-003" },
+          { type: "data", text: "honeywell mk-v egpws" }
+        ],
+        items: [{ key: "6", letter: "F", label: "<RETURN", action: "screen:main" }]
+      },
+      "test": {
+        title: "GPWS-1",
+        subtitle: "voice warning test",
+        lines: [
+          { type: "info", text: "SPEECH SYNTHESIZER: 'PULL UP'" },
+          { type: "info", text: "SPEECH SYNTHESIZER: 'TERRAIN, TERRAIN'" },
+          { type: "status", text: "AUDIO AMPLIFIER: PASSED" }
+        ],
+        items: [{ key: "6", letter: "F", label: "<RETURN", action: "screen:main" }]
+      },
+      "terrain": {
+        title: "GPWS-1",
+        subtitle: "terrain database status",
+        lines: [
+          { type: "info", text: "DATABASE VERSION: TERA-REV-454" },
+          { type: "data", text: "INTEGRITY CHECKSUM: 0x4EF1 OK" }
+        ],
+        items: [{ key: "6", letter: "F", label: "<RETURN", action: "screen:main" }]
+      }
+    }
+  },
+  "724": {
+    title: "ACARS-1",
+    screens: {
+      "main": {
+        title: "ACARS-1",
+        items: [
+          { key: "1", letter: "A", label: "<LAST LEG REPORT", action: "screen:last_leg" },
+          { key: "2", letter: "B", label: "<PREVIOUS LEGS REPORT", action: "screen:prev_legs" },
+          { key: "3", letter: "C", label: "<LRU IDENTIFICATION", action: "screen:lru_id" },
+          { key: "4", letter: "D", label: "<VHF DATA LINK TEST", action: "screen:test" },
+          { key: "5", letter: "E", label: "<ROUTING CONFIGURATION", action: "screen:routing" },
+          { key: "6", letter: "F", label: "<RETURN", action: "exit" },
+        ]
+      },
+      "last_leg": {
+        title: "ACARS-1",
+        subtitle: "last leg report\\nata 23-24",
+        lines: [{ type: "info", text: "MESSAGES SENT: 48 | DOWNLINK TIMEOUTS: 0" }],
+        items: [{ key: "6", letter: "F", label: "<RETURN", action: "screen:main" }]
+      },
+      "prev_legs": {
+        title: "ACARS-1",
+        subtitle: "previous legs report",
+        lines: [{ type: "info", text: "NVM LOG COUNTER: 001" }],
+        items: [{ key: "6", letter: "F", label: "<RETURN", action: "screen:main" }]
+      },
+      "lru_id": {
+        title: "ACARS-1",
+        subtitle: "lru identification",
+        lines: [
+          { type: "info", text: "management unit p/n: 822-0850-001" },
+          { type: "data", text: "collins acars mu" }
+        ],
+        items: [{ key: "6", letter: "F", label: "<RETURN", action: "screen:main" }]
+      },
+      "test": {
+        title: "ACARS-1",
+        subtitle: "vhf data link test",
+        lines: [
+          { type: "info", text: "MSK MODEM (2400 BPS): PASS" },
+          { type: "status", text: "DSP PROTOCOL LOOPBACK: VERIFIED" }
+        ],
+        items: [{ key: "6", letter: "F", label: "<RETURN", action: "screen:main" }]
+      },
+      "routing": {
+        title: "ACARS-1",
+        subtitle: "routing configuration",
+        lines: [
+          { type: "info", text: "PRIMARY ROUTE: VHF-3 DATA" },
+          { type: "data", text: "SECONDARY ROUTE: SATCOM" }
+        ],
+        items: [{ key: "6", letter: "F", label: "<RETURN", action: "screen:main" }]
+      }
+    }
+  },
+  "727": {
+    title: "MLS-1",
+    screens: {
+      "main": {
+        title: "MLS-1",
+        items: [
+          { key: "1", letter: "A", label: "<LAST LEG REPORT", action: "screen:last_leg" },
+          { key: "2", letter: "B", label: "<PREVIOUS LEGS REPORT", action: "screen:prev_legs" },
+          { key: "3", letter: "C", label: "<LRU IDENTIFICATION", action: "screen:lru_id" },
+          { key: "4", letter: "D", label: "<AZIMUTH / ELEVATION TEST", action: "screen:test" },
+          { key: "5", letter: "E", label: "<DME/P INTERFACE TEST", action: "screen:dmep" },
+          { key: "6", letter: "F", label: "<RETURN", action: "exit" },
+        ]
+      },
+      "last_leg": {
+        title: "MLS-1",
+        subtitle: "last leg report",
+        lines: [{ type: "info", text: "NO SCANNING BEAM ACQUISITION ERRORS" }],
+        items: [{ key: "6", letter: "F", label: "<RETURN", action: "screen:main" }]
+      },
+      "prev_legs": {
+        title: "MLS-1",
+        subtitle: "previous legs report",
+        lines: [{ type: "info", text: "HISTORICAL CHANNEL TRACKING: NOMINAL" }],
+        items: [{ key: "6", letter: "F", label: "<RETURN", action: "screen:main" }]
+      },
+      "lru_id": {
+        title: "MLS-1",
+        subtitle: "lru identification",
+        lines: [
+          { type: "info", text: "receiver p/n: 066-50005-0101" },
+          { type: "data", text: "bendix mls-20a" }
+        ],
+        items: [{ key: "6", letter: "F", label: "<RETURN", action: "screen:main" }]
+      },
+      "test": {
+        title: "MLS-1",
+        subtitle: "azimuth / elevation test",
+        lines: [
+          { type: "info", text: "AZIMUTH DEVIATION:   0.00 DEG" },
+          { type: "info", text: "ELEVATION DEVIATION: 3.00 DEG GLIDEPATH" },
+          { type: "status", text: "TIME REFERENCE SCANNING BEAM: LOCKED" }
+        ],
+        items: [{ key: "6", letter: "F", label: "<RETURN", action: "screen:main" }]
+      },
+      "dmep": {
+        title: "MLS-1",
+        subtitle: "dme/p interface test",
+        lines: [
+          { type: "info", text: "PRECISION DME PULSE SPACING: 12 us" },
+          { type: "data", text: "RANGE ACCURACY: < 100 FT" }
+        ],
+        items: [{ key: "6", letter: "F", label: "<RETURN", action: "screen:main" }]
+      }
+    }
+  },
+  "735": {
+    title: "TCAS-1",
+    screens: {
+      "main": {
+        title: "TCAS-1",
+        items: [
+          { key: "1", letter: "A", label: "<LAST LEG REPORT", action: "screen:last_leg" },
+          { key: "2", letter: "B", label: "<PREVIOUS LEGS REPORT", action: "screen:prev_legs" },
+          { key: "3", letter: "C", label: "<LRU IDENTIFICATION", action: "screen:lru_id" },
+          { key: "4", letter: "D", label: "<SYNTHESIZED TRAFFIC TEST", action: "screen:test" },
+          { key: "5", letter: "E", label: "<ANTENNA BEARING CAL", action: "screen:antenna" },
+          { key: "6", letter: "F", label: "<RETURN", action: "exit" },
+        ]
+      },
+      "last_leg": {
+        title: "TCAS-1",
+        subtitle: "last leg report\\nata 34-43",
+        lines: [
+          { type: "header", text: "  time   encounter type          ata" },
+          { type: "info", text: "  1120   TRAFFIC ADVISORY (TA)   34-43-02" },
+          { type: "data", text: "  STATUS: RESOLUTION ADVISORY CLEAR" }
+        ],
+        items: [{ key: "6", letter: "F", label: "<RETURN", action: "screen:main" }]
+      },
+      "prev_legs": {
+        title: "TCAS-1",
+        subtitle: "previous legs report",
+        lines: [{ type: "info", text: "64 ENCOUNTERS STORED IN NVM" }],
+        items: [{ key: "6", letter: "F", label: "<RETURN", action: "screen:main" }]
+      },
+      "lru_id": {
+        title: "TCAS-1",
+        subtitle: "lru identification",
+        lines: [
+          { type: "info", text: "processor p/n: 066-50000-0202" },
+          { type: "data", text: "tpu-67a tcas ii / version 7.1" }
+        ],
+        items: [{ key: "6", letter: "F", label: "<RETURN", action: "screen:main" }]
+      },
+      "test": {
+        title: "TCAS-1",
+        subtitle: "synthesized traffic test",
+        lines: [
+          { type: "info", text: "SIMULATED TARGET: +1000 FT DESCENDING" },
+          { type: "info", text: "VOICE ALERT: 'CLIMB, CLIMB'" },
+          { type: "status", text: "TCAS II SYSTEM TEST OK" }
+        ],
+        items: [{ key: "6", letter: "F", label: "<RETURN", action: "screen:main" }]
+      },
+      "antenna": {
+        title: "TCAS-1",
+        subtitle: "antenna bearing calibration",
+        lines: [
+          { type: "info", text: "TOP 4-ELEMENT DIRECTIONAL ANT: 0.8 DEG" },
+          { type: "info", text: "BOTTOM OMNI/DIR ANTENNA:       PASS" },
+          { type: "data", text: "PHASE SHIFTER CALIBRATION: LOCKED" }
+        ],
+        items: [{ key: "6", letter: "F", label: "<RETURN", action: "screen:main" }]
+      }
+    }
+  },
+  "740": {
+    title: "PRNTR-1",
+    screens: {
+      "main": {
+        title: "PRNTR-1",
+        items: [
+          { key: "1", letter: "A", label: "<LAST LEG REPORT", action: "screen:last_leg" },
+          { key: "2", letter: "B", label: "<PREVIOUS LEGS REPORT", action: "screen:prev_legs" },
+          { key: "3", letter: "C", label: "<LRU IDENTIFICATION", action: "screen:lru_id" },
+          { key: "4", letter: "D", label: "<PRINT TEST PATTERN", action: "screen:test" },
+          { key: "5", letter: "E", label: "<PAPER FEED & CUTTER TEST", action: "screen:feed" },
+          { key: "6", letter: "F", label: "<RETURN", action: "exit" },
+        ]
+      },
+      "last_leg": {
+        title: "PRNTR-1",
+        subtitle: "last leg report\\nata 31-31",
+        lines: [{ type: "info", text: "PRINTOUTS: 12 | BUFFER OVERRUNS: 0" }],
+        items: [{ key: "6", letter: "F", label: "<RETURN", action: "screen:main" }]
+      },
+      "prev_legs": {
+        title: "PRNTR-1",
+        subtitle: "previous legs report",
+        lines: [{ type: "info", text: "THERMAL HEAD TEMPERATURE: 28 C" }],
+        items: [{ key: "6", letter: "F", label: "<RETURN", action: "screen:main" }]
+      },
+      "lru_id": {
+        title: "PRNTR-1",
+        subtitle: "lru identification",
+        lines: [
+          { type: "info", text: "printer p/n: 801240-1" },
+          { type: "data", text: "miltope tp-4840 cockpit printer" }
+        ],
+        items: [{ key: "6", letter: "F", label: "<RETURN", action: "screen:main" }]
+      },
+      "test": {
+        title: "PRNTR-1",
+        subtitle: "print test pattern",
+        lines: [
+          { type: "info", text: "80-COLUMN ASCII GRID PRINT: SUCCESS" },
+          { type: "data", text: "HEAD ELEMENTS 1-640: 100% OPERATIONAL" }
+        ],
+        items: [{ key: "6", letter: "F", label: "<RETURN", action: "screen:main" }]
+      },
+      "feed": {
+        title: "PRNTR-1",
+        subtitle: "paper feed & cutter test",
+        lines: [
+          { type: "info", text: "STEPPER MOTOR ADVANCE 10 LINES: PASS" },
+          { type: "data", text: "ROTARY CUTTER CYCLE: COMPLETE" }
+        ],
+        items: [{ key: "6", letter: "F", label: "<RETURN", action: "screen:main" }]
+      }
+    }
+  },
+  "741": {
+    title: "SATCM-1",
+    screens: {
+      "main": {
+        title: "SATCM-1",
+        items: [
+          { key: "1", letter: "A", label: "<LAST LEG REPORT", action: "screen:last_leg" },
+          { key: "2", letter: "B", label: "<PREVIOUS LEGS REPORT", action: "screen:prev_legs" },
+          { key: "3", letter: "C", label: "<LRU IDENTIFICATION", action: "screen:lru_id" },
+          { key: "4", letter: "D", label: "<HPA & BEAM STEERING TEST", action: "screen:test" },
+          { key: "5", letter: "E", label: "<GES LOG-ON SIMULATION", action: "screen:ges" },
+          { key: "6", letter: "F", label: "<RETURN", action: "exit" },
+        ]
+      },
+      "last_leg": {
+        title: "SATCM-1",
+        subtitle: "last leg report\\nata 23-15",
+        lines: [{ type: "info", text: "GES LOG-ON CYCLES: 3 | DROPPED CALLS: 0" }],
+        items: [{ key: "6", letter: "F", label: "<RETURN", action: "screen:main" }]
+      },
+      "prev_legs": {
+        title: "SATCM-1",
+        subtitle: "previous legs report",
+        lines: [{ type: "info", text: "HPA OVERHEAT EVENTS: ZERO" }],
+        items: [{ key: "6", letter: "F", label: "<RETURN", action: "screen:main" }]
+      },
+      "lru_id": {
+        title: "SATCM-1",
+        subtitle: "lru identification",
+        lines: [
+          { type: "info", text: "satellite data unit p/n: 822-0333-001" },
+          { type: "data", text: "collins sat-906 sdu" }
+        ],
+        items: [{ key: "6", letter: "F", label: "<RETURN", action: "screen:main" }]
+      },
+      "test": {
+        title: "SATCM-1",
+        subtitle: "hpa & beam steering test",
+        lines: [
+          { type: "info", text: "HIGH POWER AMP 40W CW: 41.2 WATTS" },
+          { type: "data", text: "BEAM STEERING AZ/EL: LOCKED ON SATELLITE" }
+        ],
+        items: [{ key: "6", letter: "F", label: "<RETURN", action: "screen:main" }]
+      },
+      "ges": {
+        title: "SATCM-1",
+        subtitle: "ges log-on simulation",
+        lines: [
+          { type: "info", text: "INMARSAT AERO-H+: HANDSHAKE ACQUIRED" },
+          { type: "status", text: "CH 1 & CH 2 VOICE/DATA READY" }
+        ],
+        items: [{ key: "6", letter: "F", label: "<RETURN", action: "screen:main" }]
+      }
+    }
+  },
+  "750": {
+    title: "VDR-1",
+    screens: {
+      "main": {
+        title: "VDR-1",
+        items: [
+          { key: "1", letter: "A", label: "<LAST LEG REPORT", action: "screen:last_leg" },
+          { key: "2", letter: "B", label: "<PREVIOUS LEGS REPORT", action: "screen:prev_legs" },
+          { key: "3", letter: "C", label: "<LRU IDENTIFICATION", action: "screen:lru_id" },
+          { key: "4", letter: "D", label: "<VDL MODE 2 BURST TEST", action: "screen:test" },
+          { key: "5", letter: "E", label: "<VOICE / DATA TOGGLE", action: "screen:voice_toggle" },
+          { key: "6", letter: "F", label: "<RETURN", action: "exit" },
+        ]
+      },
+      "last_leg": {
+        title: "VDR-1",
+        subtitle: "last leg report\\nata 23-13",
+        lines: [{ type: "info", text: "PACKET DROPS: 0 | D8PSK DEMOD ERRORS: 0" }],
+        items: [{ key: "6", letter: "F", label: "<RETURN", action: "screen:main" }]
+      },
+      "prev_legs": {
+        title: "VDR-1",
+        subtitle: "previous legs report",
+        lines: [{ type: "info", text: "VDL PACKET TRANSACTIONS: 1,842 OK" }],
+        items: [{ key: "6", letter: "F", label: "<RETURN", action: "screen:main" }]
+      },
+      "lru_id": {
+        title: "VDR-1",
+        subtitle: "lru identification",
+        lines: [
+          { type: "info", text: "transceiver p/n: 822-1468-001" },
+          { type: "data", text: "collins vhf-4000 vdr" }
+        ],
+        items: [{ key: "6", letter: "F", label: "<RETURN", action: "screen:main" }]
+      },
+      "test": {
+        title: "VDR-1",
+        subtitle: "vdl mode 2 burst test",
+        lines: [
+          { type: "info", text: "D8PSK 31.5 KBPS PACKET LOOPBACK: PASS" },
+          { type: "status", text: "AVLC FRAME TIMING: 100% COMPLIANT" }
+        ],
+        items: [{ key: "6", letter: "F", label: "<RETURN", action: "screen:main" }]
+      },
+      "voice_toggle": {
+        title: "VDR-1",
+        subtitle: "operating mode status",
+        lines: [
+          { type: "info", text: "CURRENT CHANNEL 1: VDL MODE 2 DATA" },
+          { type: "data", text: "REVERSION CHANNEL: DSB-AM VOICE ENABLED" }
+        ],
+        items: [{ key: "6", letter: "F", label: "<RETURN", action: "screen:main" }]
+      }
+    }
+  },
+  "753": {
+    title: "HFDU-1",
+    screens: {
+      "main": {
+        title: "HFDU-1",
+        items: [
+          { key: "1", letter: "A", label: "<LAST LEG REPORT", action: "screen:last_leg" },
+          { key: "2", letter: "B", label: "<PREVIOUS LEGS REPORT", action: "screen:prev_legs" },
+          { key: "3", letter: "C", label: "<LRU IDENTIFICATION", action: "screen:lru_id" },
+          { key: "4", letter: "D", label: "<HF LINK PROTOCOL TEST", action: "screen:test" },
+          { key: "5", letter: "E", label: "<MODEM CHANNEL SOUNDING", action: "screen:sounding" },
+          { key: "6", letter: "F", label: "<RETURN", action: "exit" },
+        ]
+      },
+      "last_leg": {
+        title: "HFDU-1",
+        subtitle: "last leg report\\nata 23-14",
+        lines: [{ type: "info", text: "HF DATA PACKET SYNC: LOCKED" }],
+        items: [{ key: "6", letter: "F", label: "<RETURN", action: "screen:main" }]
+      },
+      "prev_legs": {
+        title: "HFDU-1",
+        subtitle: "previous legs report",
+        lines: [{ type: "info", text: "IONOSPHERIC FADE LOG: 2 RE-TRANSFERS" }],
+        items: [{ key: "6", letter: "F", label: "<RETURN", action: "screen:main" }]
+      },
+      "lru_id": {
+        title: "HFDU-1",
+        subtitle: "lru identification",
+        lines: [
+          { type: "info", text: "data unit p/n: 822-0336-001" },
+          { type: "data", text: "collins hfdu-9000" }
+        ],
+        items: [{ key: "6", letter: "F", label: "<RETURN", action: "screen:main" }]
+      },
+      "test": {
+        title: "HFDU-1",
+        subtitle: "hf link protocol test",
+        lines: [
+          { type: "info", text: "ARINC 635 / 753 HF DATA LINK: PASS" },
+          { type: "status", text: "FSK / PSK MODEM INTERNAL BITE OK" }
+        ],
+        items: [{ key: "6", letter: "F", label: "<RETURN", action: "screen:main" }]
+      },
+      "sounding": {
+        title: "HFDU-1",
+        subtitle: "modem channel sounding",
+        lines: [
+          { type: "info", text: "PROBE FREQUENCIES: 8.8 MHz / 13.3 MHz" },
+          { type: "data", text: "SIGNAL-TO-NOISE RATIO: 18 dB" }
+        ],
+        items: [{ key: "6", letter: "F", label: "<RETURN", action: "screen:main" }]
+      }
+    }
+  },
+  "755": {
+    title: "MMR-1",
+    screens: {
+      "main": {
+        title: "MMR-1",
+        items: [
+          { key: "1", letter: "A", label: "<LAST LEG REPORT", action: "screen:last_leg" },
+          { key: "2", letter: "B", label: "<PREVIOUS LEGS REPORT", action: "screen:prev_legs" },
+          { key: "3", letter: "C", label: "<LRU IDENTIFICATION", action: "screen:lru_id" },
+          { key: "4", letter: "D", label: "<GLS / GBAS APPROACH TEST", action: "screen:test" },
+          { key: "5", letter: "E", label: "<ILS / MLS FALLBACK TEST", action: "screen:fallback" },
+          { key: "6", letter: "F", label: "<RETURN", action: "exit" },
+        ]
+      },
+      "last_leg": {
+        title: "MMR-1",
+        subtitle: "last leg report\\nata 34-36",
+        lines: [{ type: "info", text: "GPS RAIM STATUS: AVAILABLE | VDB CRC: PASS" }],
+        items: [{ key: "6", letter: "F", label: "<RETURN", action: "screen:main" }]
+      },
+      "prev_legs": {
+        title: "MMR-1",
+        subtitle: "previous legs report",
+        lines: [{ type: "info", text: "GLS APPROACH COUNT: 28 / 0 REVERSIONS" }],
+        items: [{ key: "6", letter: "F", label: "<RETURN", action: "screen:main" }]
+      },
+      "lru_id": {
+        title: "MMR-1",
+        subtitle: "lru identification",
+        lines: [
+          { type: "info", text: "receiver p/n: 822-1152-002" },
+          { type: "data", text: "collins glu-920 mmr / sw v3.4" }
+        ],
+        items: [{ key: "6", letter: "F", label: "<RETURN", action: "screen:main" }]
+      },
+      "test": {
+        title: "MMR-1",
+        subtitle: "gls / gbas approach test",
+        lines: [
+          { type: "info", text: "VHF DATA BROADCAST (VDB) 108.05 MHz: OK" },
+          { type: "info", text: "DIFFERENTIAL CORRECTIONS DECODED: 12 SATS" },
+          { type: "status", text: "GLS CAT I/II/III CAPABLE: VERIFIED" }
+        ],
+        items: [{ key: "6", letter: "F", label: "<RETURN", action: "screen:main" }]
+      },
+      "fallback": {
+        title: "MMR-1",
+        subtitle: "ils / mls fallback test",
+        lines: [
+          { type: "info", text: "ILS CAT III FALLBACK: READY" },
+          { type: "data", text: "AUTOLAND TRIP REVERSION: VERIFIED" }
+        ],
+        items: [{ key: "6", letter: "F", label: "<RETURN", action: "screen:main" }]
+      }
+    }
+  }
+};
+
+function getGenericLruMenu(lru) {
+  const code = (lru && lru.code) || "000";
+  const name = (lru && lru.name) || "LRU";
+  return {
+    title: `${name}-0`,
+    screens: {
+      main: {
+        title: `${name}-0`,
+        items: [
+          { key: "1", letter: "A", label: "<LAST LEG REPORT", action: "screen:last_leg" },
+          { key: "2", letter: "B", label: "<PREVIOUS LEGS REPORT", action: "screen:prev_legs" },
+          { key: "3", letter: "C", label: "<LRU IDENTIFICATION", action: "screen:lru_id" },
+          { key: "4", letter: "D", label: "<TEST", action: "screen:test" },
+          { key: "5", letter: "E", label: "<SHOP DATA", action: "screen:shop_data" },
+          { key: "6", letter: "F", label: "<RETURN", action: "exit" },
+        ]
+      },
+      last_leg: {
+        title: `${name}-0`,
+        subtitle: `last leg report\\ndate: jan01`,
+        lines: [
+          { type: "header", text: "    gmt     ata" },
+          { type: "info", text: `    ${name.toLowerCase()}-0 transceiver (1)` },
+          { type: "data", text: `3   0000    ${code.padStart(2, '0')}-00-01` },
+        ],
+        items: [{ key: "6", letter: "F", label: "<RETURN", action: "screen:main" }]
+      },
+      prev_legs: {
+        title: `${name}-0`,
+        subtitle: `previous legs report\\n--------------------`,
+        lines: [
+          { type: "header", text: "  leg date    gmt   ata" },
+          { type: "info", text: `  ${name.toLowerCase()}-0 unit` },
+          { type: "data", text: `-01 jan00   0000  ${code.padStart(2, '0')}-00-01` }
+        ],
+        items: [{ key: "6", letter: "F", label: "<RETURN", action: "screen:main" }]
+      },
+      lru_id: {
+        title: `${name}-0`,
+        subtitle: `lru identification`,
+        lines: [
+          { type: "info", text: "unit p/n:" },
+          { type: "data", text: `  ${code}-0001-A` },
+          { type: "info", text: "serial number: 8841" },
+          { type: "info", text: `equipment: 0x${code} ${name}` }
+        ],
+        items: [{ key: "6", letter: "F", label: "<RETURN", action: "screen:main" }]
+      },
+      test: {
+        title: `${name}-0`,
+        subtitle: `test`,
+        lines: [
+          { type: "info", text: `${name.toLowerCase()}-0 status check` },
+          { type: "data", text: "self-test: PASS" },
+          { type: "status", text: "ARINC 429 INTERFACE: OK" }
+        ],
+        items: [{ key: "6", letter: "F", label: "<RETURN", action: "screen:main" }]
+      },
+      shop_data: {
+        title: `${name}-0`,
+        subtitle: `shop data`,
+        lines: [
+          { type: "info", text: "SHOP CODE: N12345" },
+          { type: "info", text: "VISIT: OK" }
+        ],
+        items: [{ key: "6", letter: "F", label: "<RETURN", action: "screen:main" }]
+      }
+    }
+  };
+}
+
+
+function getGenericLruMenu(lru) {
+  const name = (lru && lru.name) ? lru.name.toUpperCase() : "LRU";
+  const code = (lru && lru.code) ? lru.code : "000";
+  return {
+    title: `${name}-1`,
+    screens: {
+      "main": {
+        title: `${name}-1`,
+        items: [
+          { key: "1", letter: "A", label: "<LAST LEG REPORT", action: "screen:last_leg" },
+          { key: "2", letter: "B", label: "<PREVIOUS LEGS REPORT", action: "screen:prev_legs" },
+          { key: "3", letter: "C", label: "<LRU IDENTIFICATION", action: "screen:lru_id" },
+          { key: "4", letter: "D", label: "<SYSTEM BITE TEST", action: "screen:test" },
+          { key: "5", letter: "E", label: "<SHOP DATA", action: "screen:shop_data" },
+          { key: "6", letter: "F", label: "<RETURN", action: "exit" },
+        ]
+      },
+      "last_leg": {
+        title: `${name}-1`,
+        subtitle: "last leg report",
+        lines: [
+          { type: "info", text: `NO FAULTS DETECTED FOR ${name}` },
+          { type: "data", text: `EQ CODE: 0x${code}` },
+        ],
+        items: [
+          { key: "6", letter: "F", label: "<RETURN", action: "screen:main" }
+        ]
+      },
+      "prev_legs": {
+        title: `${name}-1`,
+        subtitle: "previous legs report",
+        lines: [
+          { type: "info", text: "LEG -01: NO RECORDED FAULTS" },
+          { type: "info", text: "LEG -02: NO RECORDED FAULTS" },
+        ],
+        items: [
+          { key: "6", letter: "F", label: "<RETURN", action: "screen:main" }
+        ]
+      },
+      "lru_id": {
+        title: `${name}-1`,
+        subtitle: "lru identification",
+        lines: [
+          { type: "info", text: `${name} LRU PART NO:` },
+          { type: "data", text: `  PN-${code}-001` },
+          { type: "info", text: `EQ CODE: 0x${code}` },
+          { type: "info", text: `DESC: ${lru.description || name}` }
+        ],
+        items: [
+          { key: "6", letter: "F", label: "<RETURN", action: "screen:main" }
+        ]
+      },
+      "test": {
+        title: `${name}-1`,
+        subtitle: "system bite test",
+        lines: [
+          { type: "info", text: `TESTING ${name} (0x${code})...` },
+          { type: "status", text: "BITE TEST COMPLETE: ALL SYSTEMS NORMAL" }
+        ],
+        items: [
+          { key: "6", letter: "F", label: "<RETURN", action: "screen:main" }
+        ]
+      },
+      "shop_data": {
+        title: `${name}-1`,
+        subtitle: "shop data",
+        lines: [
+          { type: "info", text: "SHOP VISIT: NONE" },
+          { type: "data", text: "OPERATING HOURS: 00124 HRS" }
+        ],
+        items: [
+          { key: "6", letter: "F", label: "<RETURN", action: "screen:main" }
+        ]
+      }
+    }
+  };
+}
+
+
 const BOEING_LRU_DATABASE = [
   { id: "707 LRA", name: "Low Range Altimeter", code: "007", tc_capable: false },
   { id: "708 WXR", name: "Weather Radar", code: "008", tc_capable: false },
@@ -98,7 +1428,7 @@ const CMC_FUNCTION_SWITCHES = [
 // Operational States for CFDS & CMC
 let cfdsState = {
   currentView: "LRU_SELECTION",
-  selectedLru: CFDS_LRU_TABLE[12], // TCAS
+  selectedLru: CFDS_LRU_TABLE[2], // 709 DME
   dataSource: "SIMULATION",
   busRunning: false,
   searchFilter: "",
@@ -110,6 +1440,10 @@ let cfdsState = {
   interactiveProgress: 0,
   interactiveStatus: "READY",
   burstRows: [],
+  deviceConnected: false, // Disconnected by default
+  lruSubScreen: "main",
+  xmitRateOn: false,
+  dmeAgcVal: "00",
 };
 
 let cmcState = {
@@ -236,6 +1570,9 @@ function renderCfdsHub(r, s) {
     case "LRU_SELECTION":
       renderCfdsLruSelection(viewContainer, r, s);
       break;
+    case "LRU_CONSOLE":
+      renderCfdsLruConsole(viewContainer, r, s);
+      break;
     case "MODE_SELECT":
       renderCfdsSubmodeSelect(viewContainer, r, s);
       break;
@@ -264,66 +1601,77 @@ function renderCfdsHub(r, s) {
   }
 }
 
-// 1. CFDS LRU SELECTION (Figure 47)
+// 1. CFDS LRU SELECTION (Figure 47 Horizontal Grid & Add LRU)
 function renderCfdsLruSelection(c, r, s) {
   const p = el("div", "panel");
   p.innerHTML = `
-    <div class="panel-head" style="margin-bottom:12px">
+    <div class="panel-head" style="margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
       <div>
-        <h2 style="font-size:1.15rem;font-weight:700">CFDS LRU SELECTION</h2>
-        <p class="muted">Aeroflex JcAIR T1200B Operation Manual Figure 47 (Section 4.F)</p>
+        <h2 style="font-size:1.2rem;font-weight:700;margin:0 0 4px 0">CFDS LRU SELECTION</h2>
+        <p class="muted" style="margin:0;font-size:13px">Aeroflex JcAIR T1200B Operation Manual Figure 47 (Section 4.F)</p>
       </div>
-      <input type="text" id="cfds-lru-filter" placeholder="Search LRU by code or name..."
-        class="category-select" style="min-width:240px" value="${escAttr(cfdsState.searchFilter)}" />
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <input type="text" id="cfds-lru-filter" placeholder="Search LRU by code or name..."
+          class="category-select" style="min-width:220px" value="${escAttr(cfdsState.searchFilter)}" />
+        <button type="button" class="btn primary" id="btn-cfds-add-lru">+ Add LRU</button>
+      </div>
     </div>
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th class="mono" style="width:100px">EQ CODE</th>
-            <th style="width:160px">NAME</th>
-            <th>DESCRIPTION</th>
-            <th style="width:120px;text-align:right">ACTION</th>
-          </tr>
-        </thead>
-        <tbody id="cfds-lru-tbody"></tbody>
-      </table>
-    </div>
+    <div class="cfds-lru-grid" id="cfds-lru-grid"></div>
   `;
   c.appendChild(p);
 
-  const tbody = p.querySelector("#cfds-lru-tbody");
+  const grid = p.querySelector("#cfds-lru-grid");
   const filterInput = p.querySelector("#cfds-lru-filter");
+  const btnAddLru = p.querySelector("#btn-cfds-add-lru");
 
-  function updateLruTable() {
+  btnAddLru.addEventListener("click", () => {
+    openAddCfdsLruModal(r, s);
+  });
+
+  function updateLruGrid() {
     const q = (filterInput.value || "").trim().toLowerCase();
     const filtered = CFDS_LRU_TABLE.filter(
-      (item) => item.code.toLowerCase().includes(q) || item.name.toLowerCase().includes(q) || item.description.toLowerCase().includes(q)
+      (item) => item.code.toLowerCase().includes(q) || item.name.toLowerCase().includes(q) || (item.description && item.description.toLowerCase().includes(q))
     );
 
-    tbody.innerHTML = filtered.map((lru) => {
-      const isSelected = cfdsState.selectedLru && cfdsState.selectedLru.code === lru.code;
+    if (!filtered.length) {
+      grid.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:32px;color:#94a3b8">No LRUs matching "${escAttr(q)}"</div>`;
+      return;
+    }
+
+    grid.innerHTML = filtered.map((lru) => {
+      const isSelected = cfdsState.selectedLru && cfdsState.selectedLru.code === lru.code && cfdsState.selectedLru.name === lru.name;
       return `
-        <tr style="${isSelected ? 'background:var(--teal-bg, #f0fdfa);font-weight:600' : ''}">
-          <td class="mono" style="color:var(--teal-primary, #0d9488);font-weight:700">0x${escAttr(lru.code)}</td>
-          <td><strong>${escAttr(lru.name)}</strong></td>
-          <td class="muted">${escAttr(lru.description)}</td>
-          <td style="text-align:right">
-            <button type="button" class="btn btn-sm ${isSelected ? 'btn-sm primary' : 'btn-ghost'}" data-lru="${escAttr(lru.code)}">
+        <div class="cfds-lru-card ${isSelected ? 'selected' : ''}" data-lru-code="${escAttr(lru.code)}" data-lru-name="${escAttr(lru.name)}">
+          <div class="cfds-lru-card-header">
+            <span class="cfds-lru-code-pill mono">EQ 0x${escAttr(lru.code)}</span>
+            ${lru.isCustom ? '<span style="font-size:10px;color:#0d9488;background:#ccfbf1;padding:1px 6px;border-radius:3px;font-weight:700">CUSTOM</span>' : ''}
+          </div>
+          <div class="cfds-lru-card-title">${escAttr(lru.name)}</div>
+          <div class="cfds-lru-card-desc">${escAttr(lru.description || '')}</div>
+          <div class="cfds-lru-card-footer">
+            <button type="button" class="btn btn-sm ${isSelected ? 'primary' : 'btn-ghost'}" data-lru-act="select">
               ${isSelected ? 'Selected' : 'Select'}
             </button>
-          </td>
-        </tr>
+          </div>
+        </div>
       `;
     }).join("");
 
-    tbody.querySelectorAll("button[data-lru]").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        const code = btn.getAttribute("data-lru");
-        const found = CFDS_LRU_TABLE.find((item) => item.code === code);
+    grid.querySelectorAll(".cfds-lru-card").forEach((card) => {
+      card.addEventListener("click", () => {
+        const code = card.getAttribute("data-lru-code");
+        const name = card.getAttribute("data-lru-name");
+        const found = CFDS_LRU_TABLE.find((item) => item.code === code && item.name === name) || CFDS_LRU_TABLE.find((item) => item.code === code);
         if (found) {
           cfdsState.selectedLru = found;
-          cfdsState.currentView = "MODE_SELECT";
+          cfdsState.currentView = "LRU_CONSOLE";
+          cfdsState.lruSubScreen = "main";
+          cfdsState.deviceConnected = false; // Disconnected by default
+          api("/api/cfds/lru", {
+            method: "POST",
+            body: JSON.stringify({ code: found.code, name: found.name }),
+          }).catch(() => {});
           renderCfdsHub(r, s);
         }
       });
@@ -332,23 +1680,330 @@ function renderCfdsLruSelection(c, r, s) {
 
   filterInput.addEventListener("input", () => {
     cfdsState.searchFilter = filterInput.value;
-    updateLruTable();
+    updateLruGrid();
   });
 
-  updateLruTable();
+  updateLruGrid();
+}
+
+function openAddCfdsLruModal(r, s) {
+  const existingModal = document.getElementById("cfds-modal-container");
+  if (existingModal) existingModal.remove();
+
+  const modal = el("div", "cfds-modal-overlay");
+  modal.id = "cfds-modal-container";
+  modal.innerHTML = `
+    <div class="cfds-modal-card">
+      <div class="cfds-modal-header">
+        <h3 style="margin:0;font-size:1.15rem;font-weight:700">Add New CFDS LRU</h3>
+        <button type="button" class="btn-close" id="btn-modal-close" style="background:none;border:none;font-size:20px;cursor:pointer;color:#64748b">&times;</button>
+      </div>
+      <div class="cfds-modal-body" style="margin-top:14px">
+        <div style="margin-bottom:12px">
+          <label style="display:block;font-size:12px;font-weight:700;margin-bottom:4px;color:#334155">LRU Name (e.g. ADIRU, FWC, FMGC)</label>
+          <input type="text" id="modal-lru-name" class="category-select" style="width:100%" placeholder="e.g. ADIRU" required />
+        </div>
+        <div style="margin-bottom:12px">
+          <label style="display:block;font-size:12px;font-weight:700;margin-bottom:4px;color:#334155">Equipment Code (Hex, e.g. 738, 020, 009)</label>
+          <input type="text" id="modal-lru-code" class="category-select" style="width:100%" placeholder="e.g. 738" required />
+        </div>
+        <div style="margin-bottom:16px">
+          <label style="display:block;font-size:12px;font-weight:700;margin-bottom:4px;color:#334155">LRU Description</label>
+          <input type="text" id="modal-lru-desc" class="category-select" style="width:100%" placeholder="e.g. Air Data Inertial Reference Unit" required />
+        </div>
+      </div>
+      <div class="cfds-modal-footer" style="display:flex;justify-content:flex-end;gap:10px">
+        <button type="button" class="btn btn-ghost" id="btn-modal-cancel">Cancel</button>
+        <button type="button" class="btn primary" id="btn-modal-save">Add LRU</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+
+  const close = () => modal.remove();
+  modal.querySelector("#btn-modal-close").onclick = close;
+  modal.querySelector("#btn-modal-cancel").onclick = close;
+  modal.addEventListener("click", (e) => {
+    if (e.target === modal) close();
+  });
+
+  modal.querySelector("#btn-modal-save").onclick = () => {
+    const name = modal.querySelector("#modal-lru-name").value.trim();
+    const code = modal.querySelector("#modal-lru-code").value.trim().replace(/^0x/i, "");
+    const desc = modal.querySelector("#modal-lru-desc").value.trim();
+    if (!name || !code) {
+      alert("Please enter LRU Name and Equipment Code.");
+      return;
+    }
+    const newLru = {
+      code: code.toUpperCase(),
+      name: name.toUpperCase(),
+      description: desc || `${name.toUpperCase()} Avionics Equipment`,
+      isCustom: true
+    };
+    CFDS_LRU_TABLE.push(newLru);
+    try {
+      const raw = localStorage.getItem("cfds_custom_lrus");
+      const list = raw ? JSON.parse(raw) : [];
+      list.push(newLru);
+      localStorage.setItem("cfds_custom_lrus", JSON.stringify(list));
+    } catch (e) {}
+    close();
+    cfdsState.selectedLru = newLru;
+    renderCfdsHub(r, s);
+  };
+}
+
+// 1.B CFDS LRU INTERACTIVE CONSOLE (Dynapro 1780A INFOTOUCH CRT Display)
+function renderCfdsLruConsole(c, r, s) {
+  const lru = cfdsState.selectedLru || CFDS_LRU_TABLE[2]; // Default DME
+  const lruKey = (lru.code || "").toUpperCase();
+  const lruMenuConfig = CFDS_LRU_MENUS[lruKey] || CFDS_LRU_MENUS[lru.name.toUpperCase()] || getGenericLruMenu(lru);
+  const currentSub = cfdsState.lruSubScreen || "main";
+  const activeScreen = (lruMenuConfig.screens && lruMenuConfig.screens[currentSub]) || lruMenuConfig.screens["main"];
+
+  const isConnected = !!cfdsState.deviceConnected;
+
+  const p = el("div", "panel cfds-console-panel");
+  p.innerHTML = `
+    <!-- Top Console Toolbar -->
+    <div class="panel-head" style="margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
+      <div>
+        <div style="display:flex;align-items:center;gap:10px">
+          <h2 style="font-size:1.25rem;font-weight:700;margin:0">${escAttr(lru.name)} CFDS CONSOLE</h2>
+          <span class="cfds-lru-code-pill mono">EQ 0x${escAttr(lru.code)}</span>
+          ${lru.isCustom ? '<span style="font-size:10px;color:#0d9488;background:#ccfbf1;padding:1px 6px;border-radius:3px;font-weight:700">CUSTOM</span>' : ''}
+        </div>
+        <p class="muted" style="margin:3px 0 0 0;font-size:13px">${escAttr(lru.description || '')}</p>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <!-- Connection Status Pill -->
+        <div class="cfds-conn-status ${isConnected ? 'is-connected' : 'is-disconnected'}">
+          <span class="cfds-conn-dot"></span>
+          <span>${isConnected ? 'CONNECTED' : 'DISCONNECTED'}</span>
+        </div>
+
+        <!-- Connect / Disconnect Toggle Button -->
+        <button type="button" class="btn btn-sm ${isConnected ? 'btn-ghost' : 'primary'}" id="btn-toggle-device-conn">
+          ${isConnected ? 'Disconnect Device' : 'Connect Device'}
+        </button>
+
+        <!-- Submode Navigation -->
+        <button type="button" class="btn btn-sm btn-ghost" id="btn-cfds-modes-menu" title="Open CFDS Submodes (Normal, Discrete, TX, Channels)">
+          CFDS Submodes
+        </button>
+
+        <!-- Back to LRUs -->
+        <button type="button" class="btn btn-sm btn-ghost" id="btn-cfds-back-lrus">
+          &lt; Back to LRUs
+        </button>
+      </div>
+    </div>
+
+    <!-- Dynapro 1780A INFOTOUCH CRT Chassis -->
+    <div class="dynapro-chassis">
+      <div class="dynapro-bezel-header">
+        <span class="dynapro-badge">DYNAPRO 1780A INFOTOUCH DISPLAY</span>
+        <span class="dynapro-target mono">${escAttr(lru.name)} BITE INTERFACE (EQ 0x${escAttr(lru.code)})</span>
+      </div>
+
+      <!-- CRT Display Screen: SOLID BLACK POLOS WHEN DISCONNECTED -->
+      <div id="cfds-lru-crt-screen" class="cfds-crt-screen ${isConnected ? 'is-connected' : 'is-disconnected'}"></div>
+
+      <!-- Tactile Hardware Buttons Below CRT Screen -->
+      <div class="dynapro-tactile-bar">
+        <div style="display:flex;gap:8px">
+          <button type="button" class="dynapro-hw-btn" id="hw-btn-prev-pg">&lt; PRIOR PG</button>
+          <button type="button" class="dynapro-hw-btn" id="hw-btn-nxt-pg">NEXT PG &gt;</button>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button type="button" class="dynapro-hw-btn" id="hw-btn-self-test">SELF TEST</button>
+          <button type="button" class="dynapro-hw-btn clr" id="hw-btn-clr">CLR</button>
+        </div>
+      </div>
+    </div>
+  `;
+  c.appendChild(p);
+
+  const crtScreen = p.querySelector("#cfds-lru-crt-screen");
+
+  // A. DISCONNECTED: SOLID PURE BLACK BOX WITHOUT ANY TEXT, LABELS, BUTTONS
+  if (!isConnected) {
+    crtScreen.innerHTML = ""; // 100% BLANK, SOLID BLACK POLOS
+  } else {
+    // B. CONNECTED: GREEN PHOSPHOR CRT SCREEN WITH INTERACTIVE MENU/MODE
+    renderCrtGreenScreen(crtScreen, lru, activeScreen, currentSub, r, s);
+  }
+
+  // Connect/Disconnect Toggle
+  p.querySelector("#btn-toggle-device-conn").addEventListener("click", () => {
+    cfdsState.deviceConnected = !cfdsState.deviceConnected;
+    renderCfdsHub(r, s);
+  });
+
+  // Back to LRUs
+  p.querySelector("#btn-cfds-back-lrus").addEventListener("click", () => {
+    cfdsState.currentView = "LRU_SELECTION";
+    renderCfdsHub(r, s);
+  });
+
+  // CFDS Submodes (Normal, Discrete, TX, Channels)
+  p.querySelector("#btn-cfds-modes-menu").addEventListener("click", () => {
+    cfdsState.currentView = "MODE_SELECT";
+    renderCfdsHub(r, s);
+  });
+
+  // Hardware tactile buttons
+  p.querySelector("#hw-btn-clr").addEventListener("click", () => {
+    if (cfdsState.deviceConnected) {
+      cfdsState.lruSubScreen = "main";
+      renderCfdsHub(r, s);
+    }
+  });
+
+  p.querySelector("#hw-btn-self-test").addEventListener("click", () => {
+    if (cfdsState.deviceConnected) {
+      cfdsState.lruSubScreen = "test";
+      renderCfdsHub(r, s);
+    }
+  });
+
+  p.querySelector("#hw-btn-prev-pg").addEventListener("click", () => {
+    if (cfdsState.deviceConnected && cfdsState.lruSubScreen !== "main") {
+      cfdsState.lruSubScreen = "main";
+      renderCfdsHub(r, s);
+    }
+  });
+
+  p.querySelector("#hw-btn-nxt-pg").addEventListener("click", () => {
+    if (cfdsState.deviceConnected) {
+      cfdsState.nxtReverseVideo = !cfdsState.nxtReverseVideo;
+      renderCfdsHub(r, s);
+    }
+  });
+}
+
+function renderCrtGreenScreen(container, lru, activeScreen, currentSub, r, s) {
+  const title = activeScreen.title || `${lru.name}-0`;
+  const subtitle = activeScreen.subtitle || "";
+
+  let linesHtml = "";
+  if (activeScreen.lines && activeScreen.lines.length) {
+    linesHtml = `
+      <div class="dynapro-screen-body-lines">
+        ${activeScreen.lines.map(line => {
+          let txt = typeof line === "string" ? line : (line.text || "");
+          txt = txt.replace("{AGC_VAL}", cfdsState.dmeAgcVal || "00");
+          return `<div class="dynapro-line ${line.type || 'info'}">${escAttr(txt)}</div>`;
+        }).join("")}
+      </div>
+    `;
+  }
+
+  let itemsHtml = "";
+  if (activeScreen.items && activeScreen.items.length) {
+    itemsHtml = `
+      <div class="dynapro-menu-grid">
+        ${activeScreen.items.map(item => {
+          let labelText = (item.label || "").replace("{AGC_VAL}", cfdsState.dmeAgcVal || "00");
+          if (item.blank) {
+            return `
+              <div class="dynapro-menu-row">
+                <span class="dynapro-menu-item-text" style="display:inline-flex;align-items:center;gap:8px;padding:4px 10px;visibility:hidden">
+                  <span class="dynapro-key-num">${escAttr(item.key)}</span>
+                  <span class="dynapro-key-label">-</span>
+                </span>
+                <span class="dynapro-key-right">${escAttr(item.letter || '')}</span>
+              </div>
+            `;
+          }
+          if (item.isText) {
+            return `
+              <div class="dynapro-menu-row">
+                <span class="dynapro-menu-item-text" style="display:inline-flex;align-items:center;gap:8px;padding:4px 10px;color:#22c55e">
+                  <span class="dynapro-key-num">${escAttr(item.key)}</span>
+                  <span class="dynapro-key-label" style="font-weight:700">${escAttr(labelText)}</span>
+                </span>
+                <span class="dynapro-key-right">${escAttr(item.letter || '')}</span>
+              </div>
+            `;
+          }
+          return `
+            <div class="dynapro-menu-row">
+              <button type="button" class="dynapro-menu-item-btn" data-act="${escAttr(item.action)}">
+                <span class="dynapro-key-num">${escAttr(item.key)}</span>
+                <span class="dynapro-key-label">${escAttr(labelText)}</span>
+              </button>
+              <span class="dynapro-key-right">${escAttr(item.letter || '')}</span>
+            </div>
+          `;
+        }).join("")}
+      </div>
+    `;
+  }
+
+  container.innerHTML = `
+    <div class="dynapro-inner-box">
+      <div class="dynapro-screen-header">
+        <span class="dynapro-screen-title">${escAttr(title)}</span>
+        <span class="dynapro-screen-nxt ${cfdsState.nxtReverseVideo ? 'rev' : ''}">NXT</span>
+      </div>
+      ${subtitle ? `<div class="dynapro-screen-sub">${subtitle.split(String.fromCharCode(10)).map(str => escAttr(str)).join("<br>")}</div>` : ''}
+      ${linesHtml}
+      ${itemsHtml}
+    </div>
+  `;
+
+  // Attach interactive click handlers for menu items
+  container.querySelectorAll("button[data-act]").forEach(btn => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const act = btn.getAttribute("data-act");
+      if (!act) return;
+
+      if (act.startsWith("screen:")) {
+        const targetScreen = act.replace("screen:", "");
+        cfdsState.lruSubScreen = targetScreen;
+        renderCfdsHub(r, s);
+      } else if (act === "exit") {
+        cfdsState.currentView = "LRU_SELECTION";
+        renderCfdsHub(r, s);
+      } else if (act.startsWith("set_agc:")) {
+        cfdsState.dmeAgcVal = act.replace("set_agc:", "");
+        renderCfdsHub(r, s);
+      } else if (act.startsWith("toggle:")) {
+        const prop = act.replace("toggle:", "");
+        if (prop === "xmit_rate") {
+          cfdsState.xmitRateOn = !cfdsState.xmitRateOn;
+          alert("Fixed Transmit Rate: " + (cfdsState.xmitRateOn ? "ON (40 PPS)" : "OFF"));
+          renderCfdsHub(r, s);
+        }
+      }
+    });
+  });
 }
 
 // 2. CFDS SUBMODE SELECTION
 function renderCfdsSubmodeSelect(c, r, s) {
   const p = el("div", "panel");
   p.innerHTML = `
-    <div class="panel-head" style="margin-bottom:16px">
+    <div class="panel-head" style="margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
       <div>
-        <h2 style="font-size:1.15rem;font-weight:700">CFDS OPERATION MODE SELECT</h2>
-        <p class="muted">Interrogating: <strong style="color:var(--teal-primary, #0d9488)">${escAttr(cfdsState.selectedLru.name)}</strong> (Eq Code: 0x${escAttr(cfdsState.selectedLru.code)})</p>
+        <h2 style="font-size:1.15rem;font-weight:700;margin:0 0 4px 0">CFDS OPERATION MODE SELECT</h2>
+        <p class="muted" style="margin:0">Interrogating: <strong style="color:var(--teal-primary, #0d9488)">${escAttr(cfdsState.selectedLru.name)}</strong> (Eq Code: 0x${escAttr(cfdsState.selectedLru.code)})</p>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button type="button" class="btn btn-sm primary" id="btn-back-to-console">Return to LRU Console</button>
+        <button type="button" class="btn btn-sm btn-ghost" id="btn-back-to-lrus">LRU Selection</button>
       </div>
     </div>
     <div class="mode-grid">
+      <div class="mode-card" data-submode="LRU_CONSOLE">
+        <div class="tag">BITE Console</div>
+        <h2>LRU Interactive Console</h2>
+        <p>Dynapro 1780A Infotouch CRT Console with connected/disconnected state and LRU BITE menus.</p>
+      </div>
       <div class="mode-card" data-submode="NORMAL_MODE_ABD0048">
         <div class="tag">ABD0048 / 0018</div>
         <h2>Normal Mode</h2>
@@ -382,6 +2037,15 @@ function renderCfdsSubmodeSelect(c, r, s) {
     </div>
   `;
   c.appendChild(p);
+
+  p.querySelector("#btn-back-to-console").addEventListener("click", () => {
+    cfdsState.currentView = "LRU_CONSOLE";
+    renderCfdsHub(r, s);
+  });
+  p.querySelector("#btn-back-to-lrus").addEventListener("click", () => {
+    cfdsState.currentView = "LRU_SELECTION";
+    renderCfdsHub(r, s);
+  });
 
   p.querySelectorAll(".mode-card[data-submode]").forEach((card) => {
     card.addEventListener("click", () => {
@@ -2080,39 +3744,16 @@ function renderCmcChannelsTab(c, r, s) {
   function renderStandardHub(r, s) {
     const grid = el("div", "hub-grid");
     const items = [
-      { id: "dynapro_console", title: "Dynapro 1780A Infotouch", desc: "Dynamic STANDARD MODE per LRU (CRT Retro Console)", special: true },
       { id: "user_configure", title: "User Configure", desc: "Setup TX/RX channels" },
       { id: "avionics_lru", title: "Avionics LRU", desc: "LRU test profiles" },
     ];
     items.forEach((it) => {
       const card = el("div", "mode-card");
-      if (it.special) {
-        card.style.borderColor = "var(--accent, #059669)";
-        card.style.background = "rgba(16, 185, 129, 0.08)";
-      }
-      card.innerHTML = `<h2 style="${it.special ? 'color:#10b981;' : ''}">${it.title}</h2><p>${it.desc}</p>`;
-      card.addEventListener("click", () => {
-        if (it.id === "dynapro_console") {
-          openDynaproConsole();
-        } else {
-          pushScreen(it.id);
-        }
-      });
+      card.innerHTML = `<h2>${it.title}</h2><p>${it.desc}</p>`;
+      card.addEventListener("click", () => pushScreen(it.id));
       grid.appendChild(card);
     });
     r.appendChild(grid);
-  }
-
-  function openDynaproConsole() {
-    const modal = $("dynapro-modal");
-    if (!modal) return;
-    modal.style.display = "block";
-    const btnClose = $("btn-close-dynapro");
-    if (btnClose) {
-      btnClose.onclick = () => {
-        modal.style.display = "none";
-      };
-    }
   }
 
   function renderLruPicker(r, s) {
@@ -2790,127 +4431,579 @@ function renderCmcChannelsTab(c, r, s) {
     } catch (e) { alert(e.message); }
   }
 
+  // ====================================================================
+  // 709 DME (ARINC 709 / CMM Chapter 1 Section 4.B)
+  // Native ate-platform style: .panel, .hub-grid, .mode-card, .table-wrap
+  // ====================================================================
+
+  let dmeSingleState = {
+    activeSlot: 0,
+    txBus: "A",
+    rxBus: "A",
+    stepVal: 1.0,
+  };
+
+  let dmeMultiState = {
+    selectedLine: 0,
+    txBus: "A",
+    rxBus: "A",
+  };
+
+  function dmeChannelToFreq(ch, xy) {
+    ch = parseInt(ch, 10) || 1;
+    xy = String(xy || "X").toUpperCase();
+    if (17 <= ch && ch <= 56) {
+      const base = xy === "Y" ? 108.05 : 108.00;
+      return Number((base + (ch - 17) * 0.1).toFixed(2));
+    } else if (70 <= ch && ch <= 126) {
+      const base = xy === "Y" ? 112.35 : 112.30;
+      return Number((base + (ch - 70) * 0.1).toFixed(2));
+    } else if (1 <= ch && ch <= 16) {
+      const base = xy === "Y" ? 134.45 : 134.40;
+      return Number((base + (ch - 1) * 0.1).toFixed(2));
+    } else if (57 <= ch && ch <= 69) {
+      const base = xy === "Y" ? 133.35 : 133.30;
+      return Number((base + (ch - 57) * 0.1).toFixed(2));
+    }
+    return 108.00;
+  }
+
+  function dmeFreqToChannel(freq) {
+    freq = Number(parseFloat(freq).toFixed(2));
+    const isY = Math.round((freq * 100)) % 10 === 5;
+    const xy = isY ? "Y" : "X";
+    if (freq >= 108.00 && freq <= 111.95) {
+      const base = isY ? 108.05 : 108.00;
+      const ch = Math.round((freq - base) / 0.1) + 17;
+      return { ch, xy };
+    }
+    if (freq >= 112.30 && freq <= 117.95) {
+      const base = isY ? 112.35 : 112.30;
+      const ch = Math.round((freq - base) / 0.1) + 70;
+      return { ch, xy };
+    }
+    if (freq >= 134.40 && freq <= 135.95) {
+      const base = isY ? 134.45 : 134.40;
+      const ch = Math.round((freq - base) / 0.1) + 1;
+      return { ch, xy };
+    }
+    if (freq >= 133.30 && freq <= 134.35) {
+      const base = isY ? 133.35 : 133.30;
+      const ch = Math.round((freq - base) / 0.1) + 57;
+      return { ch, xy };
+    }
+    return { ch: 1, xy: "X" };
+  }
+
   function renderDmeConfig(r, s) {
-    renderHub(r, "709 DME", "Choose test format. Squawk/Naut RF is not on this station.", [
-      { id: "_dme_std", title: "Standard Nav", desc: "Generic LRU format with label 035" },
-      { id: "_dme_single", title: "Single Channel", desc: "Mode bits, echo NONE/OK/ERR, BNR distance" },
-      { id: "_dme_multi", title: "Multi Channel", desc: "Five directed frequencies plus SCAN" },
-    ]);
-    r.querySelectorAll(".mode-card").forEach((card, i) => {
-      const modes = ["standard", "single", "multi"];
+    const p = el("div", "panel");
+    p.innerHTML = `
+      <div class="lru-toolbar">
+        <div>
+          <div class="panel-title" style="margin-bottom:0.35rem">709 DME Configuration</div>
+          <p class="muted">Select desired DME test operating mode (ARINC 709 / CMM Section 4.B).</p>
+        </div>
+        <button type="button" class="btn btn-ghost" id="btn-dme-cfg-back">&lt; Back to LRUs</button>
+      </div>
+    `;
+    const grid = el("div", "hub-grid");
+    const items = [
+      { id: "single", title: "Single Channel Mode", desc: "Manual word tuning (Slot 0-9, PAD, Data/Freq, SDI, SSM, Parity, Rate)" },
+      { id: "multi", title: "Multi Channel Mode", desc: "Multi-directed frequency control (DF1-DF5 & SCAN, line advance, X/Y toggle)" },
+      { id: "standard", title: "Standard Nav Configuration", desc: "Standard ARINC 429 navigation tuning (Label 035, 202, 246/247)" },
+    ];
+    items.forEach(it => {
+      const card = el("div", "mode-card");
+      card.innerHTML = `<h2>${it.title}</h2><p>${it.desc}</p>`;
       card.onclick = async () => {
-        try { render(await api("/api/arinc/dme/mode", { method: "POST", body: JSON.stringify({ mode: modes[i] }) })); }
-        catch (e) { alert(e.message); }
+        try {
+          render(await api("/api/arinc/dme/mode", { method: "POST", body: JSON.stringify({ mode: it.id }) }));
+        } catch (e) { alert(e.message); }
       };
+      grid.appendChild(card);
     });
+    p.appendChild(grid);
+    r.appendChild(p);
+    p.querySelector("#btn-dme-cfg-back").onclick = () => navTo("avionics_lru");
   }
 
   function renderDmeSingle(r, s) {
     const dme = s.dme || { rows: [] };
+    const curSlotIdx = dmeSingleState.activeSlot || 0;
+    const txCh = dmeSingleState.txBus || s.tx_ch || "A";
+    const rxCh = dmeSingleState.rxBus || s.rx_ch || "A";
+    const txSlots = (s.tx && s.tx[txCh]) || [];
+    const curTx = txSlots[curSlotIdx] || {};
+
+    let freqVal = (curTx.eng_value != null && Number.isFinite(Number(curTx.eng_value))) ? Number(curTx.eng_value) : 108.00;
+    let sdiVal = curTx.sdi != null ? Number(curTx.sdi) : 0;
+    let ssmVal = curTx.ssm || "NML";
+    let parVal = curTx.parity || "ODD";
+    let rateVal = curTx.rate_ms || 150;
+
+    let padStr = "0100001";
+    if (curTx.pads && curTx.pads !== "-") {
+      padStr = curTx.pads;
+    } else if (curTx.pad3 != null) {
+      padStr = curTx.pad3.toString(2).padStart(3, "0") + "0001";
+    }
+
+    const rxLabs = (s.rx && s.rx[rxCh] && s.rx[rxCh].labels) || [];
+    const curRx035 = rxLabs.find((l) => l.label === "035") || null;
+    const curRx202 = rxLabs.find((l) => l.label === "202") || null;
+    const curRx246 = rxLabs.find((l) => l.label === "246") || null;
+
     const p = el("div", "panel");
-    p.innerHTML = `<div class="panel-title">DME Single Channel</div>
-      <p class="muted">Label 035 @ 134.40 MHz. SQ/NT RF controls are disabled.</p>`;
-    const tw = el("div", "table-wrap");
-    const tbl = document.createElement("table");
-    tbl.innerHTML = `<thead><tr><th>ECHO</th><th>TX</th><th>RX</th><th>BNR DIST</th><th>IDENT</th></tr></thead>
-      <tbody>${(dme.rows || []).map((row) => `<tr>
-        <td><strong>${row.echo}</strong></td><td class="mono">${row.tx_data}</td>
-        <td class="mono">${row.rx_data}</td><td class="mono">${dme.bnr_dist || "—"}</td>
-        <td class="mono">${dme.ident || "—"}</td></tr>`).join("") || "<tr><td colspan='5' class='muted'>Arm TX and Start</td></tr>"}</tbody>`;
-    tw.appendChild(tbl);
-    p.appendChild(tw);
-    const fg = el("div", "field-grid");
-    const sl = ((s.tx && s.tx.A) || [])[0] || {};
-    fg.innerHTML = `
-      <label>Freq MHz<input id="dme-freq" type="number" step="0.05" value="${sl.eng_value || 134.4}"/></label>
-      <label>Mode<select id="dme-mode">${["DF1","DF2","DF3","DF4","DF5","SCAN","STBY"].map((m) => `<option>${m}</option>`).join("")}</select></label>
-      <label>NAV<select id="dme-nav">${["VOR","ILS","MLS","UND"].map((m) => `<option>${m}</option>`).join("")}</select></label>
-      <label class="check"><input type="checkbox" id="dme-disp"/> DISP</label>
-      <label class="check"><input type="checkbox" id="dme-ident"/> IDENT</label>
-      <label>SDI<select id="dme-sdi">${[0,1,2,3].map((i) => `<option value="${i}">${i === 0 ? "ALL" : i}</option>`).join("")}</select></label>`;
-    p.appendChild(fg);
-    const actions = el("div", "editor-actions");
-    actions.innerHTML = `<button type="button" class="btn" id="dme-apply">Apply</button>
-      <button type="button" class="btn btn-ghost" id="dme-back">Back</button>`;
-    p.appendChild(actions);
-    const sq = el("p", "muted sqnt-off");
-    sq.textContent = "SQUAWK/NAUT NM / KTS / REPLY EFF / RF LEVEL — not on this station.";
-    p.appendChild(sq);
+    p.innerHTML = `
+      <div class="lru-toolbar">
+        <div>
+          <div class="panel-title" style="margin-bottom:0.25rem">DME Single Channel Mode</div>
+          <p class="muted">Tuning &amp; Word Monitor (ARINC 709 / CMM Chapter 1 Section 4.B)</p>
+        </div>
+        <div style="display:flex; gap:0.5rem; align-items:center;">
+          <span class="pill pill-live">BUS ${txCh}&rarr;${rxCh}</span>
+          <button type="button" class="btn btn-sm btn-ghost" id="btn-dme-single-back">&lt; Back to DME Menu</button>
+        </div>
+      </div>
+
+      <!-- Slot Selection -->
+      <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:1rem; flex-wrap:wrap;">
+        <span class="muted" style="font-size:0.75rem; text-transform:uppercase; font-weight:600;">Slot:</span>
+        <div style="display:inline-flex; gap:0.35rem; flex-wrap:wrap;">
+          ${[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((i) => `
+            <button type="button" class="btn btn-sm ${i === curSlotIdx ? "" : "btn-ghost"}" data-slot="${i}" style="min-width:3.2rem; font-family:var(--mono);">Slot ${i}</button>
+          `).join("")}
+        </div>
+      </div>
+
+      <!-- Transmitted and Received Words Table (WhatsApp Image 09.32.55) -->
+      <div class="table-wrap" style="margin-bottom:1.25rem;">
+        <table>
+          <thead>
+            <tr>
+              <th>CHANNEL</th><th>FUNCTION</th><th>LABEL</th><th>DATA</th><th>SDI</th><th>PAD</th><th>SSM</th><th>PAR</th><th>RATE (ms)</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr style="background:var(--accent-soft); font-weight:500;">
+              <td><span class="pill" style="background:var(--accent); color:#fff;">TX-${txCh}</span></td>
+              <td>DME FREQ</td>
+              <td class="mono"><strong>035</strong></td>
+              <td class="mono"><strong>${freqVal.toFixed(2)} MHz</strong></td>
+              <td class="mono">${String(sdiVal).padStart(2, "0")}</td>
+              <td class="mono"><strong>${padStr}</strong></td>
+              <td class="mono">${ssmVal}</td>
+              <td class="mono">${parVal}</td>
+              <td class="mono">${rateVal}</td>
+            </tr>
+            <tr>
+              <td><span class="pill" style="background:var(--border); color:var(--text-2);">RX-${rxCh}</span></td>
+              <td>DME FREQ</td>
+              <td class="mono">035</td>
+              <td class="mono">${curRx035 ? (curRx035.data_text || curRx035.eng_value + " MHz") : "WAITING..."}</td>
+              <td class="mono">${curRx035 ? String(curRx035.sdi || 0).padStart(2, "0") : "--"}</td>
+              <td class="mono">${curRx035 ? (curRx035.pads || "-------") : "-------"}</td>
+              <td class="mono">${curRx035 ? (curRx035.ssm || "NML") : "---"}</td>
+              <td class="mono">${curRx035 ? (curRx035.parity || "ODD") : "---"}</td>
+              <td class="mono">${curRx035 ? (curRx035.period_ms || 150) : "---"}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Telemetry Summary Cards -->
+      <div class="lru-telemetry-grid">
+        <div class="lru-telemetry-card">
+          <div class="lbl">DME FREQ</div>
+          <div class="val">${freqVal.toFixed(2)} MHz</div>
+        </div>
+        <div class="lru-telemetry-card">
+          <div class="lbl">BNR DIST (202)</div>
+          <div class="val">${curRx202 && curRx202.eng_value != null ? Number(curRx202.eng_value).toFixed(2) + " NM" : (dme.bnr_dist || "—")}</div>
+        </div>
+        <div class="lru-telemetry-card">
+          <div class="lbl">IDENT (246/247)</div>
+          <div class="val">${curRx246 ? (curRx246.data_text || "PRESENT") : (dme.ident || "—")}</div>
+        </div>
+        <div class="lru-telemetry-card">
+          <div class="lbl">BIT RATE</div>
+          <div class="val">${s.bit_rate_kbps || 12.5} kbps</div>
+        </div>
+      </div>
+
+      <!-- Manual Word Parameter Editor (Field Grid) -->
+      <div class="panel" style="background:var(--surface-2); border:1px solid var(--border); margin-bottom:1.25rem; padding:1rem 1.25rem;">
+        <div style="font-weight:600; font-size:0.85rem; margin-bottom:0.75rem; color:var(--text);">
+          Manual Word Parameters (Slot ${curSlotIdx})
+        </div>
+        <div class="field-grid" style="grid-template-columns:repeat(auto-fit, minmax(130px, 1fr)); gap:0.75rem;">
+          <div class="field">
+            <label>PAD (discrete bits)</label>
+            <input type="text" id="inp-single-pad" value="${padStr}" maxlength="16" style="font-family:var(--mono);">
+          </div>
+          <div class="field">
+            <label>DATA (Freq MHz)</label>
+            <div style="display:flex; gap:0.25rem;">
+              <input type="number" step="0.05" min="100.0" max="1799.9" id="inp-single-freq" value="${freqVal.toFixed(2)}" style="flex:1;">
+              <button type="button" class="btn btn-sm btn-ghost" id="btn-step-dec">-</button>
+              <button type="button" class="btn btn-sm btn-ghost" id="btn-step-inc">+</button>
+            </div>
+          </div>
+          <div class="field">
+            <label>SDI</label>
+            <select id="sel-single-sdi">
+              <option value="0" ${sdiVal === 0 ? "selected" : ""}>00 (All Call)</option>
+              <option value="1" ${sdiVal === 1 ? "selected" : ""}>01</option>
+              <option value="2" ${sdiVal === 2 ? "selected" : ""}>10</option>
+              <option value="3" ${sdiVal === 3 ? "selected" : ""}>11</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>SSM</label>
+            <select id="sel-single-ssm">
+              <option value="NML" ${ssmVal === "NML" ? "selected" : ""}>NML (Normal)</option>
+              <option value="NCD" ${ssmVal === "NCD" ? "selected" : ""}>NCD (No Compute)</option>
+              <option value="FT" ${ssmVal === "FT" ? "selected" : ""}>FT (Func Test)</option>
+              <option value="FW" ${ssmVal === "FW" ? "selected" : ""}>FW (Fail Warning)</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>PARITY</label>
+            <select id="sel-single-par">
+              <option value="ODD" ${parVal === "ODD" ? "selected" : ""}>ODD</option>
+              <option value="EVEN" ${parVal === "EVEN" ? "selected" : ""}>EVEN</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>RATE (ms)</label>
+            <input type="number" id="inp-single-rate" min="10" max="5000" value="${rateVal}">
+          </div>
+        </div>
+      </div>
+
+      <!-- Bottom Action Bar -->
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem; padding-top:0.5rem; border-top:1px solid var(--border);">
+        <div style="display:flex; gap:0.4rem; flex-wrap:wrap;">
+          <button type="button" class="btn btn-sm btn-ghost" id="btn-single-step-val">Step: ±${dmeSingleState.stepVal}</button>
+          <button type="button" class="btn btn-sm btn-ghost" id="btn-single-rate-toggle">${s.bit_rate_kbps || 12.5} kbps</button>
+          <button type="button" class="btn btn-sm btn-ghost" id="btn-single-txbus">TX-${txCh}</button>
+          <button type="button" class="btn btn-sm btn-ghost" id="btn-single-rxbus">RX-${rxCh}</button>
+        </div>
+        <div style="display:flex; gap:0.5rem;">
+          <button type="button" class="btn btn-sm" id="btn-single-apply">Transmit Active Slot</button>
+        </div>
+      </div>
+    `;
     r.appendChild(p);
-    renderRxTable(r, s, "A", 10, ["035", "202", "246", "247"]);
-    $("dme-apply").addEventListener("click", async () => {
-      try {
-        render(await api("/api/arinc/dme/slot", { method: "POST", body: JSON.stringify({
-          index: 0,
-          freq_mhz: parseFloat($("dme-freq").value),
-          mode: $("dme-mode").value,
-          nav: $("dme-nav").value,
-          disp: $("dme-disp").checked,
-          ident: $("dme-ident").checked,
-          sdi: parseInt($("dme-sdi").value, 10),
-          enabled: true,
-        }) }));
-      } catch (e) { alert(e.message); }
+
+    p.querySelectorAll("[data-slot]").forEach(b => {
+      b.onclick = () => {
+        dmeSingleState.activeSlot = parseInt(b.dataset.slot, 10);
+        render(snap);
+      };
     });
-    $("dme-back").addEventListener("click", () => navTo("dme_config"));
+
+    p.querySelector("#btn-step-dec").onclick = () => {
+      const inp = p.querySelector("#inp-single-freq");
+      inp.value = (Math.max(100.0, parseFloat(inp.value) - dmeSingleState.stepVal)).toFixed(2);
+    };
+    p.querySelector("#btn-step-inc").onclick = () => {
+      const inp = p.querySelector("#inp-single-freq");
+      inp.value = (parseFloat(inp.value) + dmeSingleState.stepVal).toFixed(2);
+    };
+
+    p.querySelector("#btn-single-step-val").onclick = () => {
+      const steps = [0.05, 0.1, 0.5, 1.0, 5.0];
+      const curIdx = steps.indexOf(dmeSingleState.stepVal);
+      dmeSingleState.stepVal = steps[(curIdx + 1) % steps.length];
+      p.querySelector("#btn-single-step-val").textContent = `Step: ±${dmeSingleState.stepVal}`;
+    };
+
+    p.querySelector("#btn-single-txbus").onclick = () => {
+      dmeSingleState.txBus = txCh === "A" ? "B" : "A";
+      render(snap);
+    };
+
+    p.querySelector("#btn-single-rxbus").onclick = () => {
+      dmeSingleState.rxBus = rxCh === "A" ? "B" : "A";
+      render(snap);
+    };
+
+    p.querySelector("#btn-single-rate-toggle").onclick = async () => {
+      const newHigh = !(s.bit_rate_kbps > 50);
+      try {
+        render(await api("/api/arinc/bitrate", { method: "POST", body: JSON.stringify({ high_speed: newHigh }) }));
+      } catch (e) { alert(e.message); }
+    };
+
+    p.querySelector("#btn-dme-single-back").onclick = () => navTo("dme_config");
+
+    p.querySelector("#btn-single-apply").onclick = async () => {
+      try {
+        const freq = parseFloat(p.querySelector("#inp-single-freq").value) || 108.00;
+        const sdi = parseInt(p.querySelector("#sel-single-sdi").value, 10);
+        const ssm = p.querySelector("#sel-single-ssm").value;
+        const par = p.querySelector("#sel-single-par").value;
+        const rate = parseInt(p.querySelector("#inp-single-rate").value, 10) || 150;
+
+        await api("/api/arinc/tx/slot", {
+          method: "POST",
+          body: JSON.stringify({
+            bus: txCh,
+            slot: curSlotIdx,
+            mode: "freq",
+            label: "035",
+            data: freq.toFixed(2),
+            eng_value: freq,
+            sdi: sdi,
+            ssm: ssm,
+            odd_parity: par === "ODD",
+            rate_ms: rate,
+            enabled: true,
+          }),
+        });
+
+        await api("/api/arinc/dme/slot", {
+          method: "POST",
+          body: JSON.stringify({
+            index: curSlotIdx,
+            freq_mhz: freq,
+            sdi: sdi,
+            ssm: ssm,
+            enabled: true,
+          }),
+        });
+
+        const updated = await api("/api/arinc/status");
+        render(updated);
+      } catch (e) { alert(e.message); }
+    };
   }
 
   function renderDmeMulti(r, s) {
     const dme = s.dme || { rows: [], line: 0 };
-    const p = el("div", "panel");
-    p.innerHTML = `<div class="panel-title">DME Multi Channel</div>
-      <p class="muted">Six label 035 words. Line advance selects which word to edit.</p>`;
-    const tw = el("div", "table-wrap");
-    const tbl = document.createElement("table");
-    tbl.innerHTML = `<thead><tr><th></th><th>ECHO</th><th>TX</th><th>RX SSM</th></tr></thead>`;
-    const tb = document.createElement("tbody");
-    (dme.rows || []).forEach((row) => {
-      const tr = document.createElement("tr");
-      if (row.slot === dme.line) tr.classList.add("selected");
-      tr.innerHTML = `<td>${row.slot}</td><td>${row.echo}</td><td class="mono">${row.tx_data}</td><td class="mono">${row.rx_ssm || ""}</td>`;
-      tr.addEventListener("click", async () => {
-        try { render(await api("/api/arinc/dme/slot", { method: "POST", body: JSON.stringify({ index: row.slot }) })); }
-        catch (e) { alert(e.message); }
+    const curLine = dmeMultiState.selectedLine || 0;
+    const txCh = dmeMultiState.txBus || s.tx_ch || "A";
+    const rxCh = dmeMultiState.rxBus || s.rx_ch || "A";
+
+    const defaultLines = [
+      { mode: "DF1", ch: 1,   xy: "X", sdi: 0, disp: "ON",  ident: "OFF", nav: "VOR", freq: 134.40 },
+      { mode: "DF2", ch: 34,  xy: "Y", sdi: 0, disp: "OFF", ident: "OFF", nav: "VOR", freq: 109.75 },
+      { mode: "DF3", ch: 64,  xy: "X", sdi: 0, disp: "OFF", ident: "OFF", nav: "VOR", freq: 134.00 },
+      { mode: "DF4", ch: 93,  xy: "Y", sdi: 0, disp: "OFF", ident: "OFF", nav: "VOR", freq: 114.65 },
+      { mode: "DF5", ch: 126, xy: "X", sdi: 0, disp: "OFF", ident: "OFF", nav: "VOR", freq: 117.90 },
+      { mode: "SCAN", ch: 1,  xy: "X", sdi: 0, disp: "OFF", ident: "OFF", nav: "VOR", freq: 134.40 },
+    ];
+
+    const lines = defaultLines.map((def, i) => {
+      const serverRow = (dme.rows || []).find((r) => r.slot === i);
+      if (!serverRow) return def;
+      return Object.assign({}, def, {
+        freq: serverRow.freq || def.freq,
+        mode: serverRow.mode || def.mode,
+        nav: serverRow.nav || def.nav,
+        disp: serverRow.disp ? "ON" : "OFF",
+        ident: serverRow.ident ? "ON" : "OFF",
+        sdi: serverRow.sdi != null ? serverRow.sdi : def.sdi,
+        echo: serverRow.echo || "NONE",
       });
-      tb.appendChild(tr);
     });
-    tbl.appendChild(tb);
-    tw.appendChild(tbl);
-    p.appendChild(tw);
-    const sl = ((s.tx && s.tx.A) || [])[dme.line || 0] || {};
-    const fg = el("div", "field-grid");
-    fg.innerHTML = `
-      <label>Freq MHz<input id="dme-freq" type="number" step="0.05" value="${sl.eng_value || 134.4}"/></label>
-      <label>Mode<select id="dme-mode">${["DF1","DF2","DF3","DF4","DF5","SCAN","STBY"].map((m) => `<option>${m}</option>`).join("")}</select></label>
-      <label>NAV<select id="dme-nav">${["VOR","ILS","MLS","UND"].map((m) => `<option>${m}</option>`).join("")}</select></label>`;
-    p.appendChild(fg);
-    const actions = el("div", "editor-actions");
-    actions.innerHTML = `<button type="button" class="btn" id="dme-apply">Apply line</button>
-      <button type="button" class="btn btn-ghost" id="dme-adv">Line advance</button>
-      <button type="button" class="btn btn-ghost" id="dme-back">Back</button>`;
-    p.appendChild(actions);
-    const sq = el("p", "muted sqnt-off");
-    sq.textContent = "SQUAWK/NAUT control — not on this station.";
-    p.appendChild(sq);
+
+    const activeRow = lines[curLine] || lines[0];
+
+    const p = el("div", "panel");
+    p.innerHTML = `
+      <div class="lru-toolbar">
+        <div>
+          <div class="panel-title" style="margin-bottom:0.25rem">DME Multi Channel Mode</div>
+          <p class="muted">Directed Frequency Sequencing DF1–DF5 &amp; SCAN (ARINC 709 / CMM Section 4.B)</p>
+        </div>
+        <div style="display:flex; gap:0.5rem; align-items:center;">
+          <span class="pill pill-live">LINE ${curLine + 1} (${activeRow.mode})</span>
+          <button type="button" class="btn btn-sm btn-ghost" id="btn-dme-multi-back">&lt; Back to DME Menu</button>
+        </div>
+      </div>
+
+      <!-- Transmitter Control Table (WhatsApp Image 09.32.56) -->
+      <div class="table-wrap" style="margin-bottom:1.25rem;">
+        <table>
+          <thead>
+            <tr>
+              <th>ECHO</th><th>MODE SSM</th><th>CHAN</th><th>X/Y</th><th>FREQ (MHz)</th><th>SDI</th><th>DISP</th><th>IDENT</th><th>NAV</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${lines.map((row, i) => `
+              <tr data-line="${i}" style="cursor:pointer; ${i === curLine ? "background:var(--accent-soft); font-weight:600;" : ""}">
+                <td>${row.echo || "NONE"}</td>
+                <td class="mono"><strong>${row.mode}</strong></td>
+                <td class="mono">${row.ch}</td>
+                <td class="mono">${row.xy}</td>
+                <td class="mono">${row.freq.toFixed(2)}</td>
+                <td class="mono">${row.sdi === 0 ? "ALL" : String(row.sdi).padStart(2, "0")}</td>
+                <td class="mono">${row.disp}</td>
+                <td class="mono">${row.ident}</td>
+                <td>${row.nav}</td>
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Telemetry Cards -->
+      <div class="lru-telemetry-grid">
+        <div class="lru-telemetry-card">
+          <div class="lbl">ACTIVE FREQ</div>
+          <div class="val">${activeRow.freq.toFixed(2)} MHz</div>
+        </div>
+        <div class="lru-telemetry-card">
+          <div class="lbl">BNR DIST</div>
+          <div class="val">${dme.bnr_dist || "—"}</div>
+        </div>
+        <div class="lru-telemetry-card">
+          <div class="lbl">BCD DIST</div>
+          <div class="val">— NM</div>
+        </div>
+        <div class="lru-telemetry-card">
+          <div class="lbl">IDENT</div>
+          <div class="val">${dme.ident || "—"}</div>
+        </div>
+      </div>
+
+      <!-- Active Line Parameters Editor -->
+      <div class="panel" style="background:var(--surface-2); border:1px solid var(--border); margin-bottom:1.25rem; padding:1rem 1.25rem;">
+        <div style="font-weight:600; font-size:0.85rem; margin-bottom:0.75rem; color:var(--text);">
+          Active Line Settings: ${activeRow.mode} (Line ${curLine + 1} of 6)
+        </div>
+        <div class="field-grid" style="grid-template-columns:repeat(auto-fit, minmax(130px, 1fr)); gap:0.75rem;">
+          <div class="field">
+            <label>Channel (1-126)</label>
+            <input type="number" min="1" max="126" id="inp-multi-ch" value="${activeRow.ch}">
+          </div>
+          <div class="field">
+            <label>Channel Suffix</label>
+            <select id="sel-multi-xy">
+              <option value="X" ${activeRow.xy === "X" ? "selected" : ""}>X</option>
+              <option value="Y" ${activeRow.xy === "Y" ? "selected" : ""}>Y</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Calculated Freq (MHz)</label>
+            <input type="number" step="0.05" id="inp-multi-freq" value="${activeRow.freq.toFixed(2)}">
+          </div>
+          <div class="field">
+            <label>SDI</label>
+            <select id="sel-multi-sdi">
+              <option value="0" ${activeRow.sdi === 0 ? "selected" : ""}>00 (All Call)</option>
+              <option value="1" ${activeRow.sdi === 1 ? "selected" : ""}>01</option>
+              <option value="2" ${activeRow.sdi === 2 ? "selected" : ""}>10</option>
+              <option value="3" ${activeRow.sdi === 3 ? "selected" : ""}>11</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>DISP</label>
+            <select id="sel-multi-disp">
+              <option value="ON" ${activeRow.disp === "ON" ? "selected" : ""}>ON</option>
+              <option value="OFF" ${activeRow.disp === "OFF" ? "selected" : ""}>OFF</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>IDENT</label>
+            <select id="sel-multi-ident">
+              <option value="OFF" ${activeRow.ident === "OFF" ? "selected" : ""}>OFF</option>
+              <option value="ON" ${activeRow.ident === "ON" ? "selected" : ""}>ON</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>NAV Mode</label>
+            <select id="sel-multi-nav">
+              <option value="VOR" ${activeRow.nav === "VOR" ? "selected" : ""}>VOR</option>
+              <option value="ILS" ${activeRow.nav === "ILS" ? "selected" : ""}>ILS</option>
+              <option value="MLS" ${activeRow.nav === "MLS" ? "selected" : ""}>MLS</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Action Toolbar -->
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem; padding-top:0.5rem; border-top:1px solid var(--border);">
+        <div style="display:flex; gap:0.4rem; flex-wrap:wrap;">
+          <button type="button" class="btn btn-sm btn-ghost" id="btn-multi-xy-toggle">Toggle X/Y</button>
+          <button type="button" class="btn btn-sm btn-ghost" id="btn-multi-txbus">TX-${txCh}</button>
+          <button type="button" class="btn btn-sm btn-ghost" id="btn-multi-rxbus">RX-${rxCh}</button>
+          <button type="button" class="btn btn-sm btn-ghost" id="btn-multi-advan">Line Advance</button>
+        </div>
+        <div style="display:flex; gap:0.5rem;">
+          <button type="button" class="btn btn-sm" id="btn-multi-apply">Transmit Active Line</button>
+        </div>
+      </div>
+    `;
     r.appendChild(p);
-    renderRxTable(r, s, "A", 10, ["035", "202", "246", "247"]);
-    $("dme-apply").addEventListener("click", async () => {
+
+    p.querySelectorAll("tr[data-line]").forEach(tr => {
+      tr.onclick = () => {
+        dmeMultiState.selectedLine = parseInt(tr.dataset.line, 10);
+        render(snap);
+      };
+    });
+
+    const updateCalculatedFreq = () => {
+      const ch = parseInt(p.querySelector("#inp-multi-ch").value, 10) || 1;
+      const xy = p.querySelector("#sel-multi-xy").value;
+      const f = dmeChannelToFreq(ch, xy);
+      p.querySelector("#inp-multi-freq").value = f.toFixed(2);
+    };
+    p.querySelector("#inp-multi-ch").oninput = updateCalculatedFreq;
+    p.querySelector("#sel-multi-xy").onchange = updateCalculatedFreq;
+
+    p.querySelector("#btn-multi-xy-toggle").onclick = () => {
+      const sel = p.querySelector("#sel-multi-xy");
+      sel.value = sel.value === "X" ? "Y" : "X";
+      updateCalculatedFreq();
+    };
+
+    p.querySelector("#btn-multi-txbus").onclick = () => {
+      dmeMultiState.txBus = txCh === "A" ? "B" : "A";
+      render(snap);
+    };
+
+    p.querySelector("#btn-multi-rxbus").onclick = () => {
+      dmeMultiState.rxBus = rxCh === "A" ? "B" : "A";
+      render(snap);
+    };
+
+    p.querySelector("#btn-multi-advan").onclick = () => {
+      dmeMultiState.selectedLine = (curLine + 1) % 6;
+      render(snap);
+    };
+
+    p.querySelector("#btn-dme-multi-back").onclick = () => navTo("dme_config");
+
+    p.querySelector("#btn-multi-apply").onclick = async () => {
       try {
-        render(await api("/api/arinc/dme/slot", { method: "POST", body: JSON.stringify({
-          index: dme.line || 0,
-          freq_mhz: parseFloat($("dme-freq").value),
-          mode: $("dme-mode").value,
-          nav: $("dme-nav").value,
-          enabled: true,
-        }) }));
+        const freq = parseFloat(p.querySelector("#inp-multi-freq").value) || activeRow.freq;
+        const nav = p.querySelector("#sel-multi-nav").value;
+        const sdi = parseInt(p.querySelector("#sel-multi-sdi").value, 10);
+        const disp = p.querySelector("#sel-multi-disp").value === "ON";
+        const ident = p.querySelector("#sel-multi-ident").value === "ON";
+
+        await api("/api/arinc/dme/slot", {
+          method: "POST",
+          body: JSON.stringify({
+            index: curLine,
+            freq_mhz: freq,
+            mode: activeRow.mode,
+            nav: nav,
+            disp: disp,
+            ident: ident,
+            sdi: sdi,
+            enabled: true,
+          }),
+        });
+        const updated = await api("/api/arinc/status");
+        render(updated);
       } catch (e) { alert(e.message); }
-    });
-    $("dme-adv").addEventListener("click", async () => {
-      const nxt = ((dme.line || 0) + 1) % 6;
-      try { render(await api("/api/arinc/dme/slot", { method: "POST", body: JSON.stringify({ index: nxt }) })); }
-      catch (e) { alert(e.message); }
-    });
-    $("dme-back").addEventListener("click", () => navTo("dme_config"));
+    };
   }
 
   function renderMmrMenu(r, s) {

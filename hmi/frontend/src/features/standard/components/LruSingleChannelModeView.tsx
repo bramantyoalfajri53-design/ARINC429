@@ -4,19 +4,29 @@ import { LruDefinition, LruRxWordData, LruTxSlotData } from "../types/lruTypes";
 
 interface LruSingleChannelModeViewProps {
   lru: LruDefinition;
+  isStandardNav?: boolean;
   onBackToConfig: () => void;
   onBackToMenu: () => void;
 }
 
 export function LruSingleChannelModeView({
   lru,
+  isStandardNav = false,
   onBackToConfig,
   onBackToMenu,
 }: LruSingleChannelModeViewProps) {
-  // Transmit slot configuration
-  const [txData, setTxData] = useState<LruTxSlotData>(() => ({
-    ...lru.tx_template,
-  }));
+  // 10 Slots (SLOT 0 .. SLOT 9) state per CMM Figure 15 / Figure 17
+  const [activeSlot, setActiveSlot] = useState<number>(0);
+  const [slots, setSlots] = useState<LruTxSlotData[]>(() =>
+    Array.from({ length: 10 }, (_, i) => ({
+      ...lru.tx_template,
+      slot: i,
+      data: isStandardNav ? "108.00 MHZ" : (i === 0 ? lru.tx_template.data : `${(108.0 + i * 0.1).toFixed(2)} MHZ`),
+      pad: isStandardNav ? "1100001" : lru.tx_template.pad,
+    }))
+  );
+
+  const txData = slots[activeSlot] || slots[0];
 
   // Received word status
   const [rxData, setRxData] = useState<LruRxWordData>(() => ({
@@ -48,7 +58,6 @@ export function LruSingleChannelModeView({
   const handleToggleTxChan = () => {
     const nextTx = activeTxChan === "TX-A" ? "TX-B" : "TX-A";
     setActiveTxChan(nextTx);
-    setTxData((prev) => ({ ...prev, channel: nextTx }));
   };
 
   // Toggle RX channel (RX-A <-> RX-B)
@@ -58,28 +67,33 @@ export function LruSingleChannelModeView({
     setRxData((prev) => ({ ...prev, channel: nextRx }));
   };
 
-  // Handle Field Edit with Validation
+  // Handle in-place field edit for active slot
   const handleFieldChange = (fieldId: string, value: string) => {
     setValidationError("");
-    if (fieldId === "pad") {
-      // Validate binary string
-      if (!/^[01]*$/.test(value)) {
-        setValidationError("PAD must only contain binary digits (0 or 1)");
-        return;
-      }
-      setTxData((prev) => ({ ...prev, pad: value }));
-    } else if (fieldId === "data") {
-      setTxData((prev) => ({ ...prev, data: value }));
-    } else if (fieldId === "sdi") {
-      setTxData((prev) => ({ ...prev, sdi: value }));
-    } else if (fieldId === "ssm") {
-      setTxData((prev) => ({ ...prev, ssm: value }));
-    } else if (fieldId === "parity") {
-      setTxData((prev) => ({ ...prev, parity: value as "ODD" | "EVEN" }));
-    } else if (fieldId === "rate") {
-      const num = parseInt(value, 10);
-      setTxData((prev) => ({ ...prev, rate: isNaN(num) ? 100 : num }));
-    }
+    setSlots((prev) =>
+      prev.map((s, idx) => {
+        if (idx !== activeSlot) return s;
+        if (fieldId === "pad") {
+          if (!/^[01]*$/.test(value)) {
+            setValidationError("PAD must only contain binary digits (0 or 1)");
+            return s;
+          }
+          return { ...s, pad: value };
+        } else if (fieldId === "data") {
+          return { ...s, data: value };
+        } else if (fieldId === "sdi") {
+          return { ...s, sdi: value };
+        } else if (fieldId === "ssm") {
+          return { ...s, ssm: value };
+        } else if (fieldId === "parity") {
+          return { ...s, parity: value as "ODD" | "EVEN" };
+        } else if (fieldId === "rate") {
+          const num = parseInt(value, 10);
+          return { ...s, rate: isNaN(num) ? 100 : num };
+        }
+        return s;
+      })
+    );
   };
 
   // F-Key: DATA STEP (increment / decrement active field based on INC/DECR mode)
@@ -92,15 +106,14 @@ export function LruSingleChannelModeView({
         const newNum = stepDirection === "INC" ? curNum + step : Math.max(0, curNum - step);
         const unit = txData.data.replace(match[1], "").trim();
         const updated = `${newNum.toFixed(2)} ${unit}`.trim();
-        setTxData((prev) => ({ ...prev, data: updated }));
+        handleFieldChange("data", updated);
       }
     } else if (activeField === "pad") {
-      // Step through binary value of PAD
       const intVal = parseInt(txData.pad || "0", 2);
       const nextVal = stepDirection === "INC" ? intVal + 1 : Math.max(0, intVal - 1);
       const padLen = txData.pad.length || 7;
       const binStr = (nextVal % Math.pow(2, padLen)).toString(2).padStart(padLen, "0");
-      setTxData((prev) => ({ ...prev, pad: binStr }));
+      handleFieldChange("pad", binStr);
     } else if (activeField === "ssm") {
       const ssmList = ["NML", "NO", "NCD", "FT", "FW"];
       const idx = ssmList.indexOf(txData.ssm);
@@ -108,9 +121,9 @@ export function LruSingleChannelModeView({
         stepDirection === "INC"
           ? (idx + 1) % ssmList.length
           : (idx - 1 + ssmList.length) % ssmList.length;
-      setTxData((prev) => ({ ...prev, ssm: ssmList[nextIdx] }));
+      handleFieldChange("ssm", ssmList[nextIdx]);
     } else if (activeField === "parity") {
-      setTxData((prev) => ({ ...prev, parity: prev.parity === "ODD" ? "EVEN" : "ODD" }));
+      handleFieldChange("parity", txData.parity === "ODD" ? "EVEN" : "ODD");
     }
   };
 
@@ -127,6 +140,13 @@ export function LruSingleChannelModeView({
     setActiveField(fieldsOrder[nextIdx]);
   };
 
+  // F-Key: MORE WORDS (cycle through slots 0..9)
+  const handleMoreWords = () => {
+    const nextSlot = (activeSlot + 1) % 10;
+    setActiveSlot(nextSlot);
+    setTxStatusMsg(`Active Slot switched to SLOT ${nextSlot}`);
+  };
+
   // Send configured word to backend / ARINC 429 coordinator
   const handleTransmit = async () => {
     setIsTransmitting(true);
@@ -135,7 +155,7 @@ export function LruSingleChannelModeView({
       const res = await standardApi.transmitLruSingleMode({
         lru_id: lru.id,
         channel: activeTxChan,
-        slot: txData.slot || 0,
+        slot: activeSlot,
         label: txData.label,
         function: txData.function,
         data: txData.data,
@@ -162,6 +182,13 @@ export function LruSingleChannelModeView({
 
   return (
     <div className="retro-dynapro-container">
+      {/* Title banner */}
+      <div className="retro-screen-title">
+        {isStandardNav
+          ? `${lru.id} STANDARD NAV CONFIGURATION (FIGURE 15)`
+          : `${lru.id} SINGLE CHANNEL MODE (FIGURE 17)`}
+      </div>
+
       {/* Top Header / Channel Word Summary */}
       <div className="retro-header-grid">
         <div className="retro-header-box">
@@ -170,8 +197,13 @@ export function LruSingleChannelModeView({
           </div>
           <div className="retro-header-sub">
             <span>{txData.function || `${lru.name} FREQ`}</span>
-            <div className="retro-slot-badge">
-              SLOT <span className="retro-slot-num">{txData.slot}</span>
+            <div
+              className="retro-slot-badge"
+              style={{ cursor: "pointer" }}
+              onClick={handleMoreWords}
+              title="Click to cycle slot (0..9)"
+            >
+              SLOT <span className="retro-slot-num">{activeSlot}</span>
             </div>
           </div>
         </div>
@@ -187,6 +219,27 @@ export function LruSingleChannelModeView({
             </div>
           </div>
         </div>
+      </div>
+
+      {/* Slot Selection Tabs (SLOT 0 to SLOT 9) */}
+      <div style={{ display: "flex", gap: "6px", overflowX: "auto", padding: "2px 0" }}>
+        {slots.map((s, idx) => (
+          <button
+            key={idx}
+            type="button"
+            className={`retro-fkey ${idx === activeSlot ? "active" : ""}`}
+            style={{
+              minWidth: "62px",
+              padding: "4px 6px",
+              fontSize: "11px",
+              background: idx === activeSlot ? "#10b981" : "#042416",
+              color: idx === activeSlot ? "#022013" : "#6ee7b7",
+            }}
+            onClick={() => setActiveSlot(idx)}
+          >
+            SLOT {idx}
+          </button>
+        ))}
       </div>
 
       {/* Main Single Channel Table Display */}
@@ -367,10 +420,8 @@ export function LruSingleChannelModeView({
         <button
           type="button"
           className="retro-fkey"
-          onClick={() => {
-            setTxStatusMsg("Scrolling words (SLOT 0 of 10)");
-          }}
-          title="Scroll or view more words"
+          onClick={handleMoreWords}
+          title="Advance to next word slot (SLOT 0..9)"
         >
           MORE<br />WORDS
         </button>
