@@ -3738,7 +3738,7 @@ function renderCmcChannelsTab(c, r, s) {
     return view === "user_configure" || view === "setup_txrx" ||
       view === "cfds_edit_tx" || view === "cfds_config_channels" ||
       view === "cmc_edit_tx" || view === "cmc_config_txrx" ||
-      view === "dme_single" || view === "dme_multi" || view === "dme_standard" || view === "lru_format" || view === "mmr_format";
+      view === "dme_single" || view === "dme_multi" || view === "dme_standard" || view === "lru_format" || view === "mmr_format" || view === "dme_diagnostic";
   }
 
   function render(s, opts) {
@@ -4272,6 +4272,7 @@ function renderCmcChannelsTab(c, r, s) {
         rx_ch: (extra && extra.rx_ch) || (detail && (detail.rx_ch || detail.bus)) || snap && snap.rx_ch || "A",
         apply_tx: extra && extra.apply_tx === false ? false : true,
         apply_rx: extra && extra.apply_rx === false ? false : true,
+        reset: extra && extra.reset === true ? true : false,
       };
       const snapIn = await api("/api/arinc/profile/apply", { method: "POST", body: JSON.stringify(body) });
       activeProfile = profileId;
@@ -4460,6 +4461,7 @@ function renderCmcChannelsTab(c, r, s) {
     const actions = el("div", "editor-actions");
     actions.innerHTML = `<button type="button" class="btn" id="btn-format-save">Save template</button>
       <button type="button" class="btn" id="btn-format-apply">Apply TX values</button>
+      <button type="button" class="btn btn-ghost" id="btn-format-reset" title="Reset this LRU template to factory defaults">↺ Reset Defaults</button>
       <button type="button" class="btn btn-ghost" id="btn-format-edit">Edit all fields</button>
       <button type="button" class="btn btn-ghost" id="btn-format-back">Back to LRU list</button>`;
     p.appendChild(actions);
@@ -4497,6 +4499,14 @@ function renderCmcChannelsTab(c, r, s) {
     });
     $("btn-format-save").addEventListener("click", saveFormatTemplate);
     $("btn-format-apply").addEventListener("click", applyAllLabels);
+    $("btn-format-reset").addEventListener("click", async () => {
+      if (!confirm(`Reset profile "${profName}" to factory defaults?`)) return;
+      try {
+        await applyProfile(pid, { reset: true });
+      } catch (e) {
+        alert(e.message);
+      }
+    });
     $("btn-format-edit").addEventListener("click", () => { if (pid) openLruForm(pid); });
     $("btn-format-back").addEventListener("click", () => navTo("avionics_lru"));
     const incEl = $("mmr-inc");
@@ -4607,6 +4617,7 @@ function renderCmcChannelsTab(c, r, s) {
     txBus: "A",
     rxBus: "A",
     stepVal: 0.05,
+    slots: {},
   };
 
   function showDmeKeypadModal({ title, value, type, hint, onApply }) {
@@ -4728,6 +4739,16 @@ function renderCmcChannelsTab(c, r, s) {
   }
 
   async function applyDmeSlotHelper(params) {
+    if (params && params.index != null) {
+      if (!dmeStandardState.slots[params.index]) dmeStandardState.slots[params.index] = {};
+      const slotCache = dmeStandardState.slots[params.index];
+      if (params.freq_mhz != null) slotCache.freq = params.freq_mhz;
+      if (params.pad != null) slotCache.pad = params.pad;
+      if (params.sdi != null) slotCache.sdi = params.sdi;
+      if (params.ssm != null) slotCache.ssm = params.ssm;
+      if (params.parity != null) slotCache.parity = params.parity;
+      if (params.rate_ms != null) slotCache.rate = params.rate_ms;
+    }
     try {
       await api("/api/arinc/dme/slot", {
         method: "POST",
@@ -4891,6 +4912,7 @@ function renderCmcChannelsTab(c, r, s) {
           <span class="pill pill-run">BUS TX-${txCh} &bull; RX-${rxCh}</span>
           <button type="button" class="btn btn-ghost btn-sm" id="btn-dme-single-back">&lt; Back to DME Modes</button>
           <button type="button" class="btn btn-ghost btn-sm" id="btn-dme-single-lrus">&lt; LRU Select</button>
+          <button type="button" class="btn btn-ghost btn-sm" id="btn-dme-single-reset" title="Reset all Single Channel settings to factory defaults">↺ Reset Defaults</button>
           <button type="button" class="btn btn-outline btn-sm" id="btn-dme-single-diag">⚡ Live Diagnostic</button>
           <button type="button" class="btn btn-sm" id="btn-dme-single-tx">Transmit Active Word</button>
         </div>
@@ -5192,13 +5214,21 @@ function renderCmcChannelsTab(c, r, s) {
     };
 
     // Softkey TX & RX toggles
-    p.querySelector("#s-sk-tx").onclick = () => {
-      dmeSingleState.txBus = txCh === "A" ? "B" : "A";
-      render(snap);
+    p.querySelector("#s-sk-tx").onclick = async () => {
+      const nextBus = txCh === "A" ? "B" : "A";
+      dmeSingleState.txBus = nextBus;
+      try {
+        const snapIn = await api("/api/arinc/channel/active", { method: "POST", body: JSON.stringify({ tx_ch: nextBus }) });
+        render(snapIn);
+      } catch { render(snap); }
     };
-    p.querySelector("#s-sk-rx").onclick = () => {
-      dmeSingleState.rxBus = rxCh === "A" ? "B" : "A";
-      render(snap);
+    p.querySelector("#s-sk-rx").onclick = async () => {
+      const nextBus = rxCh === "A" ? "B" : "A";
+      dmeSingleState.rxBus = nextBus;
+      try {
+        const snapIn = await api("/api/arinc/channel/active", { method: "POST", body: JSON.stringify({ rx_ch: nextBus }) });
+        render(snapIn);
+      } catch { render(snap); }
     };
     p.querySelector("#s-sk-sqnt").onclick = () => {
       dmeSingleState.sqntMode = dmeSingleState.sqntMode === "SQNT" ? "INDEP" : "SQNT";
@@ -5213,6 +5243,20 @@ function renderCmcChannelsTab(c, r, s) {
     p.querySelector("#btn-dme-single-back").onclick = () => navTo("dme_config");
     p.querySelector("#btn-dme-single-lrus").onclick = () => navTo("avionics_lru");
     p.querySelector("#btn-dme-single-diag").onclick = () => pushScreen("dme_diagnostic");
+    p.querySelector("#btn-dme-single-reset").onclick = async () => {
+      if (!confirm("Reset DME Single Channel settings to factory defaults?")) return;
+      try {
+        dmeSingleState.freq = 134.40;
+        dmeSingleState.sdi = 0;
+        dmeSingleState.mode = "DF1";
+        dmeSingleState.nav = "VOR";
+        const snapIn = await api("/api/arinc/dme/mode", {
+          method: "POST",
+          body: JSON.stringify({ mode: "single", reset: true }),
+        });
+        render(snapIn);
+      } catch (e) { alert(e.message); }
+    };
     p.querySelector("#btn-dme-single-tx").onclick = () => {
       applyDmeSlotHelper({
         index: 0,
@@ -5286,6 +5330,7 @@ function renderCmcChannelsTab(c, r, s) {
           <span class="pill pill-run">BUS TX-${txCh} &bull; RX-${rxCh}</span>
           <button type="button" class="btn btn-ghost btn-sm" id="btn-dme-multi-back">&lt; Back to DME Modes</button>
           <button type="button" class="btn btn-ghost btn-sm" id="btn-dme-multi-lrus">&lt; LRU Select</button>
+          <button type="button" class="btn btn-ghost btn-sm" id="btn-dme-multi-reset" title="Reset all Multi Channel scan frequencies to factory defaults">↺ Reset Defaults</button>
           <button type="button" class="btn btn-sm" id="btn-dme-multi-tx">Transmit All Lines</button>
         </div>
       </div>
@@ -5560,13 +5605,21 @@ function renderCmcChannelsTab(c, r, s) {
       });
     };
 
-    p.querySelector("#m-sk-tx").onclick = () => {
-      dmeMultiState.txBus = txCh === "A" ? "B" : "A";
-      render(snap);
+    p.querySelector("#m-sk-tx").onclick = async () => {
+      const nextBus = txCh === "A" ? "B" : "A";
+      dmeMultiState.txBus = nextBus;
+      try {
+        const snapIn = await api("/api/arinc/channel/active", { method: "POST", body: JSON.stringify({ tx_ch: nextBus }) });
+        render(snapIn);
+      } catch { render(snap); }
     };
-    p.querySelector("#m-sk-rx").onclick = () => {
-      dmeMultiState.rxBus = rxCh === "A" ? "B" : "A";
-      render(snap);
+    p.querySelector("#m-sk-rx").onclick = async () => {
+      const nextBus = rxCh === "A" ? "B" : "A";
+      dmeMultiState.rxBus = nextBus;
+      try {
+        const snapIn = await api("/api/arinc/channel/active", { method: "POST", body: JSON.stringify({ rx_ch: nextBus }) });
+        render(snapIn);
+      } catch { render(snap); }
     };
     p.querySelector("#m-sk-sqnt").onclick = () => {
       dmeMultiState.sqntMode = dmeMultiState.sqntMode === "SQNT" ? "INDEP" : "SQNT";
@@ -5580,6 +5633,17 @@ function renderCmcChannelsTab(c, r, s) {
     // Bottom action buttons
     p.querySelector("#btn-dme-multi-back").onclick = () => navTo("dme_config");
     p.querySelector("#btn-dme-multi-lrus").onclick = () => navTo("avionics_lru");
+    p.querySelector("#btn-dme-multi-reset").onclick = async () => {
+      if (!confirm("Reset all 6 DME scan channels to factory defaults?")) return;
+      try {
+        dmeMultiState.lines = null;
+        const snapIn = await api("/api/arinc/dme/mode", {
+          method: "POST",
+          body: JSON.stringify({ mode: "multi", reset: true }),
+        });
+        render(snapIn);
+      } catch (e) { alert(e.message); }
+    };
     p.querySelector("#btn-dme-multi-tx").onclick = async () => {
       try {
         for (let i = 0; i < 6; i++) {
@@ -5615,16 +5679,21 @@ function renderCmcChannelsTab(c, r, s) {
     const rxCh = dmeStandardState.rxBus || s.rx_ch || "A";
     const txSlots = (s.tx && s.tx[txCh]) || [];
     const curTx = txSlots[curSlotIdx] || {};
+    const cached = dmeStandardState.slots[curSlotIdx] || {};
 
-    let freqVal = (curTx.eng_value != null && Number.isFinite(Number(curTx.eng_value))) ? Number(curTx.eng_value) : 108.00;
-    let sdiVal = curTx.sdi != null ? Number(curTx.sdi) : 0;
-    let ssmVal = curTx.ssm || "NML";
-    let parVal = curTx.parity || "ODD";
-    let rateVal = curTx.rate_ms || 150;
+    let freqVal = (curTx.eng_value != null && Number.isFinite(Number(curTx.eng_value)))
+      ? Number(curTx.eng_value)
+      : (cached.freq != null ? cached.freq : 108.00);
+    let sdiVal = curTx.sdi != null ? Number(curTx.sdi) : (cached.sdi != null ? cached.sdi : 0);
+    let ssmVal = curTx.ssm || cached.ssm || "NML";
+    let parVal = curTx.parity || cached.parity || "ODD";
+    let rateVal = curTx.rate_ms || cached.rate || 150;
 
     let padStr = "0100001";
     if (curTx.pads && curTx.pads !== "-") {
       padStr = curTx.pads.padStart(7, "0");
+    } else if (cached.pad) {
+      padStr = cached.pad;
     }
 
     const rxLabs = (s.rx && s.rx[rxCh] && s.rx[rxCh].labels) || [];
@@ -5648,6 +5717,7 @@ function renderCmcChannelsTab(c, r, s) {
           <span class="pill pill-run">BUS TX-${txCh} &bull; RX-${rxCh}</span>
           <button type="button" class="btn btn-ghost btn-sm" id="btn-dme-std-back">&lt; Back to DME Modes</button>
           <button type="button" class="btn btn-ghost btn-sm" id="btn-dme-std-lrus">&lt; LRU Select</button>
+          <button type="button" class="btn btn-ghost btn-sm" id="btn-dme-std-reset" title="Reset DME Standard Nav settings to factory defaults">↺ Reset Defaults</button>
           <button type="button" class="btn btn-sm" id="btn-dme-std-tx">Transmit Active Slot</button>
         </div>
       </div>
@@ -5932,13 +6002,21 @@ function renderCmcChannelsTab(c, r, s) {
     };
 
     // Toggle TX & RX channel
-    const toggleTxCh = () => {
-      dmeStandardState.txBus = txCh === "A" ? "B" : "A";
-      render(snap);
+    const toggleTxCh = async () => {
+      const nextBus = txCh === "A" ? "B" : "A";
+      dmeStandardState.txBus = nextBus;
+      try {
+        const snapIn = await api("/api/arinc/channel/active", { method: "POST", body: JSON.stringify({ tx_ch: nextBus }) });
+        render(snapIn);
+      } catch { render(snap); }
     };
-    const toggleRxCh = () => {
-      dmeStandardState.rxBus = rxCh === "A" ? "B" : "A";
-      render(snap);
+    const toggleRxCh = async () => {
+      const nextBus = rxCh === "A" ? "B" : "A";
+      dmeStandardState.rxBus = nextBus;
+      try {
+        const snapIn = await api("/api/arinc/channel/active", { method: "POST", body: JSON.stringify({ rx_ch: nextBus }) });
+        render(snapIn);
+      } catch { render(snap); }
     };
     p.querySelector("#std-tx-ch-cell").onclick = toggleTxCh;
     p.querySelector("#std-sk-tx").onclick = toggleTxCh;
@@ -5955,6 +6033,17 @@ function renderCmcChannelsTab(c, r, s) {
     // Bottom action buttons
     p.querySelector("#btn-dme-std-back").onclick = () => navTo("dme_config");
     p.querySelector("#btn-dme-std-lrus").onclick = () => navTo("avionics_lru");
+    p.querySelector("#btn-dme-std-reset").onclick = async () => {
+      if (!confirm("Reset DME Standard Nav settings to factory defaults?")) return;
+      try {
+        dmeStandardState.slots = {};
+        const snapIn = await api("/api/arinc/dme/mode", {
+          method: "POST",
+          body: JSON.stringify({ mode: "standard", reset: true }),
+        });
+        render(snapIn);
+      } catch (e) { alert(e.message); }
+    };
     p.querySelector("#btn-dme-std-tx").onclick = () => {
       applyDmeSlotHelper({
         index: curSlotIdx,
@@ -6298,15 +6387,35 @@ function renderCmcChannelsTab(c, r, s) {
       navTo("dme_config");
     };
 
-    p.querySelector("#btn-freq-134").onclick = () => {
-      dmeDiagState.freqMhz = 134.40;
-      renderDmeDiagnostic(r, s);
+    const applyBusSelection = (newBus) => {
+      dmeDiagState.bus = newBus;
+      const btnA = p.querySelector("#btn-bus-a");
+      const btnB = p.querySelector("#btn-bus-b");
+      if (btnA && btnB) {
+        if (newBus === "A") {
+          btnA.classList.remove("btn-ghost");
+          btnB.classList.add("btn-ghost");
+        } else {
+          btnA.classList.add("btn-ghost");
+          btnB.classList.remove("btn-ghost");
+        }
+      }
+      triggerDmeHandshake(true);
     };
 
-    p.querySelector("#btn-freq-108").onclick = () => {
-      dmeDiagState.freqMhz = 108.00;
-      renderDmeDiagnostic(r, s);
+    const applyFreqSelection = (newFreq) => {
+      dmeDiagState.freqMhz = newFreq;
+      const b134 = p.querySelector("#btn-freq-134");
+      const b108 = p.querySelector("#btn-freq-108");
+      const bCust = p.querySelector("#btn-freq-custom");
+      if (b134) b134.classList.toggle("btn-ghost", newFreq !== 134.40);
+      if (b108) b108.classList.toggle("btn-ghost", newFreq !== 108.00);
+      if (bCust) bCust.classList.toggle("btn-ghost", newFreq === 134.40 || newFreq === 108.00);
+      triggerDmeHandshake(true);
     };
+
+    p.querySelector("#btn-freq-134").onclick = () => applyFreqSelection(134.40);
+    p.querySelector("#btn-freq-108").onclick = () => applyFreqSelection(108.00);
 
     p.querySelector("#btn-freq-custom").onclick = () => {
       showDmeKeypadModal({
@@ -6317,22 +6426,14 @@ function renderCmcChannelsTab(c, r, s) {
         onApply: (v) => {
           const num = parseFloat(v);
           if (Number.isFinite(num) && num >= 100.0 && num <= 140.0) {
-            dmeDiagState.freqMhz = Number(num.toFixed(2));
-            renderDmeDiagnostic(r, s);
+            applyFreqSelection(Number(num.toFixed(2)));
           }
         },
       });
     };
 
-    p.querySelector("#btn-bus-a").onclick = () => {
-      dmeDiagState.bus = "A";
-      renderDmeDiagnostic(r, s);
-    };
-
-    p.querySelector("#btn-bus-b").onclick = () => {
-      dmeDiagState.bus = "B";
-      renderDmeDiagnostic(r, s);
-    };
+    p.querySelector("#btn-bus-a").onclick = () => applyBusSelection("A");
+    p.querySelector("#btn-bus-b").onclick = () => applyBusSelection("B");
 
     p.querySelector("#sel-diag-sim").onchange = (e) => {
       dmeDiagState.simScenario = e.target.value;

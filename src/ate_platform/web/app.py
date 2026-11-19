@@ -111,6 +111,12 @@ class ArincProfileBody(BaseModel):
     rx_ch: str | None = Field(default=None, max_length=1)
     apply_tx: bool = True
     apply_rx: bool = True
+    reset: bool = False
+
+
+class ArincActiveChannelsBody(BaseModel):
+    tx_ch: str | None = Field(default=None, max_length=1)
+    rx_ch: str | None = Field(default=None, max_length=1)
 
 
 class ArincLabelValueBody(BaseModel):
@@ -188,6 +194,7 @@ class ArincLineBody(BaseModel):
 
 class ArincDmeModeBody(BaseModel):
     mode: str = Field(min_length=1, max_length=16)
+    reset: bool = False
 
 
 class ArincDmeSlotBody(BaseModel):
@@ -582,6 +589,7 @@ def create_app(
                 rx_ch=body.rx_ch,
                 apply_tx=body.apply_tx,
                 apply_rx=body.apply_rx,
+                reset=body.reset,
             )
         except FileNotFoundError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -662,6 +670,13 @@ def create_app(
         get_arinc().set_time_constant(body.seconds)
         return get_arinc().snapshot()
 
+    @app.post("/api/arinc/channel/active")
+    def api_arinc_active_channels(body: ArincActiveChannelsBody, _sid: str = Depends(require_session)):
+        try:
+            return get_arinc().set_active_channels(tx_ch=body.tx_ch, rx_ch=body.rx_ch)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     @app.post("/api/arinc/line")
     def api_arinc_line(body: ArincLineBody, _sid: str = Depends(require_session)):
         try:
@@ -673,7 +688,7 @@ def create_app(
     @app.post("/api/arinc/dme/mode")
     def api_arinc_dme_mode(body: ArincDmeModeBody, _sid: str = Depends(require_session)):
         try:
-            return get_arinc().apply_dme_mode(body.mode)
+            return get_arinc().apply_dme_mode(body.mode, reset=body.reset)
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 

@@ -176,3 +176,50 @@ def test_dme_handshake_diagnostic(client: TestClient):
     assert disc_data["status_code"] == "DISCONNECTED"
     assert disc_data["status_level"] == "danger"
     assert "DISCONNECTED" in disc_data["status"]
+
+
+def test_dme_state_persistence_and_reset(client: TestClient):
+    _login(client)
+    # 1. Apply standard mode (initial default 134.40 MHz)
+    r = client.post("/api/arinc/dme/mode", json={"mode": "standard"})
+    assert r.status_code == 200
+    snap = r.json()
+    assert snap["tx"]["A"][0]["eng_value"] == 134.40
+
+    # 2. Modify slot 0 parameters (108.00 MHz, pad 1100001)
+    r_slot = client.post("/api/arinc/dme/slot", json={
+        "index": 0,
+        "bus": "A",
+        "freq_mhz": 108.00,
+        "pad": "1100001",
+        "sdi": 1,
+        "ssm": "NML",
+        "rate_ms": 100,
+        "enabled": True,
+    })
+    assert r_slot.status_code == 200
+    snap_mod = r_slot.json()
+    assert snap_mod["tx"]["A"][0]["eng_value"] == 108.00
+
+    # 3. Simulate navigation: navigate away and re-enter standard mode with reset=False
+    client.post("/api/arinc/screen/push", json={"screen": "dme_config"})
+    r_reenter = client.post("/api/arinc/dme/mode", json={"mode": "standard", "reset": False})
+    assert r_reenter.status_code == 200
+    snap_reenter = r_reenter.json()
+    # Slot 0 MUST be preserved at 108.00 MHz, NOT reset to default!
+    assert snap_reenter["tx"]["A"][0]["eng_value"] == 108.00
+
+    # 4. Explicit reset=True MUST reset back to factory defaults (134.40 MHz)
+    r_reset = client.post("/api/arinc/dme/mode", json={"mode": "standard", "reset": True})
+    assert r_reset.status_code == 200
+    snap_reset = r_reset.json()
+    assert snap_reset["tx"]["A"][0]["eng_value"] == 134.40
+
+
+def test_active_channels_endpoint(client: TestClient):
+    _login(client)
+    r = client.post("/api/arinc/channel/active", json={"tx_ch": "B", "rx_ch": "B"})
+    assert r.status_code == 200
+    snap = r.json()
+    assert snap["tx_ch"] == "B"
+    assert snap["rx_ch"] == "B"

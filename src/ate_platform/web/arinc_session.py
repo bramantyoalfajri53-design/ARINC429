@@ -650,6 +650,28 @@ class ArincSession:
                 self.ln1 = {"kind": kind, "bus": bus}
             else:
                 self.ln2 = {"kind": kind, "bus": bus}
+            if kind == "tx":
+                self.tx_ch = bus
+                self.channel[bus].tx_enable = True
+            elif kind == "rx":
+                self.rx_ch = bus
+                self.channel[bus].rx_enable = True
+                self.rx[bus].enabled = True
+
+    def set_active_channels(self, tx_ch: str | None = None, rx_ch: str | None = None) -> dict[str, Any]:
+        with self._lock:
+            if tx_ch:
+                t = tx_ch.upper()
+                if t in BUSES:
+                    self.tx_ch = t
+                    self.channel[t].tx_enable = True
+            if rx_ch:
+                r = rx_ch.upper()
+                if r in BUSES:
+                    self.rx_ch = r
+                    self.channel[r].rx_enable = True
+                    self.rx[r].enabled = True
+            return self._snapshot_locked()
 
     def set_ln_edit(self, kind: str) -> None:
         kind = kind.lower()
@@ -770,10 +792,16 @@ class ArincSession:
         sl.enabled = True
         sl.mode = "lru"
         sl.profile_id = profile_id
-        try:
-            sl.eng_value = float(value)
-        except (TypeError, ValueError):
-            sl.eng_value = None
+        if isinstance(value, dict) and "value" in value:
+            try:
+                sl.eng_value = float(value["value"])
+            except (TypeError, ValueError):
+                sl.eng_value = None
+        else:
+            try:
+                sl.eng_value = float(value)
+            except (TypeError, ValueError):
+                sl.eng_value = None
         sl.funct = spec.funct
         sl.label_octal = spec.label_octal
         sl.data19 = decoded.data19
@@ -791,7 +819,12 @@ class ArincSession:
         sl.eng_max = spec.eng_max
         sl.word_index = spec.word_index
         try:
-            sl.data_text = decode_label(spec, raw).get("data_text") or f"{value} {spec.units}".strip()
+            dec = decode_label(spec, raw)
+            if sl.eng_value is None and dec.get("eng_value") is not None:
+                sl.eng_value = dec["eng_value"]
+            sl.data_text = dec.get("data_text") or f"{value} {spec.units}".strip()
+            if dec.get("extra", {}).get("pads"):
+                sl.pads = dec["extra"]["pads"]
         except Exception:
             sl.data_text = f"{value} {spec.units}".strip()
 
@@ -896,6 +929,7 @@ class ArincSession:
         *,
         apply_tx: bool = True,
         apply_rx: bool = True,
+        reset: bool = False,
     ) -> dict[str, Any]:
         pid = str(profile_id or "").strip()
         if pid.lower() == RX_AUTO:
@@ -908,6 +942,7 @@ class ArincSession:
         tx_ch = channel_letter(tx_ch or profile.tx_ch)
         rx_ch = channel_letter(rx_ch or profile.rx_ch)
         with self._lock:
+            prev_profile = self.active_profile
             self.active_profile = profile.id
             self._disarm_specials_unlocked(keep="mmr" if profile.id == "mmr_755" else None)
             if apply_tx:
@@ -917,16 +952,23 @@ class ArincSession:
                 cfg.high_speed = profile.high_speed
                 cfg.bit_rate_kbps = 100.0 if profile.high_speed else 12.5
                 cfg.tx_enable = True
-                self._blank_tx_unlocked(tx_ch)
-                tx_specs = [ls for ls in profile.labels if ls.direction in ("tx", "both", "")]
-                slot_i = 0
-                for spec in tx_specs:
-                    if slot_i >= SLOTS_PER_BUS:
-                        break
-                    default = spec.eng_default if spec.eng_default is not None else 0.0
-                    self._paint_slot(self.tx[tx_ch][slot_i], spec, default, profile.id)
-                    self.tx[tx_ch][slot_i].index = slot_i
-                    slot_i += 1
+
+                has_configured_slots = any(
+                    sl.profile_id == profile.id and sl.label_octal != "000" for sl in self.tx[tx_ch]
+                )
+                should_init = reset or (prev_profile != profile.id) or not has_configured_slots
+
+                if should_init:
+                    self._blank_tx_unlocked(tx_ch)
+                    tx_specs = [ls for ls in profile.labels if ls.direction in ("tx", "both", "")]
+                    slot_i = 0
+                    for spec in tx_specs:
+                        if slot_i >= SLOTS_PER_BUS:
+                            break
+                        default = spec.eng_default if spec.eng_default is not None else 0.0
+                        self._paint_slot(self.tx[tx_ch][slot_i], spec, default, profile.id)
+                        self.tx[tx_ch][slot_i].index = slot_i
+                        slot_i += 1
             if apply_rx:
                 self.rx_ch = rx_ch
                 self.rx_profile[rx_ch] = profile.id
@@ -990,7 +1032,7 @@ class ArincSession:
                     continue
                 self._fill_slot_from_spec(bus, i, spec, defaults.get(lab, 0))
 
-    def apply_dme_mode(self, mode: str) -> dict[str, Any]:
+    def apply_dme_mode(self, mode: str, reset: bool = False) -> dict[str, Any]:
         mode = mode.lower()
         if mode not in {"standard", "single", "multi"}:
             raise ValueError("dme mode must be standard, single, or multi")
@@ -998,10 +1040,14 @@ class ArincSession:
         if spec is None:
             raise ValueError("DME label 035 missing from dictionary")
         with self._lock:
+            prev_mode = self.dme_mode
+            prev_profile = self.active_profile
             self.dme_mode = mode
             self.active_profile = "dme"
             self.dme_line = 0
-            bus = "A"
+            bus = self.tx_ch or "A"
+            if bus not in BUSES:
+                bus = "A"
             cfg = self.channel[bus]
             cfg.tx_enable = True
             cfg.rx_enable = True
@@ -1012,23 +1058,31 @@ class ArincSession:
             self.rx_profile[bus] = "dme"
             cfg.high_speed = False
             cfg.bit_rate_kbps = 12.5
-            for sl in self.tx[bus]:
-                sl.enabled = False
-                sl.raw = 0
-                sl.label_octal = "000"
             self._disarm_specials_unlocked(keep="dme")
             self._scope_rx_to_profile_unlocked(load_profile("dme"), bus)
-            if mode == "multi":
-                for i, (freq, dm) in enumerate(zip(DME_MULTI_FREQS, DME_MULTI_MODES)):
+
+            is_same_family = (prev_mode == mode) or (prev_mode in {"standard", "single"} and mode in {"standard", "single"})
+            has_configured_slots = any(
+                (sl.label_octal == "035" and sl.raw != 0) or sl.enabled for sl in self.tx[bus]
+            )
+            should_init = reset or (not is_same_family) or (prev_profile != "dme") or not has_configured_slots
+
+            if should_init:
+                for sl in self.tx[bus]:
+                    sl.enabled = False
+                    sl.raw = 0
+                    sl.label_octal = "000"
+                if mode == "multi":
+                    for i, (freq, dm) in enumerate(zip(DME_MULTI_FREQS, DME_MULTI_MODES)):
+                        self._fill_slot_from_spec(
+                            bus, i, spec, {"value": freq, "mode": dm, "nav": "VOR", "sdi": 0, "ssm": "NML"},
+                        )
+                        self.tx[bus][i].rate_ms = 100
+                else:
                     self._fill_slot_from_spec(
-                        bus, i, spec, {"value": freq, "mode": dm, "nav": "VOR", "sdi": 0, "ssm": "NML"},
+                        bus, 0, spec, {"value": 134.40, "mode": "DF1", "nav": "VOR", "disp": True},
                     )
-                    self.tx[bus][i].rate_ms = 100
-            else:
-                self._fill_slot_from_spec(
-                    bus, 0, spec, {"value": 134.40, "mode": "DF1", "nav": "VOR", "disp": True},
-                )
-                self.tx[bus][0].rate_ms = 100
+                    self.tx[bus][0].rate_ms = 100
             if mode == "standard":
                 self.screen_stack = ["mode_select", "standard", "avionics_lru", "dme_config", "dme_standard"]
             elif mode == "single":
@@ -1231,6 +1285,8 @@ class ArincSession:
         # 1. Set 12.5 kbps Low Speed for standard ARINC 709 DME and ensure channel is enabled
         self.set_bit_rate(high_speed=False, buses=[bus])
         with self._lock:
+            self.tx_ch = bus
+            self.rx_ch = bus
             self.channel[bus].tx_enable = True
             self.channel[bus].rx_enable = True
             self.rx[bus].enabled = True
