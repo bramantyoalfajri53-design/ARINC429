@@ -3738,7 +3738,7 @@ function renderCmcChannelsTab(c, r, s) {
     return view === "user_configure" || view === "setup_txrx" ||
       view === "cfds_edit_tx" || view === "cfds_config_channels" ||
       view === "cmc_edit_tx" || view === "cmc_config_txrx" ||
-      view === "dme_single" || view === "dme_multi" || view === "dme_standard" || view === "lru_format" || view === "mmr_format" || view === "dme_diagnostic";
+      view === "dme_single" || view === "dme_multi" || view === "dme_standard" || view === "lru_format" || view === "mmr_format";
   }
 
   function render(s, opts) {
@@ -3760,6 +3760,7 @@ function renderCmcChannelsTab(c, r, s) {
     const key = viewKey(s);
     const view = s.screen_stack ? s.screen_stack[s.screen_stack.length - 1] : "mode_select";
     if (!force && key === lastViewKey) {
+      if (view === "dme_diagnostic") return;
       if (isWorkbench(view)) patchRxTable(s);
       const catEmpty = view === "avionics_lru" && (s.catalog || []).length &&
         !document.querySelector(".catalog-btn");
@@ -3775,14 +3776,14 @@ function renderCmcChannelsTab(c, r, s) {
     if (view === "mode_select") renderModeSelect(r, s);
     else if (view === "label_library") renderLabelLibrary(r, s);
     else if (view === "standard") renderStandardHub(r, s);
-    else if (isWorkbench(view) && view !== "dme_single" && view !== "dme_multi" && view !== "dme_standard" && view !== "lru_format" && view !== "mmr_format") renderSetupTxRx(r, s);
-    else if (view === "avionics_lru" || view === "cfds_lru") renderLruPicker(r, s);
+    else if (view === "dme_diagnostic") renderDmeDiagnostic(r, s);
     else if (view === "dme_config") renderDmeConfig(r, s);
     else if (view === "dme_single") renderDmeSingle(r, s);
     else if (view === "dme_multi") renderDmeMulti(r, s);
     else if (view === "dme_standard" || (view === "lru_format" && (s.active_profile === "dme" || s.dme_mode === "standard"))) renderDmeStandard(r, s);
-    else if (view === "dme_diagnostic") renderDmeDiagnostic(r, s);
     else if (view === "lru_format" || view === "mmr_format") renderFormatScreen(r, s);
+    else if (view === "avionics_lru" || view === "cfds_lru") renderLruPicker(r, s);
+    else if (view === "user_configure" || view === "setup_txrx" || view === "cfds_edit_tx" || view === "cfds_config_channels" || view === "cmc_edit_tx" || view === "cmc_config_txrx") renderSetupTxRx(r, s);
     else if (view === "mmr_menu") renderMmrMenu(r, s);
     else if (view === "cfds") renderCfdsHub(r, s);
     else if (view === "cmc") renderCmcHub(r, s);
@@ -5331,6 +5332,7 @@ function renderCmcChannelsTab(c, r, s) {
           <button type="button" class="btn btn-ghost btn-sm" id="btn-dme-multi-back">&lt; Back to DME Modes</button>
           <button type="button" class="btn btn-ghost btn-sm" id="btn-dme-multi-lrus">&lt; LRU Select</button>
           <button type="button" class="btn btn-ghost btn-sm" id="btn-dme-multi-reset" title="Reset all Multi Channel scan frequencies to factory defaults">↺ Reset Defaults</button>
+          <button type="button" class="btn btn-outline btn-sm" id="btn-dme-multi-diag">⚡ Live Diagnostic</button>
           <button type="button" class="btn btn-sm" id="btn-dme-multi-tx">Transmit All Lines</button>
         </div>
       </div>
@@ -5633,6 +5635,7 @@ function renderCmcChannelsTab(c, r, s) {
     // Bottom action buttons
     p.querySelector("#btn-dme-multi-back").onclick = () => navTo("dme_config");
     p.querySelector("#btn-dme-multi-lrus").onclick = () => navTo("avionics_lru");
+    p.querySelector("#btn-dme-multi-diag").onclick = () => pushScreen("dme_diagnostic");
     p.querySelector("#btn-dme-multi-reset").onclick = async () => {
       if (!confirm("Reset all 6 DME scan channels to factory defaults?")) return;
       try {
@@ -5718,6 +5721,7 @@ function renderCmcChannelsTab(c, r, s) {
           <button type="button" class="btn btn-ghost btn-sm" id="btn-dme-std-back">&lt; Back to DME Modes</button>
           <button type="button" class="btn btn-ghost btn-sm" id="btn-dme-std-lrus">&lt; LRU Select</button>
           <button type="button" class="btn btn-ghost btn-sm" id="btn-dme-std-reset" title="Reset DME Standard Nav settings to factory defaults">↺ Reset Defaults</button>
+          <button type="button" class="btn btn-outline btn-sm" id="btn-dme-std-diag">⚡ Live Diagnostic</button>
           <button type="button" class="btn btn-sm" id="btn-dme-std-tx">Transmit Active Slot</button>
         </div>
       </div>
@@ -6033,6 +6037,7 @@ function renderCmcChannelsTab(c, r, s) {
     // Bottom action buttons
     p.querySelector("#btn-dme-std-back").onclick = () => navTo("dme_config");
     p.querySelector("#btn-dme-std-lrus").onclick = () => navTo("avionics_lru");
+    p.querySelector("#btn-dme-std-diag").onclick = () => pushScreen("dme_diagnostic");
     p.querySelector("#btn-dme-std-reset").onclick = async () => {
       if (!confirm("Reset DME Standard Nav settings to factory defaults?")) return;
       try {
