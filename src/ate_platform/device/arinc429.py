@@ -231,3 +231,190 @@ def run_t1200_bus_loopback(
             bticard.CardClose(h_card)
         except Exception:
             pass
+
+
+def audit_ballard_hardware(cardnum: int = 0) -> dict[str, Any]:
+    """Audit and discover all Ballard OmniBus II cores and ARINC 429 channels.
+
+    Returns structured hardware metadata, inventory of RX and TX channels
+    across cores, and detects the active core connected to physical transceivers.
+    """
+    import logging
+    import os
+
+    log = logging.getLogger("ate_platform.device.arinc429")
+
+    if bticard is None or bti429 is None:
+        return {
+            "card": cardnum,
+            "simulated": True,
+            "card_type": "Simulated OmniBus II",
+            "product_pn": "SIM-441-000",
+            "serial_num": 9999,
+            "active_core": 0,
+            "active_port": "P1 (Upper Connector)",
+            "cores": [
+                {
+                    "core": 0,
+                    "core_letter": "A",
+                    "port": "P1 (Upper Connector)",
+                    "rx_channels": list(range(8)),
+                    "tx_channels": list(range(16, 24)),
+                    "count": 16,
+                    "open_ok": True,
+                },
+                {
+                    "core": 1,
+                    "core_letter": "B",
+                    "port": "P2 (Lower Connector)",
+                    "rx_channels": [],
+                    "tx_channels": [],
+                    "count": 0,
+                    "open_ok": True,
+                },
+            ],
+            "warning": (
+                "OmniBus II module 222-441-000 has ARINC 429 transceivers on Core 0 (P1 Upper). "
+                "Core 1 (P2 Lower) is unpopulated. Ensure physical cable is connected to P1 Upper."
+            ),
+        }
+
+    try:
+        hcard = bticard.CardOpen(cardnum)
+    except Exception as exc:
+        log.warning(f"Could not open Ballard card {cardnum}: {exc}")
+        return {
+            "card": cardnum,
+            "simulated": False,
+            "open_error": str(exc),
+            "card_type": "Unknown",
+            "product_pn": "",
+            "serial_num": 0,
+            "active_core": 0,
+            "active_port": "P1 (Upper Connector)",
+            "cores": [],
+            "warning": f"Card {cardnum} open error: {exc}",
+        }
+
+    try:
+        try:
+            card_type = bticard.CardTypeStr(hcard)
+        except Exception:
+            card_type = "OmniBus II"
+
+        try:
+            product_pn = bticard.CardProductStr(hcard)
+        except Exception:
+            product_pn = ""
+
+        try:
+            serial_num = int(bticard.CardGetInfo(bticard.INFOTYPE_SERIALNUM, 0, hcard))
+        except Exception:
+            serial_num = 0
+
+        core_candidates = [
+            (0, "A", "P1 (Upper Connector)"),
+            (1, "B", "P2 (Lower Connector)"),
+            (2, "C", "Core C"),
+            (3, "D", "Core D"),
+        ]
+
+        cores_info: list[dict[str, Any]] = []
+        core_with_channels = None
+
+        for c_idx, c_let, port_name in core_candidates:
+            try:
+                hcore = bticard.CoreOpen(c_idx, hcard)
+                rx_chs = []
+                tx_chs = []
+                for ch in range(32):
+                    try:
+                        if bti429.ChIs429(ch, hcore):
+                            if bti429.ChIsRcv(ch, hcore):
+                                rx_chs.append(ch)
+                            if bti429.ChIsXmt(ch, hcore):
+                                tx_chs.append(ch)
+                    except Exception:
+                        pass
+                total_chs = len(rx_chs) + len(tx_chs)
+                if total_chs > 0 and core_with_channels is None:
+                    core_with_channels = c_idx
+
+                cores_info.append({
+                    "core": c_idx,
+                    "core_letter": c_let,
+                    "port": port_name,
+                    "rx_channels": rx_chs,
+                    "tx_channels": tx_chs,
+                    "count": total_chs,
+                    "open_ok": True,
+                })
+            except Exception as e_core:
+                cores_info.append({
+                    "core": c_idx,
+                    "core_letter": c_let,
+                    "port": port_name,
+                    "rx_channels": [],
+                    "tx_channels": [],
+                    "count": 0,
+                    "open_ok": False,
+                    "error": str(e_core),
+                })
+    finally:
+        try:
+            bticard.CardClose(hcard)
+        except Exception:
+            pass
+
+    # Determine active core
+    env_core = os.environ.get("ATE_ARINC_CORE")
+    if env_core is not None:
+        try:
+            active_core = int(env_core)
+        except ValueError:
+            active_core = core_with_channels if core_with_channels is not None else 0
+    else:
+        active_core = core_with_channels if core_with_channels is not None else 0
+
+    active_port = "P1 (Upper Connector)" if active_core == 0 else (
+        "P2 (Lower Connector)" if active_core == 1 else f"Core {active_core}"
+    )
+
+    # Detect hardware wiring warnings
+    warning = None
+    if "441-000" in product_pn or product_pn.endswith("-000"):
+        warning = (
+            f"Modul Ballard OmniBus II PN {product_pn} (S/N {serial_num}) memiliki 8 channel ARINC 429 pada "
+            f"Core 0 (Konektor Atas P1). Core 1 (Konektor Bawah P2) KOSONG / unpopulated (0 channel). "
+            f"Kabel ARINC 429 menuju Interface Panel / DFIU T1203 HARUS dihubungkan ke KONEKTOR ATAS (P1 BALLARD)!"
+        )
+
+    # Prominent diagnostic banner in logs
+    log.info("=" * 78)
+    log.info(f"BALLARD HARDWARE AUDIT: {card_type} | PN: {product_pn} | S/N: {serial_num}")
+    for c_info in cores_info:
+        if c_info["open_ok"]:
+            log.info(
+                f"  Core {c_info['core']} (CORE {c_info['core_letter']} - {c_info['port']}): "
+                f"{len(c_info['rx_channels'])} RX {c_info['rx_channels']}, "
+                f"{len(c_info['tx_channels'])} TX {c_info['tx_channels']}"
+            )
+        else:
+            log.info(f"  Core {c_info['core']} (CORE {c_info['core_letter']} - {c_info['port']}): Not Present")
+    log.info(f"  --> ACTIVE CORE: {active_core} ({active_port})")
+    if warning:
+        log.warning(f"  --> HARDWARE NOTICE: {warning}")
+    log.info("=" * 78)
+
+    return {
+        "card": cardnum,
+        "simulated": False,
+        "card_type": card_type,
+        "product_pn": product_pn,
+        "serial_num": serial_num,
+        "active_core": active_core,
+        "active_port": active_port,
+        "cores": cores_info,
+        "warning": warning,
+    }
+

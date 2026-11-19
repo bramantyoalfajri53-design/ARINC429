@@ -6117,6 +6117,34 @@ function renderCmcChannelsTab(c, r, s) {
     const banner = $("dme-diag-banner");
     if (!banner) return;
 
+    // Hardware Info
+    if (data.hardware) {
+      const hw = data.hardware;
+      const hwDesc = $("dme-hw-desc");
+      const hwBadge = $("dme-hw-port-badge");
+      const hwWarn = $("dme-hw-warning-box");
+      const hwModel = $("dme-hw-model");
+      if (hwModel) {
+        hwModel.textContent = hw.simulated ? "SIMULATOR" : "BALLARD PXI";
+      }
+      if (hwDesc) {
+        hwDesc.innerHTML = `OmniBus II Model: <strong>${hw.product_pn || "222-441-000"}</strong> (S/N: <strong>${hw.serial_num || "2174"}</strong>) &bull; Active: <strong>Core ${hw.active_core ?? 0} [${hw.active_port || "P1 Upper"}]</strong> &bull; 8 TX / 8 RX Channels`;
+      }
+      if (hwBadge) {
+        hwBadge.textContent = `CORE ${hw.active_core ?? 0} [${hw.active_port || "PORT P1"}]`;
+        hwBadge.style.background = hw.active_core === 0 ? "#16a34a" : "#ca8a04";
+        hwBadge.style.color = "#ffffff";
+      }
+      if (hwWarn) {
+        if (hw.warning) {
+          hwWarn.style.display = "block";
+          hwWarn.innerHTML = `<i class="bi bi-exclamation-triangle-fill"></i> <strong>PENTING (KONEKSI FISIK PXI):</strong> ${hw.warning}`;
+        } else {
+          hwWarn.style.display = "none";
+        }
+      }
+    }
+
     // Status Banner
     const lvl = data.status_level || "danger";
     banner.className = `dme-diag-status-banner status-${lvl}`;
@@ -6216,6 +6244,21 @@ function renderCmcChannelsTab(c, r, s) {
         <div style="display:flex; gap:8px; align-items:center;">
           <span class="pill pill-run">12.5 kbps Low Speed</span>
           <button type="button" class="btn btn-ghost btn-sm" id="btn-dme-diag-back">&lt; Back to DME Modes</button>
+        </div>
+      </div>
+
+      <!-- Hardware Audit & Active Port Banner -->
+      <div id="dme-diag-hw-card" class="dme-diag-card" style="margin-bottom:1rem; border-left:4px solid #0284c7; background:rgba(2,132,199,0.04);">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+          <div>
+            <span class="pill pill-run" id="dme-hw-model" style="margin-right:8px; font-weight:700;">OmniBus II</span>
+            <span style="font-weight:600; font-size:0.9rem;" id="dme-hw-desc">Scanning Astronics Ballard OmniBus II hardware...</span>
+          </div>
+          <div>
+            <span id="dme-hw-port-badge" class="pill" style="background:#0284c7; color:#fff; font-weight:700;">PORT P1 (UPPER)</span>
+          </div>
+        </div>
+        <div id="dme-hw-warning-box" style="display:none; margin-top:8px; padding:10px 14px; background:rgba(239,68,68,0.1); border:1px solid #ef4444; border-radius:6px; font-size:0.85rem; color:#b91c1c;">
         </div>
       </div>
 
@@ -6333,8 +6376,16 @@ function renderCmcChannelsTab(c, r, s) {
           📋 Hardware-in-the-Loop Physical Troubleshooting Checklist (Tailored to Bench Units)
         </div>
         <div id="dme-checklist-container">
+          <div class="dme-checklist-row" style="background:rgba(2,132,199,0.06); border-left:3px solid #0284c7;">
+            <div class="dme-checklist-bullet" style="background:#0284c7; color:#fff;">1</div>
+            <div class="dme-checklist-body">
+              <div class="dme-checklist-item-title">Konektor Fisik PXI Ballard OmniBus II (Port Atas P1 vs Bawah P2)</div>
+              <div class="dme-checklist-item-expected">Expected: KONEKTOR ATAS (P1 BALLARD / Core 0) Terhubung ke Interface Panel</div>
+              <div class="dme-checklist-item-action">Modul ARINC 429 PN 222-441-000 hanya memiliki modul transceiver pada Core 0 (Konektor Atas P1). Konektor Bawah P2 adalah Core 1 (000/Kosong). Pastikan kabel DB37 / Interface Panel dicolokkan ke KONEKTOR ATAS (P1), BUKAN konektor bawah P2!</div>
+            </div>
+          </div>
           <div class="dme-checklist-row">
-            <div class="dme-checklist-bullet">1</div>
+            <div class="dme-checklist-bullet">2</div>
             <div class="dme-checklist-body">
               <div class="dme-checklist-item-title">DFIU T1203 Rear OPERATION Switch</div>
               <div class="dme-checklist-item-expected">Expected: MANUAL</div>
@@ -6342,7 +6393,7 @@ function renderCmcChannelsTab(c, r, s) {
             </div>
           </div>
           <div class="dme-checklist-row">
-            <div class="dme-checklist-bullet">2</div>
+            <div class="dme-checklist-bullet">3</div>
             <div class="dme-checklist-body">
               <div class="dme-checklist-item-title">ARINC 429 Wiring (Panel TX to DFIU INPUTS)</div>
               <div class="dme-checklist-item-expected">Expected: CH A POS/NEG/GND &rarr; DME A-FREQ FUNCT SELECT-A</div>
@@ -6350,7 +6401,7 @@ function renderCmcChannelsTab(c, r, s) {
             </div>
           </div>
           <div class="dme-checklist-row">
-            <div class="dme-checklist-bullet">3</div>
+            <div class="dme-checklist-bullet">4</div>
             <div class="dme-checklist-body">
               <div class="dme-checklist-item-title">ARINC 429 Wiring (DFIU OUTPUTS to Panel RX)</div>
               <div class="dme-checklist-item-expected">Expected: DME A-DISTANCE DATA-1 &rarr; CH A POS/NEG/GND</div>
@@ -6358,7 +6409,7 @@ function renderCmcChannelsTab(c, r, s) {
             </div>
           </div>
           <div class="dme-checklist-row">
-            <div class="dme-checklist-bullet">4</div>
+            <div class="dme-checklist-bullet">5</div>
             <div class="dme-checklist-body">
               <div class="dme-checklist-item-title">Collins DME-900 Breakout Box 56-1189-22</div>
               <div class="dme-checklist-item-expected">Expected: SUPPRESSOR CLOSED, Thumbwheels 001</div>
@@ -6366,7 +6417,7 @@ function renderCmcChannelsTab(c, r, s) {
             </div>
           </div>
           <div class="dme-checklist-row">
-            <div class="dme-checklist-bullet">5</div>
+            <div class="dme-checklist-bullet">6</div>
             <div class="dme-checklist-body">
               <div class="dme-checklist-item-title">IFR ATC-1400A RF Simulator</div>
               <div class="dme-checklist-item-expected">Expected: Channel 0001 TAC X (134.40 MHz), RANGE 50.00 NM, RF Level -86 dBm</div>
@@ -6374,7 +6425,7 @@ function renderCmcChannelsTab(c, r, s) {
             </div>
           </div>
           <div class="dme-checklist-row">
-            <div class="dme-checklist-bullet">6</div>
+            <div class="dme-checklist-bullet">7</div>
             <div class="dme-checklist-body">
               <div class="dme-checklist-item-title">28VDC Power Supply</div>
               <div class="dme-checklist-item-expected">Expected: +28.0 VDC Active</div>

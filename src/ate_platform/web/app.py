@@ -726,6 +726,11 @@ def create_app(
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    @app.get("/api/arinc/hardware")
+    def api_arinc_hardware(_sid: str = Depends(require_session)):
+        arinc = get_arinc()
+        return getattr(arinc, "hardware_info", {})
+
     @app.get("/api/arinc/dme/diagnostic")
     def api_arinc_dme_diagnostic(bus: str = "A", sim_scenario: str = "auto", _sid: str = Depends(require_session)):
         try:

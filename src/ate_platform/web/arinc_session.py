@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import math
+import os
 import threading
 import time
 from dataclasses import dataclass, field, replace
@@ -11,6 +12,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from ate_platform.device.arinc429 import (
+    audit_ballard_hardware,
     load_t1200_channels,
     require_btidriver,
     resolve_rx_channel,
@@ -245,7 +247,48 @@ class ArincSession:
         else:
             self.simulation_mode = bool(simulation) or (not HAS_BTIDRIVER)
         self.cardnum = card
-        self.corenum = core
+        self.hardware_info = audit_ballard_hardware(card) if not self.simulation_mode else {
+            "card": card,
+            "simulated": True,
+            "card_type": "Simulated OmniBus II",
+            "product_pn": "SIM-441-000",
+            "serial_num": 9999,
+            "active_core": 0,
+            "active_port": "P1 (Upper Connector)",
+            "cores": [
+                {
+                    "core": 0,
+                    "core_letter": "A",
+                    "port": "P1 (Upper Connector)",
+                    "rx_channels": list(range(8)),
+                    "tx_channels": list(range(16, 24)),
+                    "count": 16,
+                    "open_ok": True,
+                },
+                {
+                    "core": 1,
+                    "core_letter": "B",
+                    "port": "P2 (Lower Connector)",
+                    "rx_channels": [],
+                    "tx_channels": [],
+                    "count": 0,
+                    "open_ok": True,
+                },
+            ],
+            "warning": (
+                "OmniBus II module 222-441-000 has ARINC 429 transceivers on Core 0 (P1 Upper). "
+                "Core 1 (P2 Lower) is unpopulated. Ensure physical cable is connected to P1 Upper."
+            ),
+        }
+        env_core = os.environ.get("ATE_ARINC_CORE")
+        if env_core is not None:
+            try:
+                self.corenum = int(env_core)
+            except ValueError:
+                self.corenum = self.hardware_info.get("active_core", core)
+        else:
+            self.corenum = self.hardware_info.get("active_core", core)
+
         self.netlist_path = netlist_path or (
             REPO_ROOT / "netlist" / "t1200_db37_omnibus_441.yaml"
         )
@@ -1522,6 +1565,15 @@ class ArincSession:
         # Troubleshooting checklist recommendations tailored to the bench photos
         checklist = [
             {
+                "item": "Ballard OmniBus II PXI Front Panel Connector",
+                "expected": "P1 BALLARD (Upper Connector / Core 0)",
+                "action": (
+                    "Berdasarkan part number modul 222-441-000, 8 channel ARINC 429 berada di Core 0 (Konektor Atas P1). "
+                    "Konektor Bawah P2 adalah Core 1 (000/Kosong). Pastikan kabel fisik ke Interface Panel CH 0-7 / J1 "
+                    "dicolokkan ke KONEKTOR ATAS (P1 BALLARD)!"
+                ),
+            },
+            {
                 "item": "DFIU T1203 Rear OPERATION Switch",
                 "expected": "MANUAL",
                 "action": "Ensure toggle switch at rear panel of Kustom Electronics T1203 is set to MANUAL (not REMOTE).",
@@ -1599,6 +1651,7 @@ class ArincSession:
             "has_parity_error": has_parity_error,
             "wiring_warning": wiring_warning,
             "checklist": checklist,
+            "hardware": self.hardware_info,
             "timestamp": time.strftime("%H:%M:%S", time.localtime(now)),
         }
 
@@ -1949,6 +2002,7 @@ class ArincSession:
                 "bus": bus_out,
                 "tx": tx_out,
                 "rx": rx_out,
+                "hardware": self.hardware_info,
                 "lru_connection": self.check_lru_connected(self.active_lru_code or "709", bus="A"),
                 "simulation_override": self._sim_override,
             }
@@ -2035,7 +2089,20 @@ class ArincSession:
         try:
             channels = load_t1200_channels(self.netlist_path)
             h_card = bticard.CardOpen(self.cardnum)
-            h_core = bticard.CoreOpen(self.corenum, h_card)
+            active_core = self.corenum
+            if self.hardware_info and not self.simulation_mode:
+                core_data = next((c for c in self.hardware_info.get("cores", []) if c["core"] == active_core), None)
+                if core_data and core_data.get("count", 0) == 0:
+                    fallback = self.hardware_info.get("active_core", 0)
+                    logger.warning(
+                        f"Requested Core {active_core} has 0 ARINC 429 channels! Falling back to Core {fallback} ({self.hardware_info.get('active_port')})."
+                    )
+                    active_core = fallback
+            h_core = bticard.CoreOpen(active_core, h_card)
+            logger.info(
+                f"Ballard ARINC 429 Worker started on Card {self.cardnum}, Core {active_core} "
+                f"({self.hardware_info.get('active_port', 'P1 Upper') if self.hardware_info else 'P1 Upper'})"
+            )
             with self._lock:
                 self._h_card = h_card
                 self._h_core = h_core
