@@ -109,6 +109,9 @@ def decode_received(word: int, *, display_mode: str = "ENG") -> dict[str, Any]:
     units = ""
     ssm_name = decoded.ssm_name
     pads = "-"
+    mem = ""
+    bf = ""
+    extra = {}
     if spec is not None:
         try:
             eng = decode_label(spec, int(word))
@@ -116,10 +119,17 @@ def decode_received(word: int, *, display_mode: str = "ENG") -> dict[str, Any]:
             eng_text = eng.get("data_text") or eng_text
             eng_value = eng.get("eng_value")
             units = spec.units
+            extra = eng.get("extra") or {}
+            mem = extra.get("mem", "")
+            bf = extra.get("bf", "")
         except Exception:
             pass
         ssm_name = ssm_name_from_bits(decoded.ssm, spec.encoding, spec.ssm)
         pads = format_pads(decoded.data19, spec.pads)
+    elif decoded.label_octal == "202":
+        mem = "ON" if ((int(word) >> 10) & 1) else "OFF"
+        bf = "F" if ((int(word) >> 11) & 1) else "B"
+
     data_disp = format_display(decoded.data19, eng_text, display_mode)
     return {
         "label_octal": decoded.label_octal,
@@ -139,4 +149,7 @@ def decode_received(word: int, *, display_mode: str = "ENG") -> dict[str, Any]:
         "eng_value": eng_value,
         "units": units,
         "encoding": spec.encoding if spec else "raw",
+        "mem": mem,
+        "bf": bf,
+        "extra": extra,
     }

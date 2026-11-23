@@ -731,6 +731,14 @@ def create_app(
         arinc = get_arinc()
         return getattr(arinc, "hardware_info", {})
 
+    @app.get("/api/arinc/channels/activity")
+    def api_arinc_channels_activity(_sid: str = Depends(require_session)):
+        return get_arinc().get_channel_activity()
+
+    @app.post("/api/arinc/hardware/selftest")
+    def api_arinc_hardware_selftest(_sid: str = Depends(require_session)):
+        return get_arinc().hardware_selftest()
+
     @app.get("/api/arinc/dme/diagnostic")
     def api_arinc_dme_diagnostic(bus: str = "A", sim_scenario: str = "auto", _sid: str = Depends(require_session)):
         try:

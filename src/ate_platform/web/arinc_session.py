@@ -17,6 +17,7 @@ from ate_platform.device.arinc429 import (
     require_btidriver,
     resolve_rx_channel,
     resolve_tx_channel,
+    run_t1200_bus_loopback,
 )
 from ate_platform.device.arinc_encode import (
     DATA_MASK19,
@@ -197,6 +198,8 @@ class RxHit:
     eng_value: float | None = None
     encoding: str = ""
     period_ms: int = 0
+    mem: str = ""
+    bf: str = ""
 
 
 @dataclass
@@ -325,6 +328,71 @@ class ArincSession:
         self.mmr_inc_time: bool = False
         self._filter_hist: dict[tuple[str, str], list[tuple[float, float]]] = {}
         self._last_rx_ts: dict[tuple[str, str], float] = {}
+
+        # Real-time traffic activity counter for all Ballard Core 0 channels (RX 0..7 and TX 16..23)
+        self._channel_activity: dict[int, dict[str, Any]] = {}
+        rx_pin_map = {
+            0: ("A", "RCVR_A", "CH 0 (Banana) / DB37 Pins 29, 11"),
+            1: ("SPARE", "RX_SPARE_1", "CH 1 Spare RX"),
+            2: ("B", "RCVR_B", "CH 2 (Banana) / DB37 Pins 12, 31"),
+            3: ("SPARE", "RX_SPARE_3", "CH 3 Spare RX"),
+            4: ("C", "RCVR_C", "CH 4 (Banana) / DB37 Pins 35, 17"),
+            5: ("SPARE", "RX_SPARE_5", "CH 5 Spare RX"),
+            6: ("D", "RCVR_D", "CH 6 (Banana) / DB37 Pins 18, 37"),
+            7: ("SPARE", "RX_SPARE_7", "CH 7 Spare RX"),
+        }
+        for ch in range(8):
+            b_name, r_name, p_name = rx_pin_map[ch]
+            self._channel_activity[ch] = {
+                "channel": ch,
+                "phys": ch,
+                "type": "RX",
+                "bus": b_name,
+                "role": r_name,
+                "pin_info": p_name,
+                "db37_pins": p_name,
+                "name": f"{r_name} (CH {ch})",
+                "t1200_label": f"CH {b_name} RX",
+                "hits": 0,
+                "count": 0,
+                "last_hex": "",
+                "last_label": "",
+                "last_sdi": None,
+                "last_ssm": None,
+                "last_ts": None,
+                "age_s": None,
+                "active": False,
+            }
+        tx_pin_map = {
+            17: ("A", "XMIT_A", "CH 1 (Banana) / DB37 Pins 26, 8"),
+            19: ("B", "XMIT_B", "CH 3 (Banana) / DB37 Pins 9, 28"),
+            21: ("C", "XMIT_C", "CH 5 (Banana) / DB37 Pins 32, 14"),
+            23: ("D", "XMIT_D", "CH 7 (Banana) / DB37 Pins 15, 34"),
+        }
+        for ch in range(16, 24):
+            phys = ch - 16
+            b_name, r_name, p_name = tx_pin_map.get(ch, ("SPARE", f"TX_SPARE_{phys}", f"CH {phys}"))
+            self._channel_activity[ch] = {
+                "channel": ch,
+                "phys": phys,
+                "type": "TX",
+                "bus": b_name,
+                "role": r_name,
+                "pin_info": p_name,
+                "db37_pins": p_name,
+                "name": f"{r_name} (CH {phys})",
+                "t1200_label": f"CH {b_name} TX",
+                "hits": 0,
+                "count": 0,
+                "last_hex": "",
+                "last_label": "",
+                "last_sdi": None,
+                "last_ssm": None,
+                "last_ts": None,
+                "age_s": None,
+                "active": False,
+            }
+
         try:
             self.configure_tx_slot("A", 0, mode="adf", freq_khz=577.0, enabled=False)
         except Exception as exc:
@@ -353,6 +421,117 @@ class ArincSession:
                 "rx_db37_lo": rx_db.get("lo"),
             }
         return out
+
+    def _record_channel_traffic(self, ch: int, data: int, is_tx: bool = False) -> None:
+        """Update live activity metrics for physical/logical channel ch."""
+        now_s = time.time()
+        w = int(data) & 0xFFFFFFFF
+        with self._lock:
+            if ch not in self._channel_activity:
+                phys = ch if not is_tx else ch - 16
+                self._channel_activity[ch] = {
+                    "channel": ch,
+                    "phys": phys,
+                    "type": "TX" if is_tx else "RX",
+                    "bus": "OTHER",
+                    "role": f"{'TX' if is_tx else 'RX'}_{ch}",
+                    "pin_info": f"Channel {ch}",
+                    "hits": 0,
+                    "last_hex": "",
+                    "last_label": "",
+                    "last_sdi": None,
+                    "last_ssm": None,
+                    "last_ts": None,
+                    "age_s": None,
+                    "active": False,
+                }
+            entry = self._channel_activity[ch]
+            entry["hits"] += 1
+            entry["last_hex"] = f"0x{w:08X}"
+            entry["last_label"] = f"{w & 0xFF:03o}"
+            entry["last_sdi"] = (w >> 8) & 0x3
+            entry["last_ssm"] = (w >> 29) & 0x3
+            entry["last_ts"] = now_s
+            entry["age_s"] = 0.0
+            entry["active"] = True
+
+    def get_channel_activity(self) -> list[dict[str, Any]]:
+        """Return real-time status and traffic counters across all Ballard transceivers."""
+        now = time.time()
+        with self._lock:
+            result = []
+            for ch, entry in sorted(self._channel_activity.items()):
+                item = dict(entry)
+                if item["last_ts"] is not None:
+                    age = round(now - item["last_ts"], 2)
+                    item["age_s"] = age
+                    item["active"] = age <= 2.5
+                else:
+                    item["age_s"] = None
+                    item["active"] = False
+                result.append(item)
+            return result
+
+    def hardware_selftest(self) -> dict[str, Any]:
+        """Execute non-destructive Ballard internal hardware selftest loopback across all 4 buses."""
+        if not HAS_BTIDRIVER or self._sim_override:
+            return {
+                "success": True,
+                "overall_status": "PASS",
+                "simulated": True,
+                "summary": "All 4 ARINC 429 buses PASSED internal loopback self-test (Simulation).",
+                "message": "All 4 ARINC 429 buses PASSED internal loopback self-test (Simulation).",
+                "buses": {
+                    "A": {"status": "PASS", "tx_ch": 1, "rx_ch": 0, "tx_hits": 10, "rx_hits": 10, "label": "201", "detail": "PASS (simulated)"},
+                    "B": {"status": "PASS", "tx_ch": 3, "rx_ch": 2, "tx_hits": 10, "rx_hits": 10, "label": "202", "detail": "PASS (simulated)"},
+                    "C": {"status": "PASS", "tx_ch": 5, "rx_ch": 4, "tx_hits": 10, "rx_hits": 10, "label": "203", "detail": "PASS (simulated)"},
+                    "D": {"status": "PASS", "tx_ch": 7, "rx_ch": 6, "tx_hits": 10, "rx_hits": 10, "label": "204", "detail": "PASS (simulated)"},
+                },
+            }
+
+        try:
+            hits = run_t1200_bus_loopback(
+                cardnum=self.cardnum,
+                corenum=self.corenum,
+                netlist_path=self.netlist_path,
+                high_speed=False,
+                seconds=1.2,
+                min_hits=2,
+                selftest=True,
+                buses=["A", "B", "C", "D"],
+            )
+            bus_results = {}
+            all_ok = True
+            for h in hits:
+                bus_results[h.bus] = {
+                    "status": "PASS" if h.ok else "FAIL",
+                    "tx_ch": h.phys_tx,
+                    "rx_ch": h.phys_rx,
+                    "tx_hits": h.tx_hits,
+                    "rx_hits": h.rx_hits,
+                    "last_rx": f"0x{h.last_rx:08X}" if h.last_rx is not None else None,
+                    "detail": h.detail,
+                }
+                if not h.ok:
+                    all_ok = False
+            return {
+                "success": all_ok,
+                "overall_status": "PASS" if all_ok else "FAIL",
+                "simulated": False,
+                "summary": "All 4 ARINC 429 buses PASSED Ballard internal transceiver selftest." if all_ok else "One or more buses failed internal selftest.",
+                "message": "All 4 ARINC 429 buses PASSED Ballard internal transceiver selftest." if all_ok else "One or more buses failed internal selftest.",
+                "buses": bus_results,
+            }
+        except Exception as exc:
+            return {
+                "success": False,
+                "overall_status": "FAIL",
+                "simulated": False,
+                "error": str(exc),
+                "message": f"Selftest execution error: {exc}",
+                "summary": f"Hardware selftest error: {exc}",
+                "buses": {},
+            }
 
     # --- navigation -----------------------------------------------------
 
@@ -727,6 +906,8 @@ class ArincSession:
         """Decode one received word via the label dictionary. Used by worker and tests."""
         bus = bus.upper()
         now = float(ts if ts is not None else time.time())
+        bus_rx_map = {"A": 0, "B": 2, "C": 4, "D": 6}
+        self._record_channel_traffic(bus_rx_map.get(bus, 0), int(raw), is_tx=False)
         with self._lock:
             if not self.rx[bus].enabled or not self.channel[bus].rx_enable:
                 return None
@@ -765,6 +946,8 @@ class ArincSession:
             units=rec.get("units") or "",
             eng_value=float(eng_val) if isinstance(eng_val, (int, float)) else None,
             encoding=rec.get("encoding") or "",
+            mem=rec.get("mem") or "",
+            bf=rec.get("bf") or "",
         )
         with self._lock:
             v = self.rx[bus]
@@ -1253,8 +1436,10 @@ class ArincSession:
                         lab = lookup_label(sl.label_octal) or spec
                         self._fill_slot_from_spec(bus, sl.index, lab, nxt)
 
-    def dme_echo(self, bus: str = "A") -> dict[str, Any]:
-        """Compare last RX 035 with TX 035 on the given bus."""
+    def dme_echo(self, bus: str | None = None) -> dict[str, Any]:
+        """Compare last RX 035 with TX 035 on the given bus (default: active tx_ch)."""
+        if not bus:
+            bus = self.tx_ch or "A"
         bus = bus.upper()
         with self._lock:
             tx_slots = [s for s in self.tx[bus] if s.enabled and s.label_octal == "035"]
@@ -1286,6 +1471,8 @@ class ArincSession:
             return {
                 "rows": rows,
                 "bnr_dist": None if dist_stale else dist.data_text,
+                "mem": "" if (dist_stale or not dist) else getattr(dist, "mem", "OFF"),
+                "bf": "" if (dist_stale or not dist) else getattr(dist, "bf", "F"),
                 "ident": "" if not ident1 else f"{ident1.data_text}{(ident2.data_text if ident2 else '')}",
             }
 
@@ -1488,12 +1675,16 @@ class ArincSession:
         bnr_dist_text = "--.- NM"
         bnr_ssm = "NONE"
         bnr_age = None
+        bnr_mem = "OFF"
+        bnr_bf = "F"
         if rx202_fresh:
             bnr_age = round(now - rx202.ts, 2)
             d202 = decode_dme_distance_202(rx202.raw)
             bnr_dist_nm = d202["dist_nm"]
             bnr_dist_text = d202["dist_text"]
             bnr_ssm = d202["ssm_name"]
+            bnr_mem = "ON" if ((rx202.raw >> 10) & 1) else "OFF"
+            bnr_bf = "F" if ((rx202.raw >> 11) & 1) else "B"
 
         # 8. BCD Distance (Label 201)
         bcd_dist_nm = None
@@ -1506,6 +1697,9 @@ class ArincSession:
             bcd_dist_nm = d201["dist_nm"]
             bcd_dist_text = d201["dist_text"]
             bcd_ssm = d201["ssm_name"]
+        else:
+            bcd_dist_text = "NO BCD (DISP OFF / NO DATA)"
+            bcd_ssm = "NCD"
 
         # 9. Ground Station Ident (Label 246 / 247)
         ident_text = "----"
@@ -1636,6 +1830,8 @@ class ArincSession:
                 "dist_text": bnr_dist_text,
                 "ssm": bnr_ssm,
                 "last_seen_s": bnr_age,
+                "mem": bnr_mem,
+                "bf": bnr_bf,
             },
             "bcd_distance": {
                 "dist_nm": bcd_dist_nm,
@@ -1652,6 +1848,7 @@ class ArincSession:
             "wiring_warning": wiring_warning,
             "checklist": checklist,
             "hardware": self.hardware_info,
+            "channel_activity": self.get_channel_activity(),
             "timestamp": time.strftime("%H:%M:%S", time.localtime(now)),
         }
 
@@ -1958,6 +2155,8 @@ class ArincSession:
                             "units": h.units,
                             "raw": f"0x{h.raw:08X}",
                             "ts": round(h.ts, 2),
+                            "mem": getattr(h, "mem", ""),
+                            "bf": getattr(h, "bf", ""),
                         }
                         for h in v.ring[-16:]
                     ],
@@ -1966,7 +2165,7 @@ class ArincSession:
             dme = None
             if self.dme_mode:
                 try:
-                    dme = self.dme_echo("A")
+                    dme = self.dme_echo(self.tx_ch or "A")
                     dme["mode"] = self.dme_mode
                     dme["line"] = self.dme_line
                 except Exception:
@@ -2003,6 +2202,7 @@ class ArincSession:
                 "tx": tx_out,
                 "rx": rx_out,
                 "hardware": self.hardware_info,
+                "channel_activity": self.get_channel_activity(),
                 "lru_connection": self.check_lru_connected(self.active_lru_code or "709", bus="A"),
                 "simulation_override": self._sim_override,
             }
@@ -2141,16 +2341,11 @@ class ArincSession:
                     # PARDATA: send bit 32 as encoded (per-slot ODD/EVEN). PARODD overwrote EVEN.
                     # GAPBIT: SchedGap is bit times so 150 ms stays 150, not SchedBuild's ~1.5×.
 
-                    if cfg.rx_enable:
-                        bti429.ChConfig(
-                            bti429.CHCFG429_AUTOSPEED | bti429.CHCFG429_SEQALL | wrap,
-                            log_rx, h_core,
-                        )
-                    else:
-                        bti429.ChConfig(
-                            bti429.CHCFG429_INACTIVE | bti429.CHCFG429_SEQALL,
-                            log_rx, h_core,
-                        )
+                    # Always configure RX channel with AUTOSPEED + SEQALL for non-intrusive traffic monitoring
+                    bti429.ChConfig(
+                        bti429.CHCFG429_AUTOSPEED | bti429.CHCFG429_SEQALL | wrap,
+                        log_rx, h_core,
+                    )
 
                     if cfg.tx_enable and any(s.enabled and s.raw for s in tx_slots[letter]):
                         bti429.ChConfig(
@@ -2225,14 +2420,15 @@ class ArincSession:
                     if not rec:
                         break
                     ch = (int(rec.activity) & bti429.MSGACT429_CHMASK) >> bti429.MSGACT429_CHSHIFT
-                    if ch not in rx_by_chan:
-                        continue
-                    bus = rx_by_chan[ch]
                     data = int(rec.data) & 0xFFFFFFFF
-                    try:
-                        self.ingest_rx_word(bus, data)
-                    except Exception:
-                        continue
+                    self._record_channel_traffic(ch, data, is_tx=(ch >= 16))
+                    if ch in rx_by_chan:
+                        bus = rx_by_chan[ch]
+                        if self.channel[bus].rx_enable:
+                            try:
+                                self.ingest_rx_word(bus, data)
+                            except Exception:
+                                continue
 
             while not self._stop.is_set():
                 fp = self._config_fingerprint()

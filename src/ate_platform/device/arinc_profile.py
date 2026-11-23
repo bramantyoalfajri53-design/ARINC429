@@ -40,6 +40,51 @@ TIME_CONSTANTS = (0.0, 0.4, 0.8, 1.6, 3.2, 6.4, 12.8)
 LOW_RATES = (8.1, 9.4, 11.1, 12.5, 13.9, 15.1, 17.2, 18.5, 20.0)
 HIGH_RATES = (83.0, 100.0, 125.0)
 
+# Section 4.E: Collins VHF-2100 13 ADC Voltage Report Channels (Label 353)
+VHF2100_ADC_CHANNELS: dict[int, tuple[str, str, Any]] = {
+    0: ("MIC AUDIO SAMPLE 1", "VDC", lambda d: ((d * 625) / 1024) / 1000.0),
+    1: ("Q DETECT LEVEL", "VDC", lambda d: ((d * 625) / 1024) / 1000.0),
+    2: ("FORWARD VOLTAGE LEVEL", "VDC", lambda d: ((d * 625) / 1024) / 1000.0),
+    3: ("REVERSE VOLTAGE LEVEL", "VDC", lambda d: ((d * 625) / 1024) / 1000.0),
+    4: ("MIC AUDIO SAMPLE 2", "VDC", lambda d: ((d * 625) / 1024) / 1000.0),
+    5: ("HW AGC LEVEL", "VDC", lambda d: ((d * 625) / 1024) / 1000.0),
+    8: ("POWER SUPPLY +3.3 VDC", "VDC", lambda d: ((d * 3275) / 2048) / 1000.0),
+    9: ("POWER SUPPLY +8.0 VDC", "VDC", lambda d: ((d * 15275) / 4096) / 1000.0),
+    10: ("POWER SUPPLY -8.0 VDC", "VDC", lambda d: (((d * 35125) / 8448) / 1000.0) * -1.0),
+    11: ("POWER SUPPLY +5.0 VDC", "VDC", lambda d: ((d * 8025) / 4096) / 1000.0),
+    12: ("POWER SUPPLY +15 VDC", "VDC", lambda d: ((d * 28625) / 4096) / 1000.0),
+    13: ("POWER SUPPLY +28.0 VDC", "VDC", lambda d: ((d * 53450) / 4096) / 1000.0),
+    14: ("PA TEMPERATURE LEVEL", "DEGC", lambda d: ((d * 625) / 1024) / 10.0),
+}
+
+
+def decode_vhf2100_adc_353(word: int) -> dict[str, Any]:
+    """Decode internal ADC voltage report encoded on Label 353 per T1200B Manual Section 4.E."""
+    w = int(word) & 0xFFFFFFFF
+    subfield = (w >> 24) & 0x1F
+    raw_data = (w >> 10) & 0xFFF
+    if subfield in VHF2100_ADC_CHANNELS:
+        name, units, fn = VHF2100_ADC_CHANNELS[subfield]
+        val = round(float(fn(raw_data)), 3)
+        return {
+            "subfield": subfield,
+            "channel_num": subfield,
+            "name": name,
+            "param": name,
+            "units": units,
+            "value": val,
+            "raw_data": raw_data,
+            "text": f"{val:.3f} {units}",
+        }
+    return {
+        "subfield": subfield,
+        "name": f"UNKNOWN_SUBFIELD_{subfield}",
+        "units": "VDC",
+        "value": None,
+        "raw_data": raw_data,
+        "text": f"SUBFIELD_{subfield}: 0x{raw_data:03X}",
+    }
+
 # Figure 14 T1200 characteristic grid (Standard Mode).
 CATALOG = (
     {"id": "adf_032", "char": "712", "title": "ADF", "kind": "lru"},
@@ -692,6 +737,20 @@ def decode_label(spec: LabelSpec, word: int) -> dict[str, Any]:
             text = f"{eng_value:.2f} {units}".strip()
         else:
             text = f"{eng_value:g} {units}".strip()
+
+    if spec.label_octal == "202":
+        # ARINC 709 DME BNR Distance: bit 11 = MEM, bit 12 = B/F
+        mem = "ON" if ((w >> 10) & 1) else "OFF"
+        bf = "F" if ((w >> 11) & 1) else "B"
+        extra["mem"] = mem
+        extra["bf"] = bf
+    elif spec.label_octal == "353":
+        adc = decode_vhf2100_adc_353(w)
+        extra["adc"] = adc
+        if adc["value"] is not None:
+            eng_value = adc["value"]
+            text = f"{adc['name']}: {adc['text']}"
+
     return {
         "label_octal": spec.label_octal,
         "funct": spec.funct,

@@ -4900,6 +4900,9 @@ function renderCmcChannelsTab(c, r, s) {
     const curRx246 = rxLabs.find((l) => l.label === "246") || null;
 
     const bnrDist = curRx202 && curRx202.eng_value != null ? Number(curRx202.eng_value).toFixed(1) : (dmeSingleState.replyDist || "--.-");
+    const memVal = curRx202 && curRx202.mem ? curRx202.mem : "--";
+    const bfVal = curRx202 && curRx202.bf ? curRx202.bf : "--";
+    const displayedBnrDist = dispVal === "OFF" ? "--.-" : bnrDist;
     const bcdIdent = curRx246 ? (curRx246.data_text || "PRES") : "----";
 
     const p = el("div", "panel");
@@ -4958,9 +4961,9 @@ function renderCmcChannelsTab(c, r, s) {
                 <td><span class="dme-cell-edit dynapro-cell-edit" id="s-cell-disp">${dispVal}</span></td>
                 <td><span class="dme-cell-edit dynapro-cell-edit" id="s-cell-ident">${identVal}</span></td>
                 <td><span class="dme-cell-edit dynapro-cell-edit" id="s-cell-nav">${navVal}</span></td>
-                <td><span class="dme-cell-readonly dynapro-cell-readonly ${curRx202 ? "has-data" : ""}">${bnrDist}</span></td>
-                <td><span class="dme-cell-readonly dynapro-cell-readonly">--</span></td>
-                <td><span class="dme-cell-readonly dynapro-cell-readonly">--</span></td>
+                <td><span class="dme-cell-readonly dynapro-cell-readonly ${curRx202 ? "has-data" : ""}">${displayedBnrDist}</span></td>
+                <td><span class="dme-cell-readonly dynapro-cell-readonly ${curRx202 && curRx202.mem ? "has-data" : ""}">${memVal}</span></td>
+                <td><span class="dme-cell-readonly dynapro-cell-readonly ${curRx202 && curRx202.bf ? "has-data" : ""}">${bfVal}</span></td>
                 <td><span class="dme-cell-readonly dynapro-cell-readonly">--</span></td>
                 <td><span class="dme-cell-readonly dynapro-cell-readonly ${curRx246 ? "has-data" : ""}">${bcdIdent}</span></td>
               </tr>
@@ -5318,6 +5321,8 @@ function renderCmcChannelsTab(c, r, s) {
     const curRx202 = rxLabs.find((l) => l.label === "202") || null;
     const curRx246 = rxLabs.find((l) => l.label === "246") || null;
     const bnrDist = curRx202 && curRx202.eng_value != null ? Number(curRx202.eng_value).toFixed(1) : "--.-";
+    const memVal = curRx202 && curRx202.mem ? curRx202.mem : "--";
+    const bfVal = curRx202 && curRx202.bf ? curRx202.bf : "--";
     const bcdIdent = curRx246 ? (curRx246.data_text || "PRES") : "----";
 
     const p = el("div", "panel");
@@ -5377,9 +5382,9 @@ function renderCmcChannelsTab(c, r, s) {
                   <td><span class="dme-cell-edit dynapro-cell-edit" data-edit="disp" data-idx="${i}">${r.disp}</span></td>
                   <td><span class="dme-cell-edit dynapro-cell-edit" data-edit="ident" data-idx="${i}">${r.ident}</span></td>
                   <td><span class="dme-cell-edit dynapro-cell-edit" data-edit="nav" data-idx="${i}">${r.nav}</span></td>
-                  <td><span class="dme-cell-readonly dynapro-cell-readonly ${i === curLine && curRx202 ? "has-data" : ""}">${i === curLine ? bnrDist : "--.-"}</span></td>
-                  <td><span class="dme-cell-readonly dynapro-cell-readonly">--</span></td>
-                  <td><span class="dme-cell-readonly dynapro-cell-readonly">--</span></td>
+                  <td><span class="dme-cell-readonly dynapro-cell-readonly ${i === curLine && curRx202 ? "has-data" : ""}">${i === curLine ? (r.disp === "OFF" ? "--.-" : bnrDist) : "--.-"}</span></td>
+                  <td><span class="dme-cell-readonly dynapro-cell-readonly ${i === curLine && curRx202 && curRx202.mem ? "has-data" : ""}">${i === curLine ? memVal : "--"}</span></td>
+                  <td><span class="dme-cell-readonly dynapro-cell-readonly ${i === curLine && curRx202 && curRx202.bf ? "has-data" : ""}">${i === curLine ? bfVal : "--"}</span></td>
                   <td><span class="dme-cell-readonly dynapro-cell-readonly">--</span></td>
                   <td><span class="dme-cell-readonly dynapro-cell-readonly ${i === curLine && curRx246 ? "has-data" : ""}">${i === curLine ? bcdIdent : "----"}</span></td>
                 </tr>
@@ -6177,7 +6182,9 @@ function renderCmcChannelsTab(c, r, s) {
     if (bnrDistEl) {
       const bnr = data.bnr_distance || {};
       bnrDistEl.textContent = bnr.dist_text || "--.- NM";
-      $("dme-diag-bnr-sub").textContent = `SSM: ${bnr.ssm || "NONE"} | Age: ${bnr.last_seen_s != null ? `${bnr.last_seen_s}s` : "n/a"}`;
+      const memStr = bnr.mem ? ` | MEM: ${bnr.mem}` : "";
+      const bfStr = bnr.bf ? ` | B/F: ${bnr.bf}` : "";
+      $("dme-diag-bnr-sub").textContent = `SSM: ${bnr.ssm || "NONE"}${memStr}${bfStr} | Age: ${bnr.last_seen_s != null ? `${bnr.last_seen_s}s` : "n/a"}`;
     }
 
     const bcdDistEl = $("dme-diag-bcd-val");
@@ -6192,6 +6199,35 @@ function renderCmcChannelsTab(c, r, s) {
       const idt = data.ident || {};
       identEl.textContent = idt.ident_text || "----";
       $("dme-diag-ident-sub").textContent = `Label 246/247 | Age: ${idt.last_seen_s != null ? `${idt.last_seen_s}s` : "n/a"}`;
+    }
+
+    // Channel Activity Monitor Table
+    const chTbody = $("dme-channel-activity-tbody");
+    if (chTbody && data.channel_activity) {
+      const chs = Object.values(data.channel_activity);
+      chTbody.innerHTML = chs.map((c) => {
+        const isTx = c.type === "TX";
+        const typePill = isTx ? `<span class="pill pill-run">TX</span>` : `<span class="pill pill-sub">RX</span>`;
+        const activeLed = c.active
+          ? `<span style="color:#16a34a; font-weight:700;">🟢 ACTIVE</span>`
+          : `<span class="muted">⚪ IDLE</span>`;
+        const lastHex = c.last_hex ? `<span style="font-family:var(--font-mono); color:var(--accent); font-weight:700;">${c.last_hex}</span>` : `<span class="muted">--</span>`;
+        const labelOct = c.last_label && c.last_label !== "---" ? `<strong>${c.last_label}</strong>` : `<span class="muted">--</span>`;
+        const ageStr = c.last_seen_s != null ? `${c.last_seen_s}s ago` : `<span class="muted">never</span>`;
+        return `
+          <tr style="${c.active ? "background:rgba(22,163,74,0.06);" : ""}">
+            <td>${typePill}</td>
+            <td><strong>${c.name}</strong></td>
+            <td>${c.t1200_label || "-"}</td>
+            <td><code>${c.db37_pins || "-"}</code></td>
+            <td>${activeLed}</td>
+            <td style="font-family:var(--font-mono); font-weight:700;">${c.count || 0}</td>
+            <td>${lastHex}</td>
+            <td>${labelOct}</td>
+            <td class="muted">${ageStr}</td>
+          </tr>
+        `;
+      }).join("");
     }
 
     // Warning alert
@@ -6234,6 +6270,7 @@ function renderCmcChannelsTab(c, r, s) {
 
   function renderDmeDiagnostic(r, s) {
     stopDmeDiagTimer();
+    dmeDiagState.bus = s.tx_ch || s.rx_ch || dmeDiagState.bus || "A";
     const p = el("div", "panel");
     p.innerHTML = `
       <div class="lru-toolbar">
@@ -6335,6 +6372,42 @@ function renderCmcChannelsTab(c, r, s) {
           <div class="dme-diag-card-title">4. Ground Station Ident</div>
           <div class="dme-diag-card-value" id="dme-diag-ident-val">----</div>
           <div class="dme-diag-card-sub" id="dme-diag-ident-sub">Morse / Alpha Ident</div>
+        </div>
+      </div>
+
+      <!-- Live 16-Channel Transceiver Hardware Monitor (Core 0 / P1 Upper) -->
+      <div class="dme-diag-card" style="margin-bottom:1.5rem;">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+          <div>
+            <div class="dme-diag-card-title">Live Hardware Transceiver Activity Monitor (Core 0 / Port P1 / DB37 J1)</div>
+            <div style="font-size:0.75rem; color:var(--text-2);">
+              Real-time packet sniffing &amp; hardware activity counters across all 8 RX (0..7) and 8 TX (16..23) transceivers
+            </div>
+          </div>
+          <div style="display:flex; gap:8px;">
+            <button type="button" class="btn btn-sm btn-outline" id="btn-run-hw-selftest">⚡ Run Hardware Selftest</button>
+          </div>
+        </div>
+        <div id="dme-selftest-result-box" style="display:none; margin-top:10px; padding:10px 14px; border-radius:6px; font-size:0.85rem;"></div>
+        <div style="overflow-x:auto; margin-top:10px;">
+          <table class="dme-raw-table" id="dme-channel-activity-table">
+            <thead>
+              <tr>
+                <th style="width:70px;">TYPE</th>
+                <th style="width:120px;">CHANNEL</th>
+                <th style="width:140px;">T1200 / BUS</th>
+                <th style="width:120px;">DB37 J1 PINS</th>
+                <th style="width:100px;">STATUS</th>
+                <th style="width:90px;">HITS</th>
+                <th style="width:120px;">LAST WORD</th>
+                <th style="width:90px;">LABEL</th>
+                <th style="width:80px;">AGE</th>
+              </tr>
+            </thead>
+            <tbody id="dme-channel-activity-tbody">
+              <tr><td colspan="9" class="muted" style="text-align:center; padding:1rem;">Scanning channel activity...</td></tr>
+            </tbody>
+          </table>
         </div>
       </div>
 
@@ -6443,7 +6516,7 @@ function renderCmcChannelsTab(c, r, s) {
       navTo("dme_config");
     };
 
-    const applyBusSelection = (newBus) => {
+    const applyBusSelection = async (newBus) => {
       dmeDiagState.bus = newBus;
       const btnA = p.querySelector("#btn-bus-a");
       const btnB = p.querySelector("#btn-bus-b");
@@ -6455,6 +6528,14 @@ function renderCmcChannelsTab(c, r, s) {
           btnA.classList.add("btn-ghost");
           btnB.classList.remove("btn-ghost");
         }
+      }
+      try {
+        await api("/api/arinc/channel/active", {
+          method: "POST",
+          body: JSON.stringify({ tx_ch: newBus, rx_ch: newBus }),
+        });
+      } catch (e) {
+        console.warn("Active channel sync error:", e);
       }
       triggerDmeHandshake(true);
     };
@@ -6503,6 +6584,43 @@ function renderCmcChannelsTab(c, r, s) {
     p.querySelector("#btn-refresh-raw").onclick = () => {
       pollDmeDiagnostic();
     };
+
+    const selftestBtn = p.querySelector("#btn-run-hw-selftest");
+    if (selftestBtn) {
+      selftestBtn.onclick = async () => {
+        selftestBtn.disabled = true;
+        selftestBtn.textContent = "Running Selftest...";
+        const box = p.querySelector("#dme-selftest-result-box");
+        try {
+          const res = await api("/api/arinc/hardware/selftest", { method: "POST" });
+          if (box) {
+            box.style.display = "block";
+            if (res.overall_status === "PASS") {
+              box.style.background = "rgba(22,163,74,0.1)";
+              box.style.border = "1px solid #16a34a";
+              box.style.color = "#15803d";
+              box.innerHTML = `<strong>✅ HARDWARE SELFTEST PASS:</strong> ${res.message || "All Ballard OmniBus II transceivers operational."}`;
+            } else {
+              box.style.background = "rgba(239,68,68,0.1)";
+              box.style.border = "1px solid #ef4444";
+              box.style.color = "#b91c1c";
+              box.innerHTML = `<strong>⚠️ HARDWARE SELFTEST ${res.overall_status}:</strong> ${res.message || "Transceiver check completed with warnings."}`;
+            }
+          }
+        } catch (e) {
+          if (box) {
+            box.style.display = "block";
+            box.style.background = "rgba(239,68,68,0.1)";
+            box.style.border = "1px solid #ef4444";
+            box.style.color = "#b91c1c";
+            box.textContent = "Hardware selftest error: " + e.message;
+          }
+        } finally {
+          selftestBtn.disabled = false;
+          selftestBtn.textContent = "⚡ Run Hardware Selftest";
+        }
+      };
+    }
 
     // Initial trigger & start 500ms polling
     triggerDmeHandshake(true);
