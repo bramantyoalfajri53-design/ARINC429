@@ -35,7 +35,7 @@ ENCODINGS = (
     "raw", "bcd", "bcd_freq_khz", "bcd_tenths_khz", "bnr", "iso5", "dme_freq", "hf_pair",
 )
 DME_MODES = ("STBY", "DF1", "DF2", "DF3", "DF4", "DF5", "SCAN")
-DME_MODE_BITS = {"STBY": 0, "DF1": 1, "DF2": 2, "DF3": 3, "DF4": 4, "DF5": 5, "SCAN": 6}
+DME_MODE_BITS = {"STBY": 0, "DF1": 1, "DF2": 2, "DF3": 3, "DF4": 4, "DF5": 5, "SCAN": 6, "OFF": 0, "UND": 7, "NCD": 1, "FT": 1}
 DME_NAV_BITS = {"VOR": 0, "ILS": 1, "MLS": 2, "UND": 3}
 FILTER_LABELS = {"222": "VOR", "162": "ADF", "173": "ILS", "174": "ILS"}
 TIME_CONSTANTS = (0.0, 0.4, 0.8, 1.6, 3.2, 6.4, 12.8)

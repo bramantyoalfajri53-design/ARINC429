@@ -1358,33 +1358,56 @@ class ArincSession:
             sl = self.tx[bus][int(index)]
             from ate_platform.device.arinc_profile import dme_unpack, DME_MODE_BITS, DME_NAV_BITS
             cur = dme_unpack(sl.data19) if sl.raw else {"freq_mhz": 134.40, "mode": "DF1", "nav": "VOR", "disp": True, "ident": False, "pads": "0100001"}
-            payload: dict[str, Any] = {
-                "value": float(freq_mhz if freq_mhz is not None else cur["freq_mhz"]),
-                "mode": mode or cur["mode"],
-                "nav": nav or cur["nav"],
-                "disp": cur["disp"] if disp is None else disp,
-                "ident": cur["ident"] if ident is None else ident,
-                "sdi": sl.sdi if sdi is None else sdi,
-                "ssm": ssm or sl.ssm,
-            }
+            target_mode = mode if mode is not None else cur["mode"]
+            target_nav = nav if nav is not None else cur["nav"]
+            target_disp = disp if disp is not None else cur["disp"]
+            target_ident = ident if ident is not None else cur["ident"]
+
             if pad is not None and str(pad).strip():
                 clean_pad = str(pad).strip()
-                payload["pad_bits"] = clean_pad
                 try:
                     p_val = int(clean_pad, 2) if all(c in "01" for c in clean_pad) else int(clean_pad, 0)
-                    mode_i = p_val & 0x7
-                    nav_i = (p_val >> 3) & 0x3
-                    payload["mode"] = next((k for k, v in DME_MODE_BITS.items() if v == mode_i), payload["mode"])
-                    payload["nav"] = next((k for k, v in DME_NAV_BITS.items() if v == nav_i), payload["nav"])
-                    payload["disp"] = bool((p_val >> 5) & 1)
-                    payload["ident"] = bool((p_val >> 6) & 1)
+                    if mode is None:
+                        mode_i = p_val & 0x7
+                        target_mode = next((k for k, v in DME_MODE_BITS.items() if v == mode_i), target_mode)
+                    if nav is None:
+                        nav_i = (p_val >> 3) & 0x3
+                        target_nav = next((k for k, v in DME_NAV_BITS.items() if v == nav_i), target_nav)
+                    if disp is None:
+                        target_disp = bool((p_val >> 5) & 1)
+                    if ident is None:
+                        target_ident = bool((p_val >> 6) & 1)
                 except Exception:
                     pass
+
+            target_ssm = ssm or sl.ssm
+            if target_mode in {"NCD", "FT"}:
+                target_ssm = target_mode
+            elif target_mode == "OFF":
+                target_ssm = "FT"
+
+            m_val = DME_MODE_BITS.get(str(target_mode).upper(), 1) & 0x7
+            n_val = (DME_NAV_BITS.get(str(target_nav).upper(), 0) & 0x3) << 3
+            d_val = (1 if target_disp else 0) << 5
+            i_val = (1 if target_ident else 0) << 6
+            p_val = m_val | n_val | d_val | i_val
+            clean_pad = format(p_val, "07b")
+
+            payload: dict[str, Any] = {
+                "value": float(freq_mhz if freq_mhz is not None else cur["freq_mhz"]),
+                "mode": target_mode,
+                "nav": target_nav,
+                "disp": target_disp,
+                "ident": target_ident,
+                "pad_bits": clean_pad,
+                "sdi": sl.sdi if sdi is None else sdi,
+                "ssm": target_ssm,
+            }
             self._fill_slot_from_spec(bus, int(index), spec, payload, enabled=sl.enabled if enabled is None else enabled)
             if sdi is not None:
                 self.tx[bus][int(index)].sdi = int(sdi)
-            if ssm:
-                self.tx[bus][int(index)].ssm = ssm
+            if target_ssm:
+                self.tx[bus][int(index)].ssm = target_ssm
             if freq_mhz is not None:
                 self.tx[bus][int(index)].eng_value = float(freq_mhz)
             self.tx[bus][int(index)].rate_ms = rate_ms

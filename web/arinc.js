@@ -3761,6 +3761,10 @@ function renderCmcChannelsTab(c, r, s) {
     const view = s.screen_stack ? s.screen_stack[s.screen_stack.length - 1] : "mode_select";
     if (!force && key === lastViewKey) {
       if (view === "dme_diagnostic") return;
+      if (view === "dme_single") {
+        patchDmeSingleRx(s);
+        return;
+      }
       if (isWorkbench(view)) patchRxTable(s);
       const catEmpty = view === "avionics_lru" && (s.catalog || []).length &&
         !document.querySelector(".catalog-btn");
@@ -4741,15 +4745,25 @@ function renderCmcChannelsTab(c, r, s) {
   }
 
   async function applyDmeSlotHelper(params) {
-    if (params && params.index != null) {
-      if (!dmeStandardState.slots[params.index]) dmeStandardState.slots[params.index] = {};
-      const slotCache = dmeStandardState.slots[params.index];
-      if (params.freq_mhz != null) slotCache.freq = params.freq_mhz;
-      if (params.pad != null) slotCache.pad = params.pad;
-      if (params.sdi != null) slotCache.sdi = params.sdi;
-      if (params.ssm != null) slotCache.ssm = params.ssm;
-      if (params.parity != null) slotCache.parity = params.parity;
-      if (params.rate_ms != null) slotCache.rate = params.rate_ms;
+    if (params) {
+      if (params.freq_mhz != null) dmeSingleState.freq = params.freq_mhz;
+      if (params.mode != null) dmeSingleState.mode = params.mode;
+      if (params.nav != null) dmeSingleState.nav = params.nav;
+      if (params.disp != null) dmeSingleState.disp = params.disp ? "ON" : "OFF";
+      if (params.ident != null) dmeSingleState.ident = params.ident ? "ON" : "OFF";
+      if (params.pad != null) dmeSingleState.pad = params.pad;
+      if (params.sdi != null) dmeSingleState.sdi = params.sdi;
+
+      if (params.index != null) {
+        if (!dmeStandardState.slots[params.index]) dmeStandardState.slots[params.index] = {};
+        const slotCache = dmeStandardState.slots[params.index];
+        if (params.freq_mhz != null) slotCache.freq = params.freq_mhz;
+        if (params.pad != null) slotCache.pad = params.pad;
+        if (params.sdi != null) slotCache.sdi = params.sdi;
+        if (params.ssm != null) slotCache.ssm = params.ssm;
+        if (params.parity != null) slotCache.parity = params.parity;
+        if (params.rate_ms != null) slotCache.rate = params.rate_ms;
+      }
     }
     try {
       await api("/api/arinc/dme/slot", {
@@ -4757,7 +4771,13 @@ function renderCmcChannelsTab(c, r, s) {
         body: JSON.stringify(params),
       });
       const updated = await api("/api/arinc/status");
-      render(updated);
+      const curView = (updated.screen_stack && updated.screen_stack.length) ? updated.screen_stack[updated.screen_stack.length - 1] : "";
+      if (curView === "dme_single") {
+        snap = updated;
+        patchDmeSingleRx(updated);
+      } else {
+        render(updated);
+      }
     } catch (e) {
       alert(e.message);
     }
@@ -4871,6 +4891,103 @@ function renderCmcChannelsTab(c, r, s) {
   // SCREEN 1: SINGLE CHANNEL DME TEST SCREEN
   // Matches WhatsApp Image 2026-11-18 at 11.24.09 (Aeroflex Figure 17)
   // ====================================================================
+
+  function getDmePadString() {
+    const m = dmeSingleState.mode || "DF1";
+    const n = dmeSingleState.nav || "VOR";
+    const d = (dmeSingleState.disp !== "OFF") ? 1 : 0;
+    const id = (dmeSingleState.ident === "ON") ? 1 : 0;
+    const modeMap = { STBY: 0, DF1: 1, DF2: 2, DF3: 3, DF4: 4, DF5: 5, SCAN: 6, OFF: 0, NCD: 1, FT: 1, UND: 7 };
+    const navMap = { VOR: 0, ILS: 1, MLS: 2, UND: 3 };
+    const mVal = (modeMap[m] != null ? modeMap[m] : 1) & 0x7;
+    const nVal = (navMap[n] != null ? navMap[n] : 0) & 0x3;
+    const pVal = mVal | (nVal << 3) | (d << 5) | (id << 6);
+    return pVal.toString(2).padStart(7, "0");
+  }
+
+  function patchDmeSingleRx(s) {
+    if (!s) return;
+    const txCh = dmeSingleState.txBus || s.tx_ch || "A";
+    const rxCh = dmeSingleState.rxBus || s.rx_ch || "A";
+    const txSlots = (s.tx && s.tx[txCh]) || [];
+    const curTx = txSlots[0] || {};
+    const freqVal = (curTx.eng_value != null && Number.isFinite(Number(curTx.eng_value))) ? Number(curTx.eng_value) : dmeSingleState.freq;
+
+    const rxLabs = (s.rx && s.rx[rxCh] && s.rx[rxCh].labels) || [];
+    const curRx035 = rxLabs.find((l) => l.label === "035") || null;
+    const curRx201 = rxLabs.find((l) => l.label === "201") || null;
+    const curRx202 = rxLabs.find((l) => l.label === "202") || null;
+    const curRx246 = rxLabs.find((l) => l.label === "246") || null;
+
+    // 1. Echo cell (#s-cell-echo)
+    const echoCell = document.getElementById("s-cell-echo");
+    if (echoCell) {
+      if (curRx035) {
+        const rxFreq = curRx035.eng_value != null ? Number(curRx035.eng_value) : null;
+        if (rxFreq != null && Math.abs(rxFreq - freqVal) < 0.05) {
+          echoCell.textContent = "OK";
+          echoCell.style.color = "#16a34a";
+          echoCell.style.fontWeight = "700";
+        } else {
+          echoCell.textContent = "ERR";
+          echoCell.style.color = "#dc2626";
+          echoCell.style.fontWeight = "700";
+        }
+      } else {
+        echoCell.textContent = "NONE";
+        echoCell.style.color = "var(--text-2)";
+        echoCell.style.fontWeight = "600";
+      }
+    }
+
+    // 2. BNR DIST, MEM, B/F, DELTA, BCD/IDENT
+    const bnrDist = curRx202 && curRx202.eng_value != null ? Number(curRx202.eng_value).toFixed(2) : "--.--";
+    const memVal = curRx202 && curRx202.mem ? curRx202.mem : "--";
+    const bfVal = curRx202 && curRx202.bf ? curRx202.bf : "--";
+    const isDispOn = (dmeSingleState.disp !== "OFF");
+    const displayedBnrDist = isDispOn ? bnrDist : "--.--";
+
+    const rxDispMode = dmeSingleState.rxDisplayMode || "BCD";
+    let rightmostHeader = rxDispMode === "BCD" ? "BCDDIST" : "IDENT";
+    let rightmostData = "----";
+    if (rxDispMode === "BCD") {
+      if (curRx201 && curRx201.eng_value != null) {
+        rightmostData = Number(curRx201.eng_value).toFixed(2);
+      } else if (!isDispOn) {
+        rightmostData = "DISP OFF";
+      } else {
+        rightmostData = "No BCD";
+      }
+    } else {
+      rightmostData = curRx246 ? (curRx246.data_text || "----") : "----";
+    }
+
+    const bnrCell = document.getElementById("s-cell-bnr-dist");
+    if (bnrCell) {
+      bnrCell.textContent = displayedBnrDist;
+      bnrCell.className = `dme-cell-readonly dynapro-cell-readonly ${curRx202 && isDispOn ? "has-data" : ""}`;
+    }
+    const memCell = document.getElementById("s-cell-mem");
+    if (memCell) {
+      memCell.textContent = memVal;
+      memCell.className = `dme-cell-readonly dynapro-cell-readonly ${curRx202 && curRx202.mem ? "has-data" : ""}`;
+    }
+    const bfCell = document.getElementById("s-cell-bf");
+    if (bfCell) {
+      bfCell.textContent = bfVal;
+      bfCell.className = `dme-cell-readonly dynapro-cell-readonly ${curRx202 && curRx202.bf ? "has-data" : ""}`;
+    }
+    const rgtHdr = document.getElementById("s-hdr-rightmost");
+    if (rgtHdr) rgtHdr.textContent = rightmostHeader;
+    const rgtSubHdr = document.getElementById("s-subhdr-rightmost");
+    if (rgtSubHdr) rgtSubHdr.textContent = rightmostHeader;
+    const rgtCell = document.getElementById("s-cell-rightmost");
+    if (rgtCell) {
+      rgtCell.textContent = rightmostData;
+      rgtCell.className = `dme-cell-readonly dynapro-cell-readonly ${(rxDispMode === "BCD" ? (curRx201 && isDispOn) : curRx246) ? "has-data" : ""}`;
+    }
+  }
+
   function renderDmeSingle(r, s) {
     const txCh = dmeSingleState.txBus || s.tx_ch || "A";
     const rxCh = dmeSingleState.rxBus || s.rx_ch || "A";
@@ -4883,16 +5000,22 @@ function renderCmcChannelsTab(c, r, s) {
     let parVal = curTx.parity || "ODD";
     let rateVal = curTx.rate_ms || 150;
 
-    let padStr = "0100001";
     if (curTx.pads && curTx.pads !== "-") {
-      padStr = curTx.pads.padStart(7, "0");
+      const p = curTx.pads.padStart(7, "0");
+      dmeSingleState.pad = p;
+      if (dmeSingleState.disp == null) dmeSingleState.disp = (p[1] === "1" ? "ON" : "OFF");
+      if (dmeSingleState.ident == null) dmeSingleState.ident = (p[0] === "1" ? "ON" : "OFF");
+    }
+    if (!dmeSingleState.pad) {
+      dmeSingleState.pad = getDmePadString();
     }
 
-    const chanInfo = dmeFreqToChannel(freqVal);
-    const dispVal = padStr[1] === "1" ? "ON" : "OFF";
-    const identVal = padStr[0] === "1" ? "ON" : "OFF";
+    const padStr = dmeSingleState.pad || getDmePadString();
+    const dispVal = dmeSingleState.disp || (padStr[1] === "1" ? "ON" : "OFF");
+    const identVal = dmeSingleState.ident || (padStr[0] === "1" ? "ON" : "OFF");
     const modeVal = dmeSingleState.mode || "DF1";
     const navVal = dmeSingleState.nav || "VOR";
+    const chanInfo = dmeFreqToChannel(freqVal);
 
     const rxLabs = (s.rx && s.rx[rxCh] && s.rx[rxCh].labels) || [];
     const curRx035 = rxLabs.find((l) => l.label === "035") || null;
@@ -4964,7 +5087,7 @@ function renderCmcChannelsTab(c, r, s) {
                 <th colspan="7" style="padding-bottom:0;">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;MODE</th>
                 <th style="padding-bottom:0;">BNR</th>
                 <th colspan="3" style="padding-bottom:0;"></th>
-                <th style="padding-bottom:0;">${rightmostHeader}</th>
+                <th style="padding-bottom:0;" id="s-hdr-rightmost">${rightmostHeader}</th>
               </tr>
               <tr>
                 <th style="width:10%;">ECHO</th>
@@ -4978,23 +5101,23 @@ function renderCmcChannelsTab(c, r, s) {
                 <th style="width:7%;">MEM</th>
                 <th style="width:7%;">B/F</th>
                 <th style="width:7%;">DELTA</th>
-                <th style="width:9%;">${rightmostHeader}</th>
+                <th style="width:9%;" id="s-subhdr-rightmost">${rightmostHeader}</th>
               </tr>
             </thead>
             <tbody>
               <tr>
-                <td><span class="dme-cell-edit dynapro-cell-edit" id="s-cell-echo" style="${echoColor}">${echoVal}</span></td>
-                <td><span class="dme-cell-edit dynapro-cell-edit" id="s-cell-mode">${modeVal}</span></td>
-                <td><span class="dme-cell-edit dynapro-cell-edit" id="s-cell-chan">${dmeSingleState.dispChan ? `${chanInfo.ch} ${chanInfo.xy}` : freqVal.toFixed(2)}</span></td>
-                <td><span class="dme-cell-edit dynapro-cell-edit" id="s-cell-sdi">${sdiVal === 0 ? "ALL" : String(sdiVal).padStart(2, "0")}</span></td>
-                <td><span class="dme-cell-edit dynapro-cell-edit" id="s-cell-disp">${dispVal}</span></td>
-                <td><span class="dme-cell-edit dynapro-cell-edit" id="s-cell-ident">${identVal}</span></td>
-                <td><span class="dme-cell-edit dynapro-cell-edit" id="s-cell-nav">${navVal}</span></td>
-                <td><span class="dme-cell-readonly dynapro-cell-readonly ${curRx202 ? "has-data" : ""}">${displayedBnrDist}</span></td>
-                <td><span class="dme-cell-readonly dynapro-cell-readonly ${curRx202 && curRx202.mem ? "has-data" : ""}">${memVal}</span></td>
-                <td><span class="dme-cell-readonly dynapro-cell-readonly ${curRx202 && curRx202.bf ? "has-data" : ""}">${bfVal}</span></td>
-                <td><span class="dme-cell-readonly dynapro-cell-readonly">--</span></td>
-                <td><span class="dme-cell-readonly dynapro-cell-readonly ${(rxDispMode === "BCD" ? curRx201 : curRx246) ? "has-data" : ""}">${rightmostData}</span></td>
+                <td class="clickable-cell" id="s-td-echo"><span class="dme-cell-edit dynapro-cell-edit" id="s-cell-echo" style="${echoColor}">${echoVal}</span></td>
+                <td class="clickable-cell" id="s-td-mode"><span class="dme-cell-edit dynapro-cell-edit" id="s-cell-mode">${modeVal}</span></td>
+                <td class="clickable-cell" id="s-td-chan"><span class="dme-cell-edit dynapro-cell-edit" id="s-cell-chan">${dmeSingleState.dispChan ? `${chanInfo.ch} ${chanInfo.xy}` : freqVal.toFixed(2)}</span></td>
+                <td class="clickable-cell" id="s-td-sdi"><span class="dme-cell-edit dynapro-cell-edit" id="s-cell-sdi">${sdiVal === 0 ? "ALL" : String(sdiVal).padStart(2, "0")}</span></td>
+                <td class="clickable-cell" id="s-td-disp"><span class="dme-cell-edit dynapro-cell-edit" id="s-cell-disp">${dispVal}</span></td>
+                <td class="clickable-cell" id="s-td-ident"><span class="dme-cell-edit dynapro-cell-edit" id="s-cell-ident">${identVal}</span></td>
+                <td class="clickable-cell" id="s-td-nav"><span class="dme-cell-edit dynapro-cell-edit" id="s-cell-nav">${navVal}</span></td>
+                <td><span class="dme-cell-readonly dynapro-cell-readonly ${curRx202 && dispVal === "ON" ? "has-data" : ""}" id="s-cell-bnr-dist">${displayedBnrDist}</span></td>
+                <td><span class="dme-cell-readonly dynapro-cell-readonly ${curRx202 && curRx202.mem ? "has-data" : ""}" id="s-cell-mem">${memVal}</span></td>
+                <td><span class="dme-cell-readonly dynapro-cell-readonly ${curRx202 && curRx202.bf ? "has-data" : ""}" id="s-cell-bf">${bfVal}</span></td>
+                <td><span class="dme-cell-readonly dynapro-cell-readonly" id="s-cell-delta">--</span></td>
+                <td><span class="dme-cell-readonly dynapro-cell-readonly ${(rxDispMode === "BCD" ? (curRx201 && dispVal === "ON") : curRx246) ? "has-data" : ""}" id="s-cell-rightmost">${rightmostData}</span></td>
               </tr>
             </tbody>
           </table>
@@ -5069,55 +5192,104 @@ function renderCmcChannelsTab(c, r, s) {
     `;
     r.appendChild(p);
 
-    // Direct cell click handlers
-    p.querySelector("#s-cell-echo").onclick = () => {
-      render(snap);
+    const bindClick = (spanId, tdId, fn) => {
+      const span = p.querySelector(spanId);
+      const td = p.querySelector(tdId);
+      if (span) span.onclick = fn;
+      if (td) td.onclick = fn;
     };
+
+    // Direct cell click handlers
+    bindClick("#s-cell-echo", "#s-td-echo", () => {
+      render(snap);
+    });
 
     // SSM / Operating Mode cycle (DF1 -> STBY -> OFF -> NCD -> FT -> UND -> DF1)
     const ssmModesList = ["DF1", "STBY", "OFF", "NCD", "FT", "UND"];
-    const cycleSsmMode = () => {
+    const cycleSsmMode = (e) => {
+      if (e) { e.preventDefault(); e.stopPropagation(); }
       const idx = ssmModesList.indexOf(dmeSingleState.mode || "DF1");
-      dmeSingleState.mode = ssmModesList[(idx + 1) % ssmModesList.length];
+      const nextMode = ssmModesList[(idx + 1) % ssmModesList.length];
+      dmeSingleState.mode = nextMode;
+      dmeSingleState.pad = getDmePadString();
+      const el = p.querySelector("#s-cell-mode");
+      if (el) el.textContent = nextMode;
+      const mh = p.querySelector("#s-sk-mode-half");
+      if (mh) {
+        mh.classList.add("momentary-press");
+        setTimeout(() => mh.classList.remove("momentary-press"), 150);
+      }
       applyDmeSlotHelper({
         index: 0,
         bus: txCh,
-        mode: dmeSingleState.mode,
+        mode: nextMode,
         freq_mhz: freqVal,
-        pad: padStr,
+        pad: dmeSingleState.pad,
+        disp: dmeSingleState.disp === "ON",
+        ident: dmeSingleState.ident === "ON",
+        nav: dmeSingleState.nav,
+        sdi: dmeSingleState.sdi,
         enabled: true,
       });
     };
-    p.querySelector("#s-cell-mode").onclick = cycleSsmMode;
-    const modeHalf = p.querySelector("#s-sk-mode-half");
-    if (modeHalf) {
-      modeHalf.onclick = (e) => {
-        e.stopPropagation();
-        cycleSsmMode();
-      };
-    }
+    bindClick("#s-cell-mode", "#s-td-mode", cycleSsmMode);
 
     // Advance Directed Frequency (DF1 -> DF2 -> DF3 -> DF4 -> DF5 -> SCAN -> DF1)
     const advanModesList = ["DF1", "DF2", "DF3", "DF4", "DF5", "SCAN"];
-    const advanceDf = () => {
+    const advanceDf = (e) => {
+      if (e) { e.preventDefault(); e.stopPropagation(); }
       const idx = advanModesList.indexOf(dmeSingleState.mode || "DF1");
-      dmeSingleState.mode = advanModesList[(idx + 1) % advanModesList.length];
+      const nextMode = advanModesList[(idx + 1) % advanModesList.length];
+      dmeSingleState.mode = nextMode;
+      dmeSingleState.pad = getDmePadString();
+      const el = p.querySelector("#s-cell-mode");
+      if (el) el.textContent = nextMode;
+      const ah = p.querySelector("#s-sk-advan-half");
+      if (ah) {
+        ah.classList.add("momentary-press");
+        setTimeout(() => ah.classList.remove("momentary-press"), 150);
+      }
       applyDmeSlotHelper({
         index: 0,
         bus: txCh,
-        mode: dmeSingleState.mode,
+        mode: nextMode,
         freq_mhz: freqVal,
-        pad: padStr,
+        pad: dmeSingleState.pad,
+        disp: dmeSingleState.disp === "ON",
+        ident: dmeSingleState.ident === "ON",
+        nav: dmeSingleState.nav,
+        sdi: dmeSingleState.sdi,
         enabled: true,
       });
     };
-    const advanHalf = p.querySelector("#s-sk-advan-half");
-    if (advanHalf) {
-      advanHalf.onclick = (e) => {
+
+    // Softkey 6 [ MODE / ADVAN ] with event delegation
+    const skModeBtn = p.querySelector("#s-sk-mode");
+    if (skModeBtn) {
+      skModeBtn.onclick = (e) => {
+        e.preventDefault();
         e.stopPropagation();
-        advanceDf();
+        if (e.target && e.target.closest("#s-sk-advan-half")) {
+          advanceDf();
+          return;
+        }
+        if (e.target && e.target.closest("#s-sk-mode-half")) {
+          cycleSsmMode();
+          return;
+        }
+        const rect = skModeBtn.getBoundingClientRect();
+        const clickY = e.clientY - rect.top;
+        if (clickY > rect.height / 2) {
+          advanceDf();
+        } else {
+          cycleSsmMode();
+        }
       };
     }
+    const modeHalf = p.querySelector("#s-sk-mode-half");
+    if (modeHalf) modeHalf.onclick = cycleSsmMode;
+    const advanHalf = p.querySelector("#s-sk-advan-half");
+    if (advanHalf) advanHalf.onclick = advanceDf;
 
     const editChannelOrFreq = () => {
       showDmeKeypadModal({
@@ -5133,121 +5305,171 @@ function renderCmcChannelsTab(c, r, s) {
           } else {
             newFreq = parseFloat(val) || freqVal;
           }
+          dmeSingleState.freq = newFreq;
           applyDmeSlotHelper({
             index: 0,
             bus: txCh,
             freq_mhz: newFreq,
-            mode: modeVal,
-            pad: padStr,
+            mode: dmeSingleState.mode,
+            nav: dmeSingleState.nav,
+            disp: dmeSingleState.disp === "ON",
+            ident: dmeSingleState.ident === "ON",
+            pad: dmeSingleState.pad,
+            sdi: dmeSingleState.sdi,
             enabled: true,
           });
         },
       });
     };
-    p.querySelector("#s-cell-chan").onclick = editChannelOrFreq;
+    bindClick("#s-cell-chan", "#s-td-chan", editChannelOrFreq);
     p.querySelector("#sqnt-cell-chan").onclick = editChannelOrFreq;
 
     // Toggle X/Y
     const toggleXY = () => {
       const newXY = chanInfo.xy === "X" ? "Y" : "X";
       const newFreq = dmeChannelToFreq(chanInfo.ch, newXY);
+      dmeSingleState.freq = newFreq;
+      dmeSingleState.xy = newXY;
       applyDmeSlotHelper({
         index: 0,
         bus: txCh,
         freq_mhz: newFreq,
-        mode: modeVal,
-        pad: padStr,
+        mode: dmeSingleState.mode,
+        nav: dmeSingleState.nav,
+        disp: dmeSingleState.disp === "ON",
+        ident: dmeSingleState.ident === "ON",
+        pad: dmeSingleState.pad,
+        sdi: dmeSingleState.sdi,
         enabled: true,
       });
     };
     p.querySelector("#s-sk-xy").onclick = toggleXY;
 
-    // SDI cycle
-    p.querySelector("#s-cell-sdi").onclick = () => {
-      const sdiNext = (sdiVal + 1) % 4;
+    // SDI cycle (ALL -> 01 -> 02 -> 03 -> ALL)
+    const cycleSdi = (e) => {
+      if (e) { e.preventDefault(); e.stopPropagation(); }
+      const currentSdi = (dmeSingleState.sdi != null) ? Number(dmeSingleState.sdi) : sdiVal;
+      const nextSdi = (currentSdi + 1) % 4;
+      dmeSingleState.sdi = nextSdi;
+      const el = p.querySelector("#s-cell-sdi");
+      if (el) el.textContent = nextSdi === 0 ? "ALL" : String(nextSdi).padStart(2, "0");
       applyDmeSlotHelper({
         index: 0,
         bus: txCh,
         freq_mhz: freqVal,
-        sdi: sdiNext,
-        pad: padStr,
+        sdi: nextSdi,
+        pad: dmeSingleState.pad || getDmePadString(),
+        mode: dmeSingleState.mode,
+        nav: dmeSingleState.nav,
+        disp: dmeSingleState.disp === "ON",
+        ident: dmeSingleState.ident === "ON",
         enabled: true,
       });
     };
+    bindClick("#s-cell-sdi", "#s-td-sdi", cycleSdi);
 
-    // DISP toggle
-    p.querySelector("#s-cell-disp").onclick = () => {
-      const newDisp = dispVal !== "ON";
-      let arr = padStr.split("");
-      arr[1] = newDisp ? "1" : "0";
-      const newPad = arr.join("");
+    // DISP toggle (Bit 16)
+    const toggleDisp = (e) => {
+      if (e) { e.preventDefault(); e.stopPropagation(); }
+      const newDisp = (dmeSingleState.disp !== "ON");
+      dmeSingleState.disp = newDisp ? "ON" : "OFF";
+      dmeSingleState.pad = getDmePadString();
+      const el = p.querySelector("#s-cell-disp");
+      if (el) el.textContent = dmeSingleState.disp;
+      patchDmeSingleRx(snap);
       applyDmeSlotHelper({
         index: 0,
         bus: txCh,
         freq_mhz: freqVal,
         disp: newDisp,
-        pad: newPad,
+        pad: dmeSingleState.pad,
+        mode: dmeSingleState.mode,
+        nav: dmeSingleState.nav,
+        ident: dmeSingleState.ident === "ON",
+        sdi: dmeSingleState.sdi,
         enabled: true,
       });
     };
+    bindClick("#s-cell-disp", "#s-td-disp", toggleDisp);
 
     // TX IDENT toggle (Bit 17) - ONLY triggered by clicking #s-cell-ident in the table!
-    const toggleTxIdent = () => {
-      const newIdent = identVal !== "ON";
-      let arr = padStr.split("");
-      arr[0] = newIdent ? "1" : "0";
-      const newPad = arr.join("");
+    const toggleTxIdent = (e) => {
+      if (e) { e.preventDefault(); e.stopPropagation(); }
+      const newIdent = (dmeSingleState.ident !== "ON");
+      dmeSingleState.ident = newIdent ? "ON" : "OFF";
+      dmeSingleState.pad = getDmePadString();
+      const el = p.querySelector("#s-cell-ident");
+      if (el) el.textContent = dmeSingleState.ident;
       applyDmeSlotHelper({
         index: 0,
         bus: txCh,
         freq_mhz: freqVal,
         ident: newIdent,
-        pad: newPad,
+        disp: dmeSingleState.disp === "ON",
+        pad: dmeSingleState.pad,
+        mode: dmeSingleState.mode,
+        nav: dmeSingleState.nav,
+        sdi: dmeSingleState.sdi,
         enabled: true,
       });
     };
-    p.querySelector("#s-cell-ident").onclick = toggleTxIdent;
+    bindClick("#s-cell-ident", "#s-td-ident", toggleTxIdent);
 
     // RX Display Mode Softkey (BCD vs IDENT) - Softkey 7
-    const toggleRxDisp = (e) => {
-      if (e) e.stopPropagation();
-      dmeSingleState.rxDisplayMode = (dmeSingleState.rxDisplayMode === "IDENT") ? "BCD" : "IDENT";
-      render(snap);
+    const setRxDispMode = (mode) => {
+      dmeSingleState.rxDisplayMode = mode;
+      const bcdEl = p.querySelector("#s-sk-bcd-half");
+      const identEl = p.querySelector("#s-sk-ident-half");
+      if (bcdEl) bcdEl.classList.toggle("active", mode === "BCD");
+      if (identEl) identEl.classList.toggle("active", mode === "IDENT");
+      patchDmeSingleRx(snap);
     };
     const rxDispBtn = p.querySelector("#s-sk-rx-disp");
-    if (rxDispBtn) rxDispBtn.onclick = toggleRxDisp;
+    if (rxDispBtn) {
+      rxDispBtn.onclick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.target && e.target.closest("#s-sk-ident-half")) {
+          setRxDispMode("IDENT");
+          return;
+        }
+        if (e.target && e.target.closest("#s-sk-bcd-half")) {
+          setRxDispMode("BCD");
+          return;
+        }
+        setRxDispMode(dmeSingleState.rxDisplayMode === "IDENT" ? "BCD" : "IDENT");
+      };
+    }
     const bcdHalf = p.querySelector("#s-sk-bcd-half");
-    if (bcdHalf) {
-      bcdHalf.onclick = (e) => {
-        e.stopPropagation();
-        dmeSingleState.rxDisplayMode = "BCD";
-        render(snap);
-      };
-    }
+    if (bcdHalf) bcdHalf.onclick = (e) => { e.preventDefault(); e.stopPropagation(); setRxDispMode("BCD"); };
     const identHalf = p.querySelector("#s-sk-ident-half");
-    if (identHalf) {
-      identHalf.onclick = (e) => {
-        e.stopPropagation();
-        dmeSingleState.rxDisplayMode = "IDENT";
-        render(snap);
-      };
-    }
+    if (identHalf) identHalf.onclick = (e) => { e.preventDefault(); e.stopPropagation(); setRxDispMode("IDENT"); };
 
-    // NAV cycle (VOR -> ILS -> MLS)
-    const navList = ["VOR", "ILS", "MLS"];
-    p.querySelector("#s-cell-nav").onclick = () => {
-      const idx = navList.indexOf(navVal);
+    // NAV cycle (VOR -> ILS -> MLS -> UND -> VOR)
+    const navList = ["VOR", "ILS", "MLS", "UND"];
+    const cycleNav = (e) => {
+      if (e) { e.preventDefault(); e.stopPropagation(); }
+      const currentNav = dmeSingleState.nav || navVal || "VOR";
+      const idx = navList.indexOf(currentNav);
       const nextNav = navList[(idx + 1) % navList.length];
       dmeSingleState.nav = nextNav;
+      dmeSingleState.pad = getDmePadString();
+      const el = p.querySelector("#s-cell-nav");
+      if (el) el.textContent = nextNav;
       applyDmeSlotHelper({
         index: 0,
         bus: txCh,
         freq_mhz: freqVal,
         nav: nextNav,
-        pad: padStr,
+        pad: dmeSingleState.pad,
+        mode: dmeSingleState.mode,
+        disp: dmeSingleState.disp === "ON",
+        ident: dmeSingleState.ident === "ON",
+        sdi: dmeSingleState.sdi,
         enabled: true,
       });
     };
+    bindClick("#s-cell-nav", "#s-td-nav", cycleNav);
 
     // SQ/NT status edits
     p.querySelector("#sqnt-cell-dist").onclick = () => {
@@ -5321,7 +5543,12 @@ function renderCmcChannelsTab(c, r, s) {
     };
     p.querySelector("#s-sk-chan").onclick = () => {
       dmeSingleState.dispChan = !dmeSingleState.dispChan;
-      render(snap);
+      const chanEl = p.querySelector("#s-cell-chan");
+      if (chanEl) chanEl.textContent = dmeSingleState.dispChan ? `${chanInfo.ch} ${chanInfo.xy}` : freqVal.toFixed(2);
+      const skChanHalf = p.querySelector("#s-sk-chan .dme-softkey-half:first-child");
+      const skFreqHalf = p.querySelector("#s-sk-chan .dme-softkey-half:last-child");
+      if (skChanHalf) skChanHalf.classList.toggle("active", dmeSingleState.dispChan);
+      if (skFreqHalf) skFreqHalf.classList.toggle("active", !dmeSingleState.dispChan);
     };
 
     // Bottom buttons
@@ -5335,6 +5562,10 @@ function renderCmcChannelsTab(c, r, s) {
         dmeSingleState.sdi = 0;
         dmeSingleState.mode = "DF1";
         dmeSingleState.nav = "VOR";
+        dmeSingleState.disp = "ON";
+        dmeSingleState.ident = "OFF";
+        dmeSingleState.pad = "0100001";
+        dmeSingleState.rxDisplayMode = "BCD";
         const snapIn = await api("/api/arinc/dme/mode", {
           method: "POST",
           body: JSON.stringify({ mode: "single", reset: true }),
@@ -5347,9 +5578,12 @@ function renderCmcChannelsTab(c, r, s) {
         index: 0,
         bus: txCh,
         freq_mhz: freqVal,
-        pad: padStr,
-        sdi: sdiVal,
-        ssm: ssmVal,
+        pad: dmeSingleState.pad || getDmePadString(),
+        mode: dmeSingleState.mode,
+        nav: dmeSingleState.nav,
+        disp: dmeSingleState.disp === "ON",
+        ident: dmeSingleState.ident === "ON",
+        sdi: dmeSingleState.sdi,
         parity: parVal,
         rate_ms: rateVal,
         enabled: true,

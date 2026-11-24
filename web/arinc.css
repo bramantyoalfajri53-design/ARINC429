@@ -1788,6 +1788,26 @@ tr.slot-off td { color: var(--muted); }
   font-weight: 800;
 }
 
+.dme-softkey-half.momentary-press,
+.dynapro-softkey-half.momentary-press,
+.dme-softkey-half:active,
+.dynapro-softkey-half:active {
+  background: var(--accent) !important;
+  color: #ffffff !important;
+  font-weight: 800 !important;
+}
+
+.dme-hmi-table td.clickable-cell,
+.dynapro-dme-table td.clickable-cell {
+  cursor: pointer;
+}
+.dme-hmi-table td.clickable-cell:hover .dme-cell-edit,
+.dynapro-dme-table td.clickable-cell:hover .dynapro-cell-edit {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 .dme-softkey-divider,
 .dynapro-softkey-divider {
   width: 100%;
