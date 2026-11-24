@@ -4911,7 +4911,55 @@ function renderCmcChannelsTab(c, r, s) {
     const rxCh = dmeSingleState.rxBus || s.rx_ch || "A";
     const txSlots = (s.tx && s.tx[txCh]) || [];
     const curTx = txSlots[0] || {};
-    const freqVal = (curTx.eng_value != null && Number.isFinite(Number(curTx.eng_value))) ? Number(curTx.eng_value) : dmeSingleState.freq;
+    const freqVal = (curTx.eng_value != null && Number.isFinite(Number(curTx.eng_value))) ? Number(curTx.eng_value) : (dmeSingleState.freq || 134.40);
+
+    const chanInfo = dmeFreqToChannel(dmeSingleState.freq || freqVal);
+
+    // Synchronize Channel / Frequency cell & SQ/NT channel cell
+    const chanCell = document.getElementById("s-cell-chan");
+    if (chanCell) {
+      chanCell.textContent = dmeSingleState.dispChan ? `${chanInfo.ch} ${chanInfo.xy}` : (dmeSingleState.freq || freqVal).toFixed(2);
+    }
+    const sqntChan = document.getElementById("sqnt-cell-chan");
+    if (sqntChan) {
+      sqntChan.textContent = `${chanInfo.ch} ${chanInfo.xy}`;
+    }
+
+    // Synchronize Softkey 1 (X / Y)
+    const xHalf = document.getElementById("s-sk-x-half");
+    const yHalf = document.getElementById("s-sk-y-half");
+    if (xHalf) xHalf.classList.toggle("active", chanInfo.xy === "X");
+    if (yHalf) yHalf.classList.toggle("active", chanInfo.xy === "Y");
+
+    // Synchronize Softkey 2 (TX-A / TX-B)
+    const txaHalf = document.getElementById("s-sk-txa-half");
+    const txbHalf = document.getElementById("s-sk-txb-half");
+    if (txaHalf) txaHalf.classList.toggle("active", txCh === "A");
+    if (txbHalf) txbHalf.classList.toggle("active", txCh === "B");
+
+    // Synchronize Softkey 3 (RX-A / RX-B)
+    const rxaHalf = document.getElementById("s-sk-rxa-half");
+    const rxbHalf = document.getElementById("s-sk-rxb-half");
+    if (rxaHalf) rxaHalf.classList.toggle("active", rxCh === "A");
+    if (rxbHalf) rxbHalf.classList.toggle("active", rxCh === "B");
+
+    // Synchronize Softkey 4 (SQ/NT / INDEP.)
+    const sqntHalf = document.getElementById("s-sk-sqnt-half");
+    const indepHalf = document.getElementById("s-sk-indep-half");
+    if (sqntHalf) sqntHalf.classList.toggle("active", dmeSingleState.sqntMode === "SQNT");
+    if (indepHalf) indepHalf.classList.toggle("active", dmeSingleState.sqntMode === "INDEP");
+
+    // Synchronize Softkey 5 (CHAN / FREQ)
+    const chanHalf = document.getElementById("s-sk-chan-half");
+    const freqHalf = document.getElementById("s-sk-freq-half");
+    if (chanHalf) chanHalf.classList.toggle("active", !!dmeSingleState.dispChan);
+    if (freqHalf) freqHalf.classList.toggle("active", !dmeSingleState.dispChan);
+
+    // Synchronize Toolbar Pill
+    const pill = document.querySelector(".dynapro-dme-crt .pill-run, .lru-toolbar .pill-run");
+    if (pill) {
+      pill.innerHTML = `BUS TX-${txCh} &bull; RX-${rxCh}`;
+    }
 
     const rxLabs = (s.rx && s.rx[rxCh] && s.rx[rxCh].labels) || [];
     const curRx035 = rxLabs.find((l) => l.label === "035") || null;
@@ -4924,7 +4972,7 @@ function renderCmcChannelsTab(c, r, s) {
     if (echoCell) {
       if (curRx035) {
         const rxFreq = curRx035.eng_value != null ? Number(curRx035.eng_value) : null;
-        if (rxFreq != null && Math.abs(rxFreq - freqVal) < 0.05) {
+        if (rxFreq != null && Math.abs(rxFreq - (dmeSingleState.freq || freqVal)) < 0.05) {
           echoCell.textContent = "OK";
           echoCell.style.color = "#16a34a";
           echoCell.style.fontWeight = "700";
@@ -4986,6 +5034,12 @@ function renderCmcChannelsTab(c, r, s) {
       rgtCell.textContent = rightmostData;
       rgtCell.className = `dme-cell-readonly dynapro-cell-readonly ${(rxDispMode === "BCD" ? (curRx201 && isDispOn) : curRx246) ? "has-data" : ""}`;
     }
+
+    // Synchronize Softkey 7 (BCD / IDENT)
+    const bcdHalf = document.getElementById("s-sk-bcd-half");
+    const identHalf = document.getElementById("s-sk-ident-half");
+    if (bcdHalf) bcdHalf.classList.toggle("active", rxDispMode === "BCD");
+    if (identHalf) identHalf.classList.toggle("active", rxDispMode === "IDENT");
   }
 
   function renderDmeSingle(r, s) {
@@ -5146,33 +5200,33 @@ function renderCmcChannelsTab(c, r, s) {
           <div class="dme-softkeys-row dynapro-softkeys-row">
             <!-- 1: [ X / Y ] -->
             <button type="button" class="dme-softkey-btn dynapro-softkey-btn" id="s-sk-xy">
-              <div class="dme-softkey-half dynapro-softkey-half ${chanInfo.xy === "X" ? "active" : ""}">X</div>
+              <div class="dme-softkey-half dynapro-softkey-half ${chanInfo.xy === "X" ? "active" : ""}" id="s-sk-x-half">X</div>
               <div class="dme-softkey-divider dynapro-softkey-divider"></div>
-              <div class="dme-softkey-half dynapro-softkey-half ${chanInfo.xy === "Y" ? "active" : ""}">Y</div>
+              <div class="dme-softkey-half dynapro-softkey-half ${chanInfo.xy === "Y" ? "active" : ""}" id="s-sk-y-half">Y</div>
             </button>
             <!-- 2: [ TX-A / TX-B ] -->
             <button type="button" class="dme-softkey-btn dynapro-softkey-btn" id="s-sk-tx">
-              <div class="dme-softkey-half dynapro-softkey-half ${txCh === "A" ? "active" : ""}">TX-A</div>
+              <div class="dme-softkey-half dynapro-softkey-half ${txCh === "A" ? "active" : ""}" id="s-sk-txa-half">TX-A</div>
               <div class="dme-softkey-divider dynapro-softkey-divider"></div>
-              <div class="dme-softkey-half dynapro-softkey-half ${txCh === "B" ? "active" : ""}">TX-B</div>
+              <div class="dme-softkey-half dynapro-softkey-half ${txCh === "B" ? "active" : ""}" id="s-sk-txb-half">TX-B</div>
             </button>
             <!-- 3: [ RX-A / RX-B ] -->
             <button type="button" class="dme-softkey-btn dynapro-softkey-btn" id="s-sk-rx">
-              <div class="dme-softkey-half dynapro-softkey-half ${rxCh === "A" ? "active" : ""}">RX-A</div>
+              <div class="dme-softkey-half dynapro-softkey-half ${rxCh === "A" ? "active" : ""}" id="s-sk-rxa-half">RX-A</div>
               <div class="dme-softkey-divider dynapro-softkey-divider"></div>
-              <div class="dme-softkey-half dynapro-softkey-half ${rxCh === "B" ? "active" : ""}">RX-B</div>
+              <div class="dme-softkey-half dynapro-softkey-half ${rxCh === "B" ? "active" : ""}" id="s-sk-rxb-half">RX-B</div>
             </button>
             <!-- 4: [ SQ/NT / INDEP. ] -->
             <button type="button" class="dme-softkey-btn dynapro-softkey-btn" id="s-sk-sqnt">
-              <div class="dme-softkey-half dynapro-softkey-half ${dmeSingleState.sqntMode === "SQNT" ? "active" : ""}">SQ/NT</div>
+              <div class="dme-softkey-half dynapro-softkey-half ${dmeSingleState.sqntMode === "SQNT" ? "active" : ""}" id="s-sk-sqnt-half">SQ/NT</div>
               <div class="dme-softkey-divider dynapro-softkey-divider"></div>
-              <div class="dme-softkey-half dynapro-softkey-half ${dmeSingleState.sqntMode === "INDEP" ? "active" : ""}">INDEP.</div>
+              <div class="dme-softkey-half dynapro-softkey-half ${dmeSingleState.sqntMode === "INDEP" ? "active" : ""}" id="s-sk-indep-half">INDEP.</div>
             </button>
             <!-- 5: [ CHAN / FREQ ] -->
             <button type="button" class="dme-softkey-btn dynapro-softkey-btn" id="s-sk-chan">
-              <div class="dme-softkey-half dynapro-softkey-half ${dmeSingleState.dispChan ? "active" : ""}">CHAN</div>
+              <div class="dme-softkey-half dynapro-softkey-half ${dmeSingleState.dispChan ? "active" : ""}" id="s-sk-chan-half">CHAN</div>
               <div class="dme-softkey-divider dynapro-softkey-divider"></div>
-              <div class="dme-softkey-half dynapro-softkey-half ${!dmeSingleState.dispChan ? "active" : ""}">FREQ</div>
+              <div class="dme-softkey-half dynapro-softkey-half ${!dmeSingleState.dispChan ? "active" : ""}" id="s-sk-freq-half">FREQ</div>
             </button>
             <!-- 6: [ MODE / ADVAN ] -->
             <button type="button" class="dme-softkey-btn dynapro-softkey-btn" id="s-sk-mode">
@@ -5263,7 +5317,7 @@ function renderCmcChannelsTab(c, r, s) {
       });
     };
 
-    // Softkey 6 [ MODE / ADVAN ] with event delegation
+    // Softkey 6: [ MODE / ADVAN ] with event delegation
     const skModeBtn = p.querySelector("#s-sk-mode");
     if (skModeBtn) {
       skModeBtn.onclick = (e) => {
@@ -5291,21 +5345,42 @@ function renderCmcChannelsTab(c, r, s) {
     const advanHalf = p.querySelector("#s-sk-advan-half");
     if (advanHalf) advanHalf.onclick = advanceDf;
 
+    // Keypad Modal for Channel / Frequency
     const editChannelOrFreq = () => {
+      const curFreq = dmeSingleState.freq || freqVal || 134.40;
+      const currentChanInfo = dmeFreqToChannel(curFreq);
       showDmeKeypadModal({
         title: dmeSingleState.dispChan ? "SET DME CHANNEL (1-126)" : "SET DME FREQ (MHz)",
-        value: dmeSingleState.dispChan ? String(chanInfo.ch) : freqVal.toFixed(2),
+        value: dmeSingleState.dispChan ? String(currentChanInfo.ch) : curFreq.toFixed(2),
         type: "numeric",
-        hint: dmeSingleState.dispChan ? "Enter channel 1-126 (Suffix: " + chanInfo.xy + ")" : "Enter frequency (108.00 - 135.95 MHz)",
+        hint: dmeSingleState.dispChan ? "Enter channel 1-126 (Suffix: " + currentChanInfo.xy + ")" : "Enter frequency (108.00 - 135.95 MHz)",
         onApply: (val) => {
-          let newFreq = freqVal;
+          let newFreq = curFreq;
           if (dmeSingleState.dispChan) {
             const chNum = parseInt(val, 10) || 1;
-            newFreq = dmeChannelToFreq(chNum, chanInfo.xy);
+            newFreq = dmeChannelToFreq(chNum, currentChanInfo.xy);
           } else {
-            newFreq = parseFloat(val) || freqVal;
+            newFreq = parseFloat(val) || curFreq;
           }
           dmeSingleState.freq = newFreq;
+          freqVal = newFreq;
+          const newCi = dmeFreqToChannel(newFreq);
+          dmeSingleState.xy = newCi.xy;
+
+          // Instant DOM updates
+          const chanCell = p.querySelector("#s-cell-chan");
+          if (chanCell) {
+            chanCell.textContent = dmeSingleState.dispChan ? `${newCi.ch} ${newCi.xy}` : newFreq.toFixed(2);
+          }
+          const sqntChan = p.querySelector("#sqnt-cell-chan");
+          if (sqntChan) {
+            sqntChan.textContent = `${newCi.ch} ${newCi.xy}`;
+          }
+          const xHalf = p.querySelector("#s-sk-x-half");
+          const yHalf = p.querySelector("#s-sk-y-half");
+          if (xHalf) xHalf.classList.toggle("active", newCi.xy === "X");
+          if (yHalf) yHalf.classList.toggle("active", newCi.xy === "Y");
+
           applyDmeSlotHelper({
             index: 0,
             bus: txCh,
@@ -5314,7 +5389,7 @@ function renderCmcChannelsTab(c, r, s) {
             nav: dmeSingleState.nav,
             disp: dmeSingleState.disp === "ON",
             ident: dmeSingleState.ident === "ON",
-            pad: dmeSingleState.pad,
+            pad: dmeSingleState.pad || getDmePadString(),
             sdi: dmeSingleState.sdi,
             enabled: true,
           });
@@ -5324,12 +5399,42 @@ function renderCmcChannelsTab(c, r, s) {
     bindClick("#s-cell-chan", "#s-td-chan", editChannelOrFreq);
     p.querySelector("#sqnt-cell-chan").onclick = editChannelOrFreq;
 
-    // Toggle X/Y
-    const toggleXY = () => {
-      const newXY = chanInfo.xy === "X" ? "Y" : "X";
-      const newFreq = dmeChannelToFreq(chanInfo.ch, newXY);
+    // Softkey 1: [ X / Y ] Instant toggle & delegation
+    const setXY = (targetXY) => {
+      const curFreq = dmeSingleState.freq || freqVal || 134.40;
+      const currentChanInfo = dmeFreqToChannel(curFreq);
+      const curXY = currentChanInfo.xy;
+      let nextXY = targetXY;
+      if (!nextXY) {
+        nextXY = curXY === "X" ? "Y" : "X";
+      } else if (nextXY === curXY) {
+        // Explicitly clicking the active half toggles it
+        nextXY = curXY === "X" ? "Y" : "X";
+      }
+
+      // 1. Update state & immediate visual active class
+      dmeSingleState.xy = nextXY;
+      const xHalf = p.querySelector("#s-sk-x-half");
+      const yHalf = p.querySelector("#s-sk-y-half");
+      if (xHalf) xHalf.classList.toggle("active", nextXY === "X");
+      if (yHalf) yHalf.classList.toggle("active", nextXY === "Y");
+
+      // 2. Recompute paired VHF frequency per ARINC 709
+      const newFreq = dmeChannelToFreq(currentChanInfo.ch, nextXY);
       dmeSingleState.freq = newFreq;
-      dmeSingleState.xy = newXY;
+      freqVal = newFreq;
+
+      // 3. Immediately update DOM text
+      const chanCell = p.querySelector("#s-cell-chan");
+      if (chanCell) {
+        chanCell.textContent = dmeSingleState.dispChan ? `${currentChanInfo.ch} ${nextXY}` : newFreq.toFixed(2);
+      }
+      const sqntChan = p.querySelector("#sqnt-cell-chan");
+      if (sqntChan) {
+        sqntChan.textContent = `${currentChanInfo.ch} ${nextXY}`;
+      }
+
+      // 4. Send API call to transmit Label 035 with the new frequency
       applyDmeSlotHelper({
         index: 0,
         bus: txCh,
@@ -5338,12 +5443,238 @@ function renderCmcChannelsTab(c, r, s) {
         nav: dmeSingleState.nav,
         disp: dmeSingleState.disp === "ON",
         ident: dmeSingleState.ident === "ON",
-        pad: dmeSingleState.pad,
+        pad: dmeSingleState.pad || getDmePadString(),
         sdi: dmeSingleState.sdi,
         enabled: true,
       });
     };
-    p.querySelector("#s-sk-xy").onclick = toggleXY;
+
+    const skXyBtn = p.querySelector("#s-sk-xy");
+    if (skXyBtn) {
+      skXyBtn.onclick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.target && e.target.closest("#s-sk-x-half")) {
+          setXY("X");
+          return;
+        }
+        if (e.target && e.target.closest("#s-sk-y-half")) {
+          setXY("Y");
+          return;
+        }
+        const rect = skXyBtn.getBoundingClientRect();
+        const clickY = e.clientY - rect.top;
+        setXY(clickY > rect.height / 2 ? "Y" : "X");
+      };
+    }
+    const xHalfEl = p.querySelector("#s-sk-x-half");
+    if (xHalfEl) xHalfEl.onclick = (e) => { e.preventDefault(); e.stopPropagation(); setXY("X"); };
+    const yHalfEl = p.querySelector("#s-sk-y-half");
+    if (yHalfEl) yHalfEl.onclick = (e) => { e.preventDefault(); e.stopPropagation(); setXY("Y"); };
+
+    // Softkey 2: [ TX-A / TX-B ] Instant toggle & delegation
+    const setTxBus = async (targetBus) => {
+      const curBus = dmeSingleState.txBus || txCh || "A";
+      let nextBus = targetBus;
+      if (!nextBus) {
+        nextBus = curBus === "A" ? "B" : "A";
+      } else if (nextBus === curBus) {
+        nextBus = curBus === "A" ? "B" : "A";
+      }
+
+      dmeSingleState.txBus = nextBus;
+      const txaHalf = p.querySelector("#s-sk-txa-half");
+      const txbHalf = p.querySelector("#s-sk-txb-half");
+      if (txaHalf) txaHalf.classList.toggle("active", nextBus === "A");
+      if (txbHalf) txbHalf.classList.toggle("active", nextBus === "B");
+
+      const pill = p.querySelector(".pill-run");
+      if (pill) {
+        pill.innerHTML = `BUS TX-${nextBus} &bull; RX-${dmeSingleState.rxBus || rxCh || "A"}`;
+      }
+
+      try {
+        const snapIn = await api("/api/arinc/channel/active", {
+          method: "POST",
+          body: JSON.stringify({ tx_ch: nextBus }),
+        });
+        snap = snapIn;
+        patchDmeSingleRx(snapIn);
+      } catch {
+        patchDmeSingleRx(snap);
+      }
+    };
+
+    const skTxBtn = p.querySelector("#s-sk-tx");
+    if (skTxBtn) {
+      skTxBtn.onclick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.target && e.target.closest("#s-sk-txa-half")) {
+          setTxBus("A");
+          return;
+        }
+        if (e.target && e.target.closest("#s-sk-txb-half")) {
+          setTxBus("B");
+          return;
+        }
+        const rect = skTxBtn.getBoundingClientRect();
+        const clickY = e.clientY - rect.top;
+        setTxBus(clickY > rect.height / 2 ? "B" : "A");
+      };
+    }
+    const txaHalfEl = p.querySelector("#s-sk-txa-half");
+    if (txaHalfEl) txaHalfEl.onclick = (e) => { e.preventDefault(); e.stopPropagation(); setTxBus("A"); };
+    const txbHalfEl = p.querySelector("#s-sk-txb-half");
+    if (txbHalfEl) txbHalfEl.onclick = (e) => { e.preventDefault(); e.stopPropagation(); setTxBus("B"); };
+
+    // Softkey 3: [ RX-A / RX-B ] Instant toggle & delegation
+    const setRxBus = async (targetBus) => {
+      const curBus = dmeSingleState.rxBus || rxCh || "A";
+      let nextBus = targetBus;
+      if (!nextBus) {
+        nextBus = curBus === "A" ? "B" : "A";
+      } else if (nextBus === curBus) {
+        nextBus = curBus === "A" ? "B" : "A";
+      }
+
+      dmeSingleState.rxBus = nextBus;
+      const rxaHalf = p.querySelector("#s-sk-rxa-half");
+      const rxbHalf = p.querySelector("#s-sk-rxb-half");
+      if (rxaHalf) rxaHalf.classList.toggle("active", nextBus === "A");
+      if (rxbHalf) rxbHalf.classList.toggle("active", nextBus === "B");
+
+      const pill = p.querySelector(".pill-run");
+      if (pill) {
+        pill.innerHTML = `BUS TX-${dmeSingleState.txBus || txCh || "A"} &bull; RX-${nextBus}`;
+      }
+
+      patchDmeSingleRx(snap);
+
+      try {
+        const snapIn = await api("/api/arinc/channel/active", {
+          method: "POST",
+          body: JSON.stringify({ rx_ch: nextBus }),
+        });
+        snap = snapIn;
+        patchDmeSingleRx(snapIn);
+      } catch {
+        patchDmeSingleRx(snap);
+      }
+    };
+
+    const skRxBtn = p.querySelector("#s-sk-rx");
+    if (skRxBtn) {
+      skRxBtn.onclick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.target && e.target.closest("#s-sk-rxa-half")) {
+          setRxBus("A");
+          return;
+        }
+        if (e.target && e.target.closest("#s-sk-rxb-half")) {
+          setRxBus("B");
+          return;
+        }
+        const rect = skRxBtn.getBoundingClientRect();
+        const clickY = e.clientY - rect.top;
+        setRxBus(clickY > rect.height / 2 ? "B" : "A");
+      };
+    }
+    const rxaHalfEl = p.querySelector("#s-sk-rxa-half");
+    if (rxaHalfEl) rxaHalfEl.onclick = (e) => { e.preventDefault(); e.stopPropagation(); setRxBus("A"); };
+    const rxbHalfEl = p.querySelector("#s-sk-rxb-half");
+    if (rxbHalfEl) rxbHalfEl.onclick = (e) => { e.preventDefault(); e.stopPropagation(); setRxBus("B"); };
+
+    // Softkey 4: [ SQ/NT / INDEP. ] Instant toggle & delegation
+    const setSqntMode = (targetMode) => {
+      const curMode = dmeSingleState.sqntMode || "SQNT";
+      let nextMode = targetMode;
+      if (!nextMode) {
+        nextMode = curMode === "SQNT" ? "INDEP" : "SQNT";
+      } else if (nextMode === curMode) {
+        nextMode = curMode === "SQNT" ? "INDEP" : "SQNT";
+      }
+      dmeSingleState.sqntMode = nextMode;
+
+      const sqntHalf = p.querySelector("#s-sk-sqnt-half");
+      const indepHalf = p.querySelector("#s-sk-indep-half");
+      if (sqntHalf) sqntHalf.classList.toggle("active", nextMode === "SQNT");
+      if (indepHalf) indepHalf.classList.toggle("active", nextMode === "INDEP");
+
+      const sqntLabel = p.querySelector(".dynapro-sqnt-row span:first-child");
+      if (sqntLabel) {
+        sqntLabel.textContent = nextMode === "SQNT" ? "SQ/NT" : "INDEP";
+      }
+    };
+
+    const skSqntBtn = p.querySelector("#s-sk-sqnt");
+    if (skSqntBtn) {
+      skSqntBtn.onclick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.target && e.target.closest("#s-sk-sqnt-half")) {
+          setSqntMode("SQNT");
+          return;
+        }
+        if (e.target && e.target.closest("#s-sk-indep-half")) {
+          setSqntMode("INDEP");
+          return;
+        }
+        const rect = skSqntBtn.getBoundingClientRect();
+        const clickY = e.clientY - rect.top;
+        setSqntMode(clickY > rect.height / 2 ? "INDEP" : "SQNT");
+      };
+    }
+    const sqntHalfEl = p.querySelector("#s-sk-sqnt-half");
+    if (sqntHalfEl) sqntHalfEl.onclick = (e) => { e.preventDefault(); e.stopPropagation(); setSqntMode("SQNT"); };
+    const indepHalfEl = p.querySelector("#s-sk-indep-half");
+    if (indepHalfEl) indepHalfEl.onclick = (e) => { e.preventDefault(); e.stopPropagation(); setSqntMode("INDEP"); };
+
+    // Softkey 5: [ CHAN / FREQ ] Instant toggle & delegation
+    const setDispChan = (targetDispChan) => {
+      if (targetDispChan == null) {
+        dmeSingleState.dispChan = !dmeSingleState.dispChan;
+      } else {
+        dmeSingleState.dispChan = targetDispChan;
+      }
+      const isChan = !!dmeSingleState.dispChan;
+
+      const chanHalf = p.querySelector("#s-sk-chan-half");
+      const freqHalf = p.querySelector("#s-sk-freq-half");
+      if (chanHalf) chanHalf.classList.toggle("active", isChan);
+      if (freqHalf) freqHalf.classList.toggle("active", !isChan);
+
+      const curFreq = dmeSingleState.freq || freqVal || 134.40;
+      const ci = dmeFreqToChannel(curFreq);
+      const chanEl = p.querySelector("#s-cell-chan");
+      if (chanEl) {
+        chanEl.textContent = isChan ? `${ci.ch} ${ci.xy}` : curFreq.toFixed(2);
+      }
+    };
+
+    const skChanBtn = p.querySelector("#s-sk-chan");
+    if (skChanBtn) {
+      skChanBtn.onclick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.target && e.target.closest("#s-sk-chan-half")) {
+          setDispChan(true);
+          return;
+        }
+        if (e.target && e.target.closest("#s-sk-freq-half")) {
+          setDispChan(false);
+          return;
+        }
+        const rect = skChanBtn.getBoundingClientRect();
+        const clickY = e.clientY - rect.top;
+        setDispChan(clickY <= rect.height / 2);
+      };
+    }
+    const chanHalfEl = p.querySelector("#s-sk-chan-half");
+    if (chanHalfEl) chanHalfEl.onclick = (e) => { e.preventDefault(); e.stopPropagation(); setDispChan(true); };
+    const freqHalfEl = p.querySelector("#s-sk-freq-half");
+    if (freqHalfEl) freqHalfEl.onclick = (e) => { e.preventDefault(); e.stopPropagation(); setDispChan(false); };
 
     // SDI cycle (ALL -> 01 -> 02 -> 03 -> ALL)
     const cycleSdi = (e) => {
@@ -5415,13 +5746,20 @@ function renderCmcChannelsTab(c, r, s) {
     };
     bindClick("#s-cell-ident", "#s-td-ident", toggleTxIdent);
 
-    // RX Display Mode Softkey (BCD vs IDENT) - Softkey 7
+    // Softkey 7: [ BCD / IDENT ] Instant toggle & delegation (RX display mode only)
     const setRxDispMode = (mode) => {
-      dmeSingleState.rxDisplayMode = mode;
+      const curMode = dmeSingleState.rxDisplayMode || "BCD";
+      let nextMode = mode;
+      if (!nextMode) {
+        nextMode = curMode === "BCD" ? "IDENT" : "BCD";
+      } else if (nextMode === curMode) {
+        nextMode = curMode === "BCD" ? "IDENT" : "BCD";
+      }
+      dmeSingleState.rxDisplayMode = nextMode;
       const bcdEl = p.querySelector("#s-sk-bcd-half");
       const identEl = p.querySelector("#s-sk-ident-half");
-      if (bcdEl) bcdEl.classList.toggle("active", mode === "BCD");
-      if (identEl) identEl.classList.toggle("active", mode === "IDENT");
+      if (bcdEl) bcdEl.classList.toggle("active", nextMode === "BCD");
+      if (identEl) identEl.classList.toggle("active", nextMode === "IDENT");
       patchDmeSingleRx(snap);
     };
     const rxDispBtn = p.querySelector("#s-sk-rx-disp");
@@ -5437,7 +5775,9 @@ function renderCmcChannelsTab(c, r, s) {
           setRxDispMode("BCD");
           return;
         }
-        setRxDispMode(dmeSingleState.rxDisplayMode === "IDENT" ? "BCD" : "IDENT");
+        const rect = rxDispBtn.getBoundingClientRect();
+        const clickY = e.clientY - rect.top;
+        setRxDispMode(clickY > rect.height / 2 ? "IDENT" : "BCD");
       };
     }
     const bcdHalf = p.querySelector("#s-sk-bcd-half");
@@ -5480,7 +5820,8 @@ function renderCmcChannelsTab(c, r, s) {
         hint: "Simulated DME reply distance",
         onApply: (v) => {
           dmeSingleState.replyDist = v ? Number(parseFloat(v).toFixed(1)) : "--.-";
-          render(snap);
+          const el = p.querySelector("#sqnt-cell-dist");
+          if (el) el.textContent = dmeSingleState.replyDist;
         },
       });
     };
@@ -5491,7 +5832,8 @@ function renderCmcChannelsTab(c, r, s) {
         type: "numeric",
         onApply: (v) => {
           dmeSingleState.replySpeed = parseInt(v, 10) || 0;
-          render(snap);
+          const el = p.querySelector("#sqnt-cell-speed");
+          if (el) el.textContent = dmeSingleState.replySpeed;
         },
       });
     };
@@ -5503,7 +5845,8 @@ function renderCmcChannelsTab(c, r, s) {
         hint: "Reply efficiency percentage (0-100)",
         onApply: (v) => {
           dmeSingleState.replyEff = Math.min(100, Math.max(0, parseInt(v, 10) || 70));
-          render(snap);
+          const el = p.querySelector("#sqnt-cell-eff");
+          if (el) el.textContent = `${dmeSingleState.replyEff} %`;
         },
       });
     };
@@ -5515,40 +5858,10 @@ function renderCmcChannelsTab(c, r, s) {
         hint: "RF Level in dBm (e.g. -107)",
         onApply: (v) => {
           dmeSingleState.rfLevel = parseInt(v, 10) || -107;
-          render(snap);
+          const el = p.querySelector("#sqnt-cell-rf");
+          if (el) el.textContent = `${dmeSingleState.rfLevel} dBm`;
         },
       });
-    };
-
-    // Softkey TX & RX toggles
-    p.querySelector("#s-sk-tx").onclick = async () => {
-      const nextBus = txCh === "A" ? "B" : "A";
-      dmeSingleState.txBus = nextBus;
-      try {
-        const snapIn = await api("/api/arinc/channel/active", { method: "POST", body: JSON.stringify({ tx_ch: nextBus }) });
-        render(snapIn);
-      } catch { render(snap); }
-    };
-    p.querySelector("#s-sk-rx").onclick = async () => {
-      const nextBus = rxCh === "A" ? "B" : "A";
-      dmeSingleState.rxBus = nextBus;
-      try {
-        const snapIn = await api("/api/arinc/channel/active", { method: "POST", body: JSON.stringify({ rx_ch: nextBus }) });
-        render(snapIn);
-      } catch { render(snap); }
-    };
-    p.querySelector("#s-sk-sqnt").onclick = () => {
-      dmeSingleState.sqntMode = dmeSingleState.sqntMode === "SQNT" ? "INDEP" : "SQNT";
-      render(snap);
-    };
-    p.querySelector("#s-sk-chan").onclick = () => {
-      dmeSingleState.dispChan = !dmeSingleState.dispChan;
-      const chanEl = p.querySelector("#s-cell-chan");
-      if (chanEl) chanEl.textContent = dmeSingleState.dispChan ? `${chanInfo.ch} ${chanInfo.xy}` : freqVal.toFixed(2);
-      const skChanHalf = p.querySelector("#s-sk-chan .dme-softkey-half:first-child");
-      const skFreqHalf = p.querySelector("#s-sk-chan .dme-softkey-half:last-child");
-      if (skChanHalf) skChanHalf.classList.toggle("active", dmeSingleState.dispChan);
-      if (skFreqHalf) skFreqHalf.classList.toggle("active", !dmeSingleState.dispChan);
     };
 
     // Bottom buttons
