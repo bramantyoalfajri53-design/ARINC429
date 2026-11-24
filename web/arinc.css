@@ -1792,8 +1792,6 @@ tr.slot-off td { color: var(--muted); }
 .dynapro-softkey-half.momentary-press,
 .dme-softkey-btn.momentary-press,
 .dynapro-softkey-btn.momentary-press,
-.dme-softkey-btn.pressed,
-.dynapro-softkey-btn.pressed,
 .dme-softkey-btn:active,
 .dynapro-softkey-btn:active,
 .dme-softkey-half:active,
@@ -1803,9 +1801,7 @@ tr.slot-off td { color: var(--muted); }
   font-weight: 800 !important;
 }
 .dme-softkey-btn.momentary-press *,
-.dynapro-softkey-btn.momentary-press *,
-.dme-softkey-btn.pressed *,
-.dynapro-softkey-btn.pressed * {
+.dynapro-softkey-btn.momentary-press * {
   color: #ffffff !important;
 }
 
@@ -1832,11 +1828,20 @@ tr.slot-off td { color: var(--muted); }
   font-size: 11px;
   font-weight: 800;
   color: var(--accent);
-  margin-bottom: 3px;
-  height: 16px;
+  margin-bottom: 2px;
+  height: 14px;
   text-align: center;
-  line-height: 16px;
+  line-height: 14px;
   white-space: nowrap;
+}
+
+.dme-freq-digit.active-digit {
+  background: var(--accent);
+  color: #ffffff !important;
+  font-weight: 900;
+  border-radius: 2px;
+  padding: 0 1px;
+  text-decoration: underline;
 }
 
 .dme-cell-edit.cursor-active,
@@ -2182,70 +2187,4 @@ tr.slot-off td { color: var(--muted); }
 .dme-checklist-item-action {
   font-size: 0.8rem;
   color: var(--text-2);
-}
-
-
-/* Standard Nav Dedicated Typography & Proportions */
-.std-dme-table {
-  width: 100%;
-  border-collapse: separate;
-  border-spacing: 0;
-  margin-bottom: 12px;
-}
-.std-dme-table th {
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--text-2);
-  padding: 8px 8px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  border-bottom: 1px solid var(--border);
-}
-.std-dme-table td {
-  font-size: 13.5px;
-  font-family: var(--mono);
-  padding: 9px 8px;
-  vertical-align: middle;
-  white-space: nowrap;
-}
-.std-dme-table .dme-cell-edit,
-.std-dme-table .dynapro-cell-edit {
-  font-size: 13.5px;
-  padding: 4px 10px;
-  min-height: 28px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-.std-dme-table .dme-cell-readonly,
-.std-dme-table .dynapro-cell-readonly {
-  font-size: 13.5px;
-  padding: 4px 8px;
-}
-.std-dme-table .active-digit {
-  background: var(--accent);
-  color: #ffffff !important;
-  font-weight: 900;
-  border-radius: 2px;
-  padding: 0 2px;
-  text-decoration: underline;
-  box-shadow: 0 0 5px rgba(13, 148, 136, 0.5);
-}
-.dme-rx-chip {
-  display: inline-block;
-  padding: 2px 7px;
-  border-radius: var(--radius-sm);
-  background: var(--surface);
-  border: 1px solid var(--border);
-  color: var(--text-2);
-  font-size: 11.5px;
-  font-weight: 700;
-  cursor: pointer;
-  margin-right: 4px;
-  transition: all 0.15s ease;
-}
-.dme-rx-chip.active {
-  background: var(--accent);
-  color: #ffffff;
-  border-color: var(--accent);
 }

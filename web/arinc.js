@@ -4633,7 +4633,9 @@ function renderCmcChannelsTab(c, r, s) {
     stepVal: 0.05,
     stepDir: "INC",
     cursorField: "DATA",
-    rxPage: 0,
+    dataDigit: "0.05M",
+    bitRate: 12.5,
+    rxWordIndex: 0,
     slots: {},
   };
 
@@ -5257,7 +5259,7 @@ function renderCmcChannelsTab(c, r, s) {
     if (identHalf) identHalf.classList.toggle("active", rxDispMode === "IDENT");
   }
 
-    function patchDmeStandardRx(s) {
+  function patchDmeStandardRx(s) {
     if (!s) return;
     const curSlotIdx = dmeStandardState.activeSlot || 0;
     const txCh = dmeStandardState.txBus || "A";
@@ -5266,28 +5268,19 @@ function renderCmcChannelsTab(c, r, s) {
 
     // 1. Toolbar pill
     const pill = document.querySelector(".dynapro-dme-crt .pill-run, .lru-toolbar .pill-run");
-    if (pill) pill.textContent = `BUS TX-${txCh} • RX-${rxCh}`;
+    if (pill) pill.innerHTML = `BUS TX-${txCh} &bull; RX-${rxCh}`;
 
-    // 2. Header Channel Lines
+    // 2. Channel Headers
     const hdrTx = document.getElementById("std-hdr-tx");
     if (hdrTx) hdrTx.textContent = `          CHANNEL ${txCh}`;
     const hdrRx = document.getElementById("std-hdr-rx");
     if (hdrRx) hdrRx.textContent = `CHANNEL ${rxCh}`;
 
-    // 3. Slot Indicator Box
-    const slotBox = document.getElementById("std-slot-box");
+    // 3. Slot Indicator
+    const slotBox = document.getElementById("std-slot-box") || document.querySelector("#std-slot-cursor .dynapro-inv-box");
     if (slotBox) slotBox.textContent = String(curSlotIdx);
 
-    // 4. Cursor Field and Direction indicator
-    const curFld = dmeStandardState.cursorField || "DATA";
-    const dataDig = dmeStandardState.dataDigit || "0.05M";
-    const curFldLabel = curFld === "DATA" ? `DATA (${dataDig})` : curFld;
-    const curFldEl = document.getElementById("std-cursor-field-name");
-    if (curFldEl) curFldEl.textContent = curFldLabel;
-    const dirEl = document.getElementById("std-step-dir-name");
-    if (dirEl) dirEl.textContent = stepDir;
-
-    // 5. Received Words processing
+    // 4. Received Word
     const rxLabs = (s.rx && s.rx[rxCh] && s.rx[rxCh].labels) || [];
     const totalRx = rxLabs.length;
     let rxIdx = dmeStandardState.rxWordIndex || 0;
@@ -5343,7 +5336,7 @@ function renderCmcChannelsTab(c, r, s) {
     const rxDataCell = document.getElementById("std-rx-data-cell");
     if (rxDataCell) {
       rxDataCell.textContent = rxDataStr;
-      rxDataCell.classList.toggle("has-data", Boolean(curRx));
+      rxDataCell.className = `dme-cell-readonly dynapro-cell-readonly ${curRx ? "has-data" : ""}`;
     }
 
     const rxSdiCell = document.getElementById("std-rx-sdi-cell");
@@ -5361,49 +5354,28 @@ function renderCmcChannelsTab(c, r, s) {
     const rxRateCell = document.getElementById("std-rx-rate-cell");
     if (rxRateCell) rxRateCell.textContent = rxRateStr;
 
-    // Subheader words summary indicator
+    // Header counter indicator for RX words
     const hdrRxWords = document.getElementById("std-hdr-rx-words");
     if (hdrRxWords) {
       if (totalRx === 0) {
-        hdrRxWords.textContent = "-- RECEIVED WORDS: 0 (NO WORDS) --";
+        hdrRxWords.textContent = "-- RECEIVED WORDS --";
       } else if (totalRx === 1) {
-        hdrRxWords.textContent = `-- RECEIVED WORDS: 1 (LABEL ${rxLabs[0].label}) --`;
+        hdrRxWords.textContent = `-- RECEIVED WORDS: 1 (${rxLabs[0].label}) --`;
       } else {
         const pgInfo = totalRx > 6 ? ` • PG ${Math.floor(rxIdx / 6) + 1}/${Math.ceil(totalRx / 6)}` : "";
         hdrRxWords.textContent = `-- RECEIVED WORDS: ${totalRx} (WORD ${rxIdx + 1}/${totalRx}${pgInfo}) --`;
       }
     }
 
-    // Chips row for quick label selection / feedback
-    const chipsContainer = document.getElementById("std-rx-chips-row");
-    if (chipsContainer) {
-      if (totalRx === 0) {
-        chipsContainer.innerHTML = `<span class="muted" style="font-size:11.5px;">No ARINC 429 words received on RX-${rxCh}</span>`;
-      } else {
-        chipsContainer.innerHTML = rxLabs.map((l, idx) => `
-          <span class="dme-rx-chip ${idx === rxIdx ? "active" : ""}" data-rx-idx="${idx}">
-            ${l.label} (${l.label === "035" ? "FREQ" : l.label === "202" ? "BNR" : l.label === "201" ? "BCD" : "DATA"})
-          </span>
-        `).join("");
-      }
-    }
-
-    // 6. Middle status line & Bit Rate
+    // 5. Middle Rate Status Line
     const curKbps = dmeStandardState.bitRate != null ? dmeStandardState.bitRate : ((s && s.bit_rate_kbps) || 12.5);
-    const midRate = document.getElementById("std-middle-rate-val");
-    if (midRate) midRate.textContent = `${curKbps.toFixed(1)} KBPS`;
-
-    const midRxStatus = document.getElementById("std-middle-rx-status");
-    if (midRxStatus) {
-      if (curRx) {
-        midRxStatus.innerHTML = `RX ACTIVE: <strong style="color:var(--ok);">${rxLabelStr} (${rxFunctStr})</strong> &bull; ${rxDataStr}`;
-      } else {
-        midRxStatus.innerHTML = `RX ACTIVE: <strong style="color:var(--muted);">WAITING...</strong>`;
-      }
+    const rateEl = document.querySelector("#std-middle-rate-val, .dme-std-rate-row strong, .dynapro-std-rate-row strong");
+    if (rateEl) {
+      rateEl.textContent = `${curKbps.toFixed(1)} KBPS`;
     }
 
-    // 7. Softkeys update
-    // Softkey 3: INC. / DECR (Split Toggle)
+    // 6. Softkeys
+    // Softkey 3: INC. / DECR
     const incHalf = document.getElementById("std-sk-half-inc");
     const decHalf = document.getElementById("std-sk-half-dec");
     if (incHalf) incHalf.classList.toggle("active", stepDir === "INC");
@@ -5415,19 +5387,20 @@ function renderCmcChannelsTab(c, r, s) {
       rateLabel.textContent = `${curKbps.toFixed(1)} KBPS`;
     }
 
-    // Softkey 6: TX-A / TX-B (Split Toggle)
+    // Softkey 6: TX-A / TX-B
     const txaHalf = document.getElementById("std-sk-txa-half");
     const txbHalf = document.getElementById("std-sk-txb-half");
     if (txaHalf) txaHalf.classList.toggle("active", txCh === "A");
     if (txbHalf) txbHalf.classList.toggle("active", txCh === "B");
 
-    // Softkey 7: RX-A / RX-B (Split Toggle)
+    // Softkey 7: RX-A / RX-B
     const rxaHalf = document.getElementById("std-sk-rxa-half");
     const rxbHalf = document.getElementById("std-sk-rxb-half");
     if (rxaHalf) rxaHalf.classList.toggle("active", rxCh === "A");
     if (rxbHalf) rxbHalf.classList.toggle("active", rxCh === "B");
 
-    // 8. Cursor highlight on active field
+    // 7. Cursor outline
+    const curFld = dmeStandardState.cursorField || "DATA";
     ["LABEL", "DATA", "SDI", "PAD", "SSM", "PAR", "RATE"].forEach((f) => {
       const elCell = document.getElementById(`std-${f.toLowerCase()}-cell`);
       if (elCell) elCell.classList.toggle("cursor-active", f === curFld);
@@ -6536,7 +6509,7 @@ function renderCmcChannelsTab(c, r, s) {
           patchDmeMultiRx(snap);
           applyDmeSlotHelper({
             index: idx,
-            bus: dmeMultiState.txBus || "A",
+            bus: txCh,
             freq_mhz: row.freq,
             mode: row.mode,
             sdi: row.sdi,
@@ -6577,7 +6550,7 @@ function renderCmcChannelsTab(c, r, s) {
           patchDmeMultiRx(snap);
           applyDmeSlotHelper({
             index: idx,
-            bus: dmeMultiState.txBus || "A",
+            bus: txCh,
             freq_mhz: row.freq,
             sdi: row.sdi,
             mode: row.mode,
@@ -6592,7 +6565,7 @@ function renderCmcChannelsTab(c, r, s) {
           patchDmeMultiRx(snap);
           applyDmeSlotHelper({
             index: idx,
-            bus: dmeMultiState.txBus || "A",
+            bus: txCh,
             freq_mhz: row.freq,
             disp: row.disp === "ON",
             mode: row.mode,
@@ -6607,7 +6580,7 @@ function renderCmcChannelsTab(c, r, s) {
           patchDmeMultiRx(snap);
           applyDmeSlotHelper({
             index: idx,
-            bus: dmeMultiState.txBus || "A",
+            bus: txCh,
             freq_mhz: row.freq,
             ident: row.ident === "ON",
             mode: row.mode,
@@ -6623,7 +6596,7 @@ function renderCmcChannelsTab(c, r, s) {
           patchDmeMultiRx(snap);
           applyDmeSlotHelper({
             index: idx,
-            bus: dmeMultiState.txBus || "A",
+            bus: txCh,
             freq_mhz: row.freq,
             nav: row.nav,
             mode: row.mode,
@@ -6636,31 +6609,30 @@ function renderCmcChannelsTab(c, r, s) {
       };
     });
 
-    // Softkey handlers (Without stale closure)
+    // Softkey handlers
     p.querySelector("#m-sk-line").onclick = () => {
-      dmeMultiState.selectedLine = ((dmeMultiState.selectedLine || 0) + 1) % 6;
+      dmeMultiState.selectedLine = (curLine + 1) % 6;
       const advBtn = p.querySelector("#m-sk-line");
       if (advBtn) {
-        advBtn.classList.add("momentary-press");
-        setTimeout(() => advBtn.classList.remove("momentary-press"), 150);
+        advBtn.classList.add("pressed");
+        setTimeout(() => advBtn.classList.remove("pressed"), 150);
       }
       patchDmeMultiRx(snap);
     };
 
-    const setMultiXY = (targetXY) => {
+    p.querySelector("#m-sk-xy").onclick = () => {
       const curIdx = dmeMultiState.selectedLine || 0;
-      const curLines = dmeMultiState.lines || defaultLines;
-      const row = curLines[curIdx] || defaultLines[curIdx];
-      const curXY = row.xy || "X";
-      const nextXY = targetXY || (curXY === "X" ? "Y" : "X");
-      row.xy = nextXY;
-      row.freq = dmeChannelToFreq(row.ch, nextXY);
+      const row = lines[curIdx];
+      const newXY = row.xy === "X" ? "Y" : "X";
+      const newFreq = dmeChannelToFreq(row.ch, newXY);
+      row.xy = newXY;
+      row.freq = newFreq;
       dmeMultiState.lines[curIdx] = row;
       patchDmeMultiRx(snap);
       applyDmeSlotHelper({
         index: curIdx,
-        bus: dmeMultiState.txBus || "A",
-        freq_mhz: row.freq,
+        bus: txCh,
+        freq_mhz: newFreq,
         mode: row.mode,
         sdi: row.sdi,
         disp: row.disp === "ON",
@@ -6670,22 +6642,15 @@ function renderCmcChannelsTab(c, r, s) {
       });
     };
 
-    p.querySelector("#m-sk-xy").onclick = (e) => {
-      e.preventDefault();
-      if (e.target && e.target.closest("#m-sk-x-half")) { setMultiXY("X"); return; }
-      if (e.target && e.target.closest("#m-sk-y-half")) { setMultiXY("Y"); return; }
-      setMultiXY();
-    };
-
     // Softkey 7 in Multi Mode only toggles RX telemetry display (BCD vs IDENT), never modifies TX bit 17
     p.querySelector("#m-sk-ident").onclick = () => {
       dmeMultiState.rxDisplayMode = (dmeMultiState.rxDisplayMode === "IDENT" ? "BCD" : "IDENT");
       patchDmeMultiRx(snap);
     };
 
-    const setMultiTxBus = async (targetBus) => {
+    p.querySelector("#m-sk-tx").onclick = async () => {
       const curBus = dmeMultiState.txBus || "A";
-      const nextBus = targetBus || (curBus === "A" ? "B" : "A");
+      const nextBus = curBus === "A" ? "B" : "A";
       dmeMultiState.txBus = nextBus;
       patchDmeMultiRx(snap);
       try {
@@ -6695,16 +6660,9 @@ function renderCmcChannelsTab(c, r, s) {
       } catch { patchDmeMultiRx(snap); }
     };
 
-    p.querySelector("#m-sk-tx").onclick = (e) => {
-      e.preventDefault();
-      if (e.target && e.target.closest("#m-sk-txa-half")) { setMultiTxBus("A"); return; }
-      if (e.target && e.target.closest("#m-sk-txb-half")) { setMultiTxBus("B"); return; }
-      setMultiTxBus();
-    };
-
-    const setMultiRxBus = async (targetBus) => {
+    p.querySelector("#m-sk-rx").onclick = async () => {
       const curBus = dmeMultiState.rxBus || "A";
-      const nextBus = targetBus || (curBus === "A" ? "B" : "A");
+      const nextBus = curBus === "A" ? "B" : "A";
       dmeMultiState.rxBus = nextBus;
       patchDmeMultiRx(snap);
       try {
@@ -6714,20 +6672,13 @@ function renderCmcChannelsTab(c, r, s) {
       } catch { patchDmeMultiRx(snap); }
     };
 
-    p.querySelector("#m-sk-rx").onclick = (e) => {
-      e.preventDefault();
-      if (e.target && e.target.closest("#m-sk-rxa-half")) { setMultiRxBus("A"); return; }
-      if (e.target && e.target.closest("#m-sk-rxb-half")) { setMultiRxBus("B"); return; }
-      setMultiRxBus();
-    };
-
     p.querySelector("#m-sk-sqnt").onclick = () => {
-      dmeMultiState.sqntMode = (dmeMultiState.sqntMode === "SQNT" ? "INDEP" : "SQNT");
+      dmeMultiState.sqntMode = dmeMultiState.sqntMode === "SQNT" ? "INDEP" : "SQNT";
       patchDmeMultiRx(snap);
     };
 
     p.querySelector("#m-sk-ctl").onclick = () => {
-      dmeMultiState.sqntCtl = (dmeMultiState.sqntCtl === "NORM" ? "PULSE" : "NORM");
+      dmeMultiState.sqntCtl = dmeMultiState.sqntCtl === "NORM" ? "PULSE" : "NORM";
       patchDmeMultiRx(snap);
     };
 
@@ -6777,7 +6728,7 @@ function renderCmcChannelsTab(c, r, s) {
   // SCREEN 3: STANDARD NAV CONFIGURATION (STANDARD LRU FORMAT SCREEN)
   // Matches WhatsApp Image 2026-11-18 at 11.24.11 (1) (Aeroflex Figure 15)
   // ====================================================================
-      function renderDmeStandard(r, s) {
+    function renderDmeStandard(r, s) {
     const curSlotIdx = dmeStandardState.activeSlot || 0;
     const txCh = dmeStandardState.txBus || "A";
     const rxCh = dmeStandardState.rxBus || "A";
@@ -6830,12 +6781,22 @@ function renderCmcChannelsTab(c, r, s) {
       return `<span class="dme-freq-digit ${is10 ? "active-digit" : ""}" data-digit="10M">${tens}</span><span class="dme-freq-digit ${is1 ? "active-digit" : ""}" data-digit="1M">${ones}</span>.<span class="dme-freq-digit ${is01 ? "active-digit" : ""}" data-digit="0.1M">${tenths}</span><span class="dme-freq-digit ${is005 ? "active-digit" : ""}" data-digit="0.05M">${hund}</span> MHZ`;
     };
 
+    const rxLabs = (s && s.rx && s.rx[rxCh] && s.rx[rxCh].labels) || [];
+    const curRx035 = rxLabs.find((l) => l.label === "035") || null;
+
+    const rxDataStr = curRx035 ? (curRx035.eng_value ? `${Number(curRx035.eng_value).toFixed(2)} MHZ` : curRx035.data_text) : "WAITING...";
+    const rxSdiStr = curRx035 ? String(curRx035.sdi || 0).padStart(2, "0") : "--";
+    const rxPadStr = curRx035 ? (curRx035.pads || "-------") : "-------";
+    const rxSsmStr = curRx035 ? (curRx035.ssm || "NML") : "---";
+    const rxParStr = curRx035 ? (curRx035.parity || "ODD") : "---";
+    const rxRateStr = curRx035 ? (curRx035.period_ms || 150) : "---";
+
     const p = el("div", "panel");
     p.innerHTML = `
       <div class="lru-toolbar">
         <div>
           <div class="panel-title" style="margin-bottom:.35rem">DME Standard Nav Configuration</div>
-          <p class="muted">Standard Navigation Words &amp; Slot Configuration (ARINC 709 / Aeroflex T1200B)</p>
+          <p class="muted">Standard Navigation Words &amp; Slot Configuration (ARINC 709)</p>
         </div>
         <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
           <span class="pill pill-run">BUS TX-${txCh} &bull; RX-${rxCh}</span>
@@ -6848,47 +6809,43 @@ function renderCmcChannelsTab(c, r, s) {
       </div>
       <div class="dme-hmi-workbench dynapro-dme-crt">
         <div class="dynapro-dme-content">
-          <!-- Top Header Lines -->
-          <div class="dme-hmi-hdr-line dynapro-dme-hdr-line" style="margin-bottom:4px; font-size:13.5px;">
+          <!-- Top Header Lines (WhatsApp Image 11.24.11 (1)) -->
+          <div class="dme-hmi-hdr-line dynapro-dme-hdr-line" style="margin-bottom:2px;">
             <span id="std-hdr-tx">          CHANNEL ${txCh}</span>
             <span id="std-hdr-rx">CHANNEL ${rxCh}</span>
           </div>
-          <div class="dme-hmi-hdr-line dynapro-dme-hdr-line" style="margin-bottom:10px; font-size:13px;">
+          <div class="dme-hmi-hdr-line dynapro-dme-hdr-line" style="margin-bottom:8px;">
             <span>-- TRANSMITTED WORDS --</span>
             <span id="std-hdr-rx-words">-- RECEIVED WORDS --</span>
           </div>
 
-          <!-- Function & Slot Indicator + Active Cursor Hint -->
-          <div style="display:flex; justify-content:flex-start; align-items:center; gap:40px; margin-bottom:12px; font-weight:700;">
+          <!-- Function & Slot Indicator -->
+          <div style="display:flex; justify-content:flex-start; gap:40px; margin-bottom:8px; font-weight:700;">
             <div>
-              <div style="font-size:12px; color:var(--text-2);">DME</div>
-              <div style="font-size:15px; font-weight:800; color:var(--text);">FREQ</div>
+              <div style="font-size:11px; color:var(--text-2);">DME</div>
+              <div style="font-size:13.5px;">FREQ</div>
             </div>
             <div>
-              <div style="font-size:12px; color:var(--text-2);">SLOT</div>
-              <div style="font-size:15px; cursor:pointer;" id="std-slot-cursor">
-                <span class="dme-inv-box dynapro-inv-box" id="std-slot-box" style="font-size:14px; padding:3px 10px;">${curSlotIdx}</span>
+              <div style="font-size:11px; color:var(--text-2);">SLOT</div>
+              <div style="font-size:13.5px; cursor:pointer;" id="std-slot-cursor">
+                <span class="dme-inv-box dynapro-inv-box" id="std-slot-box">${curSlotIdx}</span>
               </div>
-            </div>
-            <div id="std-cursor-hint" style="margin-left:auto; font-size:12px; color:var(--text-2); display:flex; align-items:center; gap:16px;">
-              <span>CURSOR: <strong id="std-cursor-field-name" style="color:var(--accent); font-size:12.5px;">${cursorField === "DATA" ? `DATA (${dataDigit})` : cursorField}</strong></span>
-              <span>DIR: <strong id="std-step-dir-name" style="color:var(--accent); font-size:12.5px;">${stepDir}</strong></span>
             </div>
           </div>
 
-          <!-- Table with Transmitted and Received Words -->
-          <table class="dme-hmi-table dynapro-dme-table std-dme-table" id="std-dme-table">
+          <!-- Table with Transmitted and Received Words (EXACT SAME AS fa80b27) -->
+          <table class="dme-hmi-table dynapro-dme-table">
             <thead>
               <tr>
                 <th style="width:10%;">CHAN</th>
                 <th style="width:16%;">FUNCT</th>
                 <th style="width:9%;">LABEL</th>
-                <th style="width:20%;">DATA</th>
+                <th style="width:18%;">DATA</th>
                 <th style="width:7%;">SDI</th>
-                <th style="width:12%;">PAD</th>
+                <th style="width:13%;">PAD</th>
                 <th style="width:8%;">SSM</th>
                 <th style="width:8%;">PAR</th>
-                <th style="width:10%;">RATE(ms)</th>
+                <th style="width:11%;">RATE(ms)</th>
               </tr>
             </thead>
             <tbody>
@@ -6909,25 +6866,19 @@ function renderCmcChannelsTab(c, r, s) {
                 <td><span class="dme-cell-readonly dynapro-cell-readonly" id="std-rx-ch-cell">RX-${rxCh}</span></td>
                 <td><span class="dme-cell-readonly dynapro-cell-readonly" id="std-rx-funct-cell">DME FREQ</span></td>
                 <td><span class="dme-cell-readonly dynapro-cell-readonly" id="std-rx-label-cell">035</span></td>
-                <td><span class="dme-cell-readonly dynapro-cell-readonly" id="std-rx-data-cell">WAITING...</span></td>
-                <td><span class="dme-cell-readonly dynapro-cell-readonly" id="std-rx-sdi-cell">--</span></td>
-                <td><span class="dme-cell-readonly dynapro-cell-readonly" id="std-rx-pad-cell">-------</span></td>
-                <td><span class="dme-cell-readonly dynapro-cell-readonly" id="std-rx-ssm-cell">---</span></td>
-                <td><span class="dme-cell-readonly dynapro-cell-readonly" id="std-rx-par-cell">---</span></td>
-                <td><span class="dme-cell-readonly dynapro-cell-readonly" id="std-rx-rate-cell">---</span></td>
+                <td><span class="dme-cell-readonly dynapro-cell-readonly ${curRx035 ? "has-data" : ""}" id="std-rx-data-cell">${rxDataStr}</span></td>
+                <td><span class="dme-cell-readonly dynapro-cell-readonly" id="std-rx-sdi-cell">${rxSdiStr}</span></td>
+                <td><span class="dme-cell-readonly dynapro-cell-readonly" id="std-rx-pad-cell">${rxPadStr}</span></td>
+                <td><span class="dme-cell-readonly dynapro-cell-readonly" id="std-rx-ssm-cell">${rxSsmStr}</span></td>
+                <td><span class="dme-cell-readonly dynapro-cell-readonly" id="std-rx-par-cell">${rxParStr}</span></td>
+                <td><span class="dme-cell-readonly dynapro-cell-readonly" id="std-rx-rate-cell">${rxRateStr}</span></td>
               </tr>
             </tbody>
           </table>
 
-          <!-- Middle Status & Quick RX Label Chips Row -->
-          <div class="dme-std-rate-row dynapro-std-rate-row" style="display:flex; justify-content:space-between; align-items:center; padding:8px 14px; margin:8px 0 12px;">
-            <div style="display:flex; align-items:center; gap:12px;">
-              <span>BIT RATE: <strong id="std-middle-rate-val" style="color:var(--accent); font-size:13.5px;">${curRate.toFixed(1)} KBPS</strong></span>
-              <span id="std-middle-rx-status" style="font-size:12px; color:var(--text-2);">RX ACTIVE: <strong style="color:var(--muted);">WAITING...</strong></span>
-            </div>
-            <div id="std-rx-chips-row" style="display:flex; align-items:center; gap:4px;">
-              <span class="muted" style="font-size:11.5px;">No ARINC 429 words received</span>
-            </div>
+          <!-- Middle Rate Status Line -->
+          <div class="dme-std-rate-row dynapro-std-rate-row">
+            <span>BIT RATE: <strong id="std-middle-rate-val" style="color:var(--accent);">${curRate.toFixed(1)} KBPS</strong></span>
           </div>
 
           <!-- Bottom 7 Softkeys (JcAIR T1200B Layout) -->
@@ -7040,14 +6991,7 @@ function renderCmcChannelsTab(c, r, s) {
       const rateCell = p.querySelector("#std-rate-cell");
       if (rateCell) rateCell.textContent = liveSlot.rate;
 
-      // Update cursor hint
-      const curFldEl = p.querySelector("#std-cursor-field-name");
-      if (curFldEl) curFldEl.textContent = curFld === "DATA" ? `DATA (${curDigit})` : curFld;
-
-      const dirEl = p.querySelector("#std-step-dir-name");
-      if (dirEl) dirEl.textContent = dmeStandardState.stepDir || "INC";
-
-      // Update cursor-active classes
+      // Update cursor outline
       ["LABEL", "DATA", "SDI", "PAD", "SSM", "PAR", "RATE"].forEach((f) => {
         const elCell = p.querySelector(`#std-${f.toLowerCase()}-cell`);
         if (elCell) elCell.classList.toggle("cursor-active", f === curFld);
@@ -7187,8 +7131,6 @@ function renderCmcChannelsTab(c, r, s) {
       const decHalf = p.querySelector("#std-sk-half-dec");
       if (incHalf) incHalf.classList.toggle("active", nextDir === "INC");
       if (decHalf) decHalf.classList.toggle("active", nextDir === "DECR");
-      const dirEl = p.querySelector("#std-step-dir-name");
-      if (dirEl) dirEl.textContent = nextDir;
     };
 
     // Softkey 1: DISP CURSOR
@@ -7327,20 +7269,6 @@ function renderCmcChannelsTab(c, r, s) {
         if (e.target && e.target.closest("#std-sk-rxa-half")) { setRxBus("A"); return; }
         if (e.target && e.target.closest("#std-sk-rxb-half")) { setRxBus("B"); return; }
         setRxBus();
-      };
-    }
-
-    // Chip click delegation on #std-rx-chips-row
-    const chipsRow = p.querySelector("#std-rx-chips-row");
-    if (chipsRow) {
-      chipsRow.onclick = (e) => {
-        const chip = e.target.closest(".dme-rx-chip");
-        if (!chip) return;
-        const rxIdx = parseInt(chip.dataset.rxIdx, 10);
-        if (!isNaN(rxIdx)) {
-          dmeStandardState.rxWordIndex = rxIdx;
-          patchDmeStandardRx(snap);
-        }
       };
     }
 
