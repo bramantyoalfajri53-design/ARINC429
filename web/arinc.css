@@ -1790,11 +1790,59 @@ tr.slot-off td { color: var(--muted); }
 
 .dme-softkey-half.momentary-press,
 .dynapro-softkey-half.momentary-press,
+.dme-softkey-btn.momentary-press,
+.dynapro-softkey-btn.momentary-press,
+.dme-softkey-btn.pressed,
+.dynapro-softkey-btn.pressed,
+.dme-softkey-btn:active,
+.dynapro-softkey-btn:active,
 .dme-softkey-half:active,
 .dynapro-softkey-half:active {
   background: var(--accent) !important;
   color: #ffffff !important;
   font-weight: 800 !important;
+}
+.dme-softkey-btn.momentary-press *,
+.dynapro-softkey-btn.momentary-press *,
+.dme-softkey-btn.pressed *,
+.dynapro-softkey-btn.pressed * {
+  color: #ffffff !important;
+}
+
+.dme-softkey-single {
+  padding: 6px 4px;
+  line-height: 1.25;
+}
+.dme-softkey-single .dme-softkey-label {
+  width: 100%;
+  text-align: center;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+}
+
+.std-sk-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  width: 100%;
+}
+.std-sk-top-label {
+  font-size: 10.5px;
+  font-weight: 800;
+  color: var(--accent);
+  margin-bottom: 2px;
+  height: 14px;
+  text-align: center;
+  line-height: 14px;
+  white-space: nowrap;
+}
+
+.dme-cell-edit.cursor-active,
+.dynapro-cell-edit.cursor-active {
+  outline: 2px solid var(--accent);
+  box-shadow: 0 0 6px rgba(13, 148, 136, 0.45);
 }
 
 .dme-hmi-table td.clickable-cell,
