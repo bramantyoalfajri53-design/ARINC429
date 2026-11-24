@@ -4891,7 +4891,6 @@ function renderCmcChannelsTab(c, r, s) {
     const chanInfo = dmeFreqToChannel(freqVal);
     const dispVal = padStr[1] === "1" ? "ON" : "OFF";
     const identVal = padStr[0] === "1" ? "ON" : "OFF";
-    const echoVal = dmeSingleState.echo || "NONE";
     const modeVal = dmeSingleState.mode || "DF1";
     const navVal = dmeSingleState.nav || "VOR";
 

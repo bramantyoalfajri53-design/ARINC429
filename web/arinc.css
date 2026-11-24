@@ -70,6 +70,20 @@ body {
   color: var(--text);
   background: var(--surface-2);
 }
+.login-form button, .login-form .btn {
+  font: 600 .9rem var(--sans);
+  padding: .65rem 1rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+  transition: background .15s, border-color .15s;
+}
+.login-form button:hover, .login-form .btn:hover {
+  background: var(--accent-2);
+  border-color: var(--accent-2);
+}
 
 /* ---------- App shell ---------- */
 .app { min-height: 100vh; display: flex; flex-direction: column; }
