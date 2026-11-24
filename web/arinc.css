@@ -1835,13 +1835,36 @@ tr.slot-off td { color: var(--muted); }
   white-space: nowrap;
 }
 
-.dme-freq-digit.active-digit {
-  background: var(--accent);
-  color: #ffffff !important;
-  font-weight: 900;
-  border-radius: 2px;
+.dme-cursor-bit,
+.dme-freq-digit {
+  display: inline-block;
+  position: relative;
   padding: 0 1px;
+  border-radius: 2px;
+  transition: all 0.12s ease;
+}
+
+.dme-cursor-bit.cursor-active-bit,
+.dme-freq-digit.active-digit {
+  background: var(--accent) !important;
+  color: #ffffff !important;
+  font-weight: 900 !important;
+  border-radius: 2px;
+  box-shadow: 0 0 4px rgba(13, 148, 136, 0.6);
   text-decoration: underline;
+}
+
+.dme-cursor-bit.cursor-active-bit::after,
+.dme-freq-digit.active-digit::after {
+  content: "▲";
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 8px;
+  line-height: 8px;
+  color: var(--accent);
+  pointer-events: none;
 }
 
 .dme-cell-edit.cursor-active,
