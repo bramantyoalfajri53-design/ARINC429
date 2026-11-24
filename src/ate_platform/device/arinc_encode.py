@@ -299,7 +299,7 @@ def decode_adf_freq_032(word: int) -> DecodedWord:
     label = int(bti429.FldGetLabel(w))
     sdi = int(bti429.FldGetSDI(w))
     ssm = get_ssm_bits(w)
-    data19 = int(bti429.FldGetData(w)) & DATA_MASK19
+    data19 = get_data19(w)
     mant = int(bti429.BCDGetMant(w, 5))
     freq = mant / 10.0
     parity_odd = word_parity_odd(w)
@@ -330,7 +330,7 @@ def decode_word(word: int, *, profile: str = "auto") -> DecodedWord:
         return decode_adf_freq_032(w)
     sdi = int(bti429.FldGetSDI(w))
     ssm = get_ssm_bits(w)
-    data19 = int(bti429.FldGetData(w)) & DATA_MASK19
+    data19 = get_data19(w)
     parity_odd = word_parity_odd(w)
     pad3, data16 = split_pad(data19)
     return DecodedWord(

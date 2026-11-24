@@ -1288,16 +1288,23 @@ class ArincSession:
             bus = self.tx_ch or "A"
             if bus not in BUSES:
                 bus = "A"
-            cfg = self.channel[bus]
-            cfg.tx_enable = True
-            cfg.rx_enable = True
+            for b in BUSES:
+                if b == bus:
+                    self.channel[b].tx_enable = True
+                    self.channel[b].rx_enable = True
+                    self.channel[b].high_speed = False
+                    self.channel[b].bit_rate_kbps = 12.5
+                else:
+                    self.channel[b].high_speed = False
+                    self.channel[b].bit_rate_kbps = 12.5
+                    if b in ("C", "D"):
+                        self.channel[b].tx_enable = False
+                        self.channel[b].rx_enable = False
             self.rx[bus].enabled = True
             self.tx_ch = bus
             self.rx_ch = bus
             self.tx_profile[bus] = "dme"
             self.rx_profile[bus] = "dme"
-            cfg.high_speed = False
-            cfg.bit_rate_kbps = 12.5
             self._disarm_specials_unlocked(keep="dme")
             self._scope_rx_to_profile_unlocked(load_profile("dme"), bus)
 
@@ -1491,7 +1498,10 @@ class ArincSession:
                 rx_row = None
                 if rx035 and (now - rx035.ts) <= STALE_S:
                     same_label = rx035.label_octal == sl.label_octal
-                    if same_label and (rx035.data19 & ~0x7) == (sl.data19 & ~0x7) and rx035.ssm == sl.ssm:
+                    tx_freq12 = (sl.data19 >> 7) & 0xFFF
+                    rx_freq12 = (rx035.data19 >> 7) & 0xFFF
+                    freq_match = (tx_freq12 == rx_freq12) if (tx_freq12 and rx_freq12) else ((rx035.data19 & ~0x7F) == (sl.data19 & ~0x7F))
+                    if same_label and freq_match:
                         echo = "OK"
                     elif same_label:
                         echo = "ERR"
@@ -1505,11 +1515,17 @@ class ArincSession:
                     "rx_ssm": rx_row.ssm if rx_row else "",
                 })
             dist_stale = not dist or (now - dist.ts) > STALE_S
+            dist_mem = getattr(dist, "mem", "")
+            if not dist_mem and dist and dist.raw:
+                dist_mem = "ON" if ((dist.raw >> 10) & 1) else "OFF"
+            dist_bf = getattr(dist, "bf", "")
+            if not dist_bf and dist and dist.raw:
+                dist_bf = "F" if ((dist.raw >> 11) & 1) else "B"
             return {
                 "rows": rows,
                 "bnr_dist": None if dist_stale else dist.data_text,
-                "mem": "" if (dist_stale or not dist) else getattr(dist, "mem", "OFF"),
-                "bf": "" if (dist_stale or not dist) else getattr(dist, "bf", "F"),
+                "mem": "" if (dist_stale or not dist) else dist_mem,
+                "bf": "" if (dist_stale or not dist) else dist_bf,
                 "ident": "" if not ident1 else f"{ident1.data_text}{(ident2.data_text if ident2 else '')}",
             }
 
@@ -2035,6 +2051,8 @@ class ArincSession:
             "pads": hit.pads or "-",
             "par": hit.parity,
             "raw": f"0x{hit.raw:08X}" if hit.raw else "",
+            "mem": getattr(hit, "mem", "") or ("ON" if hit and hit.raw and ((hit.raw >> 10) & 1) else ("OFF" if hit and hit.raw else "")),
+            "bf": getattr(hit, "bf", "") or ("F" if hit and hit.raw and ((hit.raw >> 11) & 1) else ("B" if hit and hit.raw else "")),
             "hits": view.label_hits.get(lab, 0),
             "age_ms": int(age * 1000) if age is not None else None,
             "stale": stale,
@@ -2197,7 +2215,24 @@ class ArincSession:
                         for h in v.ring[-16:]
                     ],
                 }
-            any_hi = any(self.channel[b].high_speed for b in BUSES)
+            active_buses = [b for b in BUSES if self.channel[b].tx_enable or self.channel[b].rx_enable]
+            if not active_buses:
+                active_buses = [self.tx_ch or "A"]
+            active_highs = [self.channel[b].high_speed for b in active_buses]
+            has_high = any(active_highs)
+            has_low = any(not h for h in active_highs)
+            if has_high and has_low:
+                bit_rate_display = "12.5 / 100 kbps"
+                bit_rate_kbps = 100.0
+                high_speed = True
+            elif has_high:
+                bit_rate_display = "100 kbps"
+                bit_rate_kbps = 100.0
+                high_speed = True
+            else:
+                bit_rate_display = "12.5 kbps"
+                bit_rate_kbps = 12.5
+                high_speed = False
             dme = None
             if self.dme_mode:
                 try:
@@ -2222,8 +2257,9 @@ class ArincSession:
                 "rx_ch": self.rx_ch,
                 "tx_profile": {b: self.tx_profile.get(b) for b in BUSES},
                 "rx_profile": {b: (self.rx_profile.get(b) or RX_AUTO) for b in BUSES},
-                "bit_rate_kbps": 100.0 if any_hi else 12.5,
-                "high_speed": any_hi,
+                "bit_rate_kbps": bit_rate_kbps,
+                "bit_rate_display": bit_rate_display,
+                "high_speed": high_speed,
                 "time_constant_s": self.time_constant_s,
                 "ln1": dict(self.ln1),
                 "ln2": dict(self.ln2),

@@ -126,9 +126,15 @@ def decode_received(word: int, *, display_mode: str = "ENG") -> dict[str, Any]:
             pass
         ssm_name = ssm_name_from_bits(decoded.ssm, spec.encoding, spec.ssm)
         pads = format_pads(decoded.data19, spec.pads)
-    elif decoded.label_octal == "202":
-        mem = "ON" if ((int(word) >> 10) & 1) else "OFF"
-        bf = "F" if ((int(word) >> 11) & 1) else "B"
+
+    if decoded.label_octal == "202":
+        if not mem:
+            mem = "ON" if ((int(word) >> 10) & 1) else "OFF"
+        if not bf:
+            bf = "F" if ((int(word) >> 11) & 1) else "B"
+        if isinstance(extra, dict):
+            extra.setdefault("mem", mem)
+            extra.setdefault("bf", bf)
 
     data_disp = format_display(decoded.data19, eng_text, display_mode)
     return {

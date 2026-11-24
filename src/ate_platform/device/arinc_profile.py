@@ -407,7 +407,11 @@ def dme_pack(
 
 
 def dme_unpack(data19: int) -> dict[str, Any]:
-    d = int(data19) & DATA_MASK19
+    val = int(data19)
+    if val > DATA_MASK19:
+        d = (val >> 10) & DATA_MASK19
+    else:
+        d = val & DATA_MASK19
     mode_i = d & 0x7
     nav_i = (d >> 3) & 0x3
     mode = next((k for k, v in DME_MODE_BITS.items() if v == mode_i), f"M{mode_i}")
@@ -682,7 +686,7 @@ def encode_label(spec: LabelSpec, value: Any) -> int:
 def decode_label(spec: LabelSpec, word: int) -> dict[str, Any]:
     _need_bti()
     w = int(word) & 0xFFFFFFFF
-    data19 = int(bti429.FldGetData(w)) & DATA_MASK19
+    data19 = get_data19(w)
     pad3, data16 = split_pad(data19)
     enc = spec.encoding.lower()
     eng_value: Any = None
