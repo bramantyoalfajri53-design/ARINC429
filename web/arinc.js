@@ -5266,9 +5266,9 @@ function renderCmcChannelsTab(c, r, s) {
 
     // 1. Toolbar pill
     const pill = document.querySelector(".dynapro-dme-crt .pill-run, .lru-toolbar .pill-run");
-    if (pill) pill.innerHTML = `BUS TX-${txCh} &bull; RX-${rxCh}`;
+    if (pill) pill.textContent = `BUS TX-${txCh} • RX-${rxCh}`;
 
-    // 2. Channel Headers
+    // 2. Header Channel Lines
     const hdrTx = document.getElementById("std-hdr-tx");
     if (hdrTx) hdrTx.textContent = `          CHANNEL ${txCh}`;
     const hdrRx = document.getElementById("std-hdr-rx");
@@ -5278,69 +5278,156 @@ function renderCmcChannelsTab(c, r, s) {
     const slotBox = document.getElementById("std-slot-box");
     if (slotBox) slotBox.textContent = String(curSlotIdx);
 
-    // 4. Received Word Row
-    const rxLabs = (s.rx && s.rx[rxCh] && s.rx[rxCh].labels) || [];
-    const curRx035 = rxLabs.find((l) => l.label === "035") || null;
+    // 4. Cursor Field and Direction indicator
+    const curFld = dmeStandardState.cursorField || "DATA";
+    const dataDig = dmeStandardState.dataDigit || "0.05M";
+    const curFldLabel = curFld === "DATA" ? `DATA (${dataDig})` : curFld;
+    const curFldEl = document.getElementById("std-cursor-field-name");
+    if (curFldEl) curFldEl.textContent = curFldLabel;
+    const dirEl = document.getElementById("std-step-dir-name");
+    if (dirEl) dirEl.textContent = stepDir;
 
-    const rxDataStr = curRx035 ? (curRx035.eng_value ? `${Number(curRx035.eng_value).toFixed(2)} MHZ` : curRx035.data_text) : "WAITING...";
-    const rxSdiStr = curRx035 ? String(curRx035.sdi != null ? curRx035.sdi : 0).padStart(2, "0") : "--";
-    const rxPadStr = curRx035 ? (curRx035.pads || "-------") : "-------";
-    const rxSsmStr = curRx035 ? (curRx035.ssm || "NML") : "---";
-    const rxParStr = curRx035 ? (curRx035.parity || "ODD") : "---";
-    const rxRateStr = curRx035 ? (curRx035.period_ms || 150) : "---";
+    // 5. Received Words processing
+    const rxLabs = (s.rx && s.rx[rxCh] && s.rx[rxCh].labels) || [];
+    const totalRx = rxLabs.length;
+    let rxIdx = dmeStandardState.rxWordIndex || 0;
+    if (rxIdx >= totalRx) {
+      rxIdx = totalRx > 0 ? totalRx - 1 : 0;
+      dmeStandardState.rxWordIndex = rxIdx;
+    }
+    const curRx = (totalRx > 0) ? rxLabs[rxIdx] : null;
+
+    let rxLabelStr = "035";
+    let rxFunctStr = "DME FREQ";
+    let rxDataStr = "WAITING...";
+    let rxSdiStr = "--";
+    let rxPadStr = "-------";
+    let rxSsmStr = "---";
+    let rxParStr = "---";
+    let rxRateStr = "---";
+
+    if (curRx) {
+      rxLabelStr = curRx.label || "035";
+      if (rxLabelStr === "035") {
+        rxFunctStr = "DME FREQ";
+        rxDataStr = curRx.eng_value != null ? `${Number(curRx.eng_value).toFixed(2)} MHZ` : (curRx.data_text || "WAITING...");
+      } else if (rxLabelStr === "201") {
+        rxFunctStr = "BCD DIST";
+        rxDataStr = curRx.eng_value != null ? `${Number(curRx.eng_value).toFixed(2)} NM` : (curRx.data_text || "--.-- NM");
+      } else if (rxLabelStr === "202") {
+        rxFunctStr = "BNR DIST";
+        rxDataStr = curRx.eng_value != null ? `${Number(curRx.eng_value).toFixed(2)} NM` : (curRx.data_text || "--.-- NM");
+      } else if (rxLabelStr === "246") {
+        rxFunctStr = "DME IDENT";
+        rxDataStr = curRx.eng_value || curRx.data_text || "IDENT";
+      } else {
+        rxFunctStr = curRx.name || "DME WORD";
+        rxDataStr = curRx.eng_value != null ? String(curRx.eng_value) : (curRx.data_text || (curRx.raw ? `0x${curRx.raw}` : "DATA"));
+      }
+      rxSdiStr = String(curRx.sdi != null ? curRx.sdi : 0).padStart(2, "0");
+      rxPadStr = curRx.pads || "-------";
+      rxSsmStr = curRx.ssm || "NML";
+      rxParStr = curRx.parity || "ODD";
+      rxRateStr = String(curRx.period_ms || 150);
+    }
 
     const rxChCell = document.getElementById("std-rx-ch-cell");
     if (rxChCell) rxChCell.textContent = `RX-${rxCh}`;
+
+    const rxFunctCell = document.getElementById("std-rx-funct-cell");
+    if (rxFunctCell) rxFunctCell.textContent = rxFunctStr;
+
+    const rxLblCell = document.getElementById("std-rx-label-cell");
+    if (rxLblCell) rxLblCell.textContent = rxLabelStr;
+
     const rxDataCell = document.getElementById("std-rx-data-cell");
     if (rxDataCell) {
       rxDataCell.textContent = rxDataStr;
-      rxDataCell.className = `dme-cell-readonly dynapro-cell-readonly ${curRx035 ? "has-data" : ""}`;
+      rxDataCell.classList.toggle("has-data", Boolean(curRx));
     }
+
     const rxSdiCell = document.getElementById("std-rx-sdi-cell");
     if (rxSdiCell) rxSdiCell.textContent = rxSdiStr;
+
     const rxPadCell = document.getElementById("std-rx-pad-cell");
     if (rxPadCell) rxPadCell.textContent = rxPadStr;
+
     const rxSsmCell = document.getElementById("std-rx-ssm-cell");
     if (rxSsmCell) rxSsmCell.textContent = rxSsmStr;
+
     const rxParCell = document.getElementById("std-rx-par-cell");
     if (rxParCell) rxParCell.textContent = rxParStr;
+
     const rxRateCell = document.getElementById("std-rx-rate-cell");
     if (rxRateCell) rxRateCell.textContent = rxRateStr;
 
-    // 5. Middle Rate Status Line
-    const rateEl = document.querySelector(".dme-std-rate-row strong, .dynapro-std-rate-row strong");
-    if (rateEl) {
-      rateEl.textContent = `${(s.bit_rate_display || (s.bit_rate_kbps ? `${s.bit_rate_kbps} KBPS` : "12.5 KBPS")).toUpperCase()}`;
+    // Subheader words summary indicator
+    const hdrRxWords = document.getElementById("std-hdr-rx-words");
+    if (hdrRxWords) {
+      if (totalRx === 0) {
+        hdrRxWords.textContent = "-- RECEIVED WORDS: 0 (NO WORDS) --";
+      } else if (totalRx === 1) {
+        hdrRxWords.textContent = `-- RECEIVED WORDS: 1 (LABEL ${rxLabs[0].label}) --`;
+      } else {
+        const pgInfo = totalRx > 6 ? ` • PG ${Math.floor(rxIdx / 6) + 1}/${Math.ceil(totalRx / 6)}` : "";
+        hdrRxWords.textContent = `-- RECEIVED WORDS: ${totalRx} (WORD ${rxIdx + 1}/${totalRx}${pgInfo}) --`;
+      }
     }
 
-    // 6. Softkeys
-    // 3: INC. / DECR (Split Toggle)
+    // Chips row for quick label selection / feedback
+    const chipsContainer = document.getElementById("std-rx-chips-row");
+    if (chipsContainer) {
+      if (totalRx === 0) {
+        chipsContainer.innerHTML = `<span class="muted" style="font-size:11.5px;">No ARINC 429 words received on RX-${rxCh}</span>`;
+      } else {
+        chipsContainer.innerHTML = rxLabs.map((l, idx) => `
+          <span class="dme-rx-chip ${idx === rxIdx ? "active" : ""}" data-rx-idx="${idx}">
+            ${l.label} (${l.label === "035" ? "FREQ" : l.label === "202" ? "BNR" : l.label === "201" ? "BCD" : "DATA"})
+          </span>
+        `).join("");
+      }
+    }
+
+    // 6. Middle status line & Bit Rate
+    const curKbps = dmeStandardState.bitRate != null ? dmeStandardState.bitRate : ((s && s.bit_rate_kbps) || 12.5);
+    const midRate = document.getElementById("std-middle-rate-val");
+    if (midRate) midRate.textContent = `${curKbps.toFixed(1)} KBPS`;
+
+    const midRxStatus = document.getElementById("std-middle-rx-status");
+    if (midRxStatus) {
+      if (curRx) {
+        midRxStatus.innerHTML = `RX ACTIVE: <strong style="color:var(--ok);">${rxLabelStr} (${rxFunctStr})</strong> &bull; ${rxDataStr}`;
+      } else {
+        midRxStatus.innerHTML = `RX ACTIVE: <strong style="color:var(--muted);">WAITING...</strong>`;
+      }
+    }
+
+    // 7. Softkeys update
+    // Softkey 3: INC. / DECR (Split Toggle)
     const incHalf = document.getElementById("std-sk-half-inc");
     const decHalf = document.getElementById("std-sk-half-dec");
     if (incHalf) incHalf.classList.toggle("active", stepDir === "INC");
     if (decHalf) decHalf.classList.toggle("active", stepDir === "DECR");
 
-    // 5: BIT RATE Label above button
+    // Softkey 5: BIT RATE Label above button
     const rateLabel = document.getElementById("std-sk-rate-label");
     if (rateLabel) {
-      const curKbps = s.bit_rate_kbps || 12.5;
       rateLabel.textContent = `${curKbps.toFixed(1)} KBPS`;
     }
 
-    // 6: TX-A / TX-B (Split Toggle)
+    // Softkey 6: TX-A / TX-B (Split Toggle)
     const txaHalf = document.getElementById("std-sk-txa-half");
     const txbHalf = document.getElementById("std-sk-txb-half");
     if (txaHalf) txaHalf.classList.toggle("active", txCh === "A");
     if (txbHalf) txbHalf.classList.toggle("active", txCh === "B");
 
-    // 7: RX-A / RX-B (Split Toggle)
+    // Softkey 7: RX-A / RX-B (Split Toggle)
     const rxaHalf = document.getElementById("std-sk-rxa-half");
     const rxbHalf = document.getElementById("std-sk-rxb-half");
     if (rxaHalf) rxaHalf.classList.toggle("active", rxCh === "A");
     if (rxbHalf) rxbHalf.classList.toggle("active", rxCh === "B");
 
-    // 7. Cursor highlight on active field
-    const curFld = dmeStandardState.cursorField || "DATA";
+    // 8. Cursor highlight on active field
     ["LABEL", "DATA", "SDI", "PAD", "SSM", "PAR", "RATE"].forEach((f) => {
       const elCell = document.getElementById(`std-${f.toLowerCase()}-cell`);
       if (elCell) elCell.classList.toggle("cursor-active", f === curFld);
@@ -6694,9 +6781,10 @@ function renderCmcChannelsTab(c, r, s) {
     const curSlotIdx = dmeStandardState.activeSlot || 0;
     const txCh = dmeStandardState.txBus || "A";
     const rxCh = dmeStandardState.rxBus || "A";
-    const curRate = (s && s.bit_rate_kbps) || 12.5;
+    const curRate = dmeStandardState.bitRate || (s && s.bit_rate_kbps) || 12.5;
     const stepDir = dmeStandardState.stepDir || "INC";
     const cursorField = dmeStandardState.cursorField || "DATA";
+    const dataDigit = dmeStandardState.dataDigit || "0.05M";
 
     const getStdSlotData = (slotIdx, bus) => {
       const b = bus || dmeStandardState.txBus || "A";
@@ -6724,22 +6812,30 @@ function renderCmcChannelsTab(c, r, s) {
 
     const curSlot = getStdSlotData(curSlotIdx, txCh);
 
-    const rxLabs = (s && s.rx && s.rx[rxCh] && s.rx[rxCh].labels) || [];
-    const curRx035 = rxLabs.find((l) => l.label === "035") || null;
+    const formatFreqDigits = (freq, isDataActive, activeDigit) => {
+      const fStr = Number(freq).toFixed(2);
+      const parts = fStr.split(".");
+      const whole = parts[0] || "108";
+      const dec = parts[1] || "00";
+      const tens = whole.slice(0, -1);
+      const ones = whole.slice(-1);
+      const tenths = dec.charAt(0);
+      const hund = dec.charAt(1);
 
-    const rxDataStr = curRx035 ? (curRx035.eng_value ? `${Number(curRx035.eng_value).toFixed(2)} MHZ` : curRx035.data_text) : "WAITING...";
-    const rxSdiStr = curRx035 ? String(curRx035.sdi != null ? curRx035.sdi : 0).padStart(2, "0") : "--";
-    const rxPadStr = curRx035 ? (curRx035.pads || "-------") : "-------";
-    const rxSsmStr = curRx035 ? (curRx035.ssm || "NML") : "---";
-    const rxParStr = curRx035 ? (curRx035.parity || "ODD") : "---";
-    const rxRateStr = curRx035 ? (curRx035.period_ms || 150) : "---";
+      const is10 = isDataActive && activeDigit === "10M";
+      const is1 = isDataActive && activeDigit === "1M";
+      const is01 = isDataActive && activeDigit === "0.1M";
+      const is005 = isDataActive && activeDigit === "0.05M";
+
+      return `<span class="dme-freq-digit ${is10 ? "active-digit" : ""}" data-digit="10M">${tens}</span><span class="dme-freq-digit ${is1 ? "active-digit" : ""}" data-digit="1M">${ones}</span>.<span class="dme-freq-digit ${is01 ? "active-digit" : ""}" data-digit="0.1M">${tenths}</span><span class="dme-freq-digit ${is005 ? "active-digit" : ""}" data-digit="0.05M">${hund}</span> MHZ`;
+    };
 
     const p = el("div", "panel");
     p.innerHTML = `
       <div class="lru-toolbar">
         <div>
           <div class="panel-title" style="margin-bottom:.35rem">DME Standard Nav Configuration</div>
-          <p class="muted">Standard Navigation Words &amp; Slot Configuration (ARINC 709)</p>
+          <p class="muted">Standard Navigation Words &amp; Slot Configuration (ARINC 709 / Aeroflex T1200B)</p>
         </div>
         <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
           <span class="pill pill-run">BUS TX-${txCh} &bull; RX-${rxCh}</span>
@@ -6752,52 +6848,56 @@ function renderCmcChannelsTab(c, r, s) {
       </div>
       <div class="dme-hmi-workbench dynapro-dme-crt">
         <div class="dynapro-dme-content">
-          <!-- Top Header Lines (WhatsApp Image 11.24.11 (1)) -->
-          <div class="dme-hmi-hdr-line dynapro-dme-hdr-line" style="margin-bottom:2px;">
+          <!-- Top Header Lines -->
+          <div class="dme-hmi-hdr-line dynapro-dme-hdr-line" style="margin-bottom:4px; font-size:13.5px;">
             <span id="std-hdr-tx">          CHANNEL ${txCh}</span>
             <span id="std-hdr-rx">CHANNEL ${rxCh}</span>
           </div>
-          <div class="dme-hmi-hdr-line dynapro-dme-hdr-line" style="margin-bottom:8px;">
+          <div class="dme-hmi-hdr-line dynapro-dme-hdr-line" style="margin-bottom:10px; font-size:13px;">
             <span>-- TRANSMITTED WORDS --</span>
-            <span>-- RECEIVED WORDS --</span>
+            <span id="std-hdr-rx-words">-- RECEIVED WORDS --</span>
           </div>
 
-          <!-- Function & Slot Indicator -->
-          <div style="display:flex; justify-content:flex-start; gap:40px; margin-bottom:8px; font-weight:700;">
+          <!-- Function & Slot Indicator + Active Cursor Hint -->
+          <div style="display:flex; justify-content:flex-start; align-items:center; gap:40px; margin-bottom:12px; font-weight:700;">
             <div>
-              <div style="font-size:11px; color:var(--text-2);">DME</div>
-              <div style="font-size:13.5px;">FREQ</div>
+              <div style="font-size:12px; color:var(--text-2);">DME</div>
+              <div style="font-size:15px; font-weight:800; color:var(--text);">FREQ</div>
             </div>
             <div>
-              <div style="font-size:11px; color:var(--text-2);">SLOT</div>
-              <div style="font-size:13.5px; cursor:pointer;" id="std-slot-cursor">
-                <span class="dme-inv-box dynapro-inv-box" id="std-slot-box">${curSlotIdx}</span>
+              <div style="font-size:12px; color:var(--text-2);">SLOT</div>
+              <div style="font-size:15px; cursor:pointer;" id="std-slot-cursor">
+                <span class="dme-inv-box dynapro-inv-box" id="std-slot-box" style="font-size:14px; padding:3px 10px;">${curSlotIdx}</span>
               </div>
+            </div>
+            <div id="std-cursor-hint" style="margin-left:auto; font-size:12px; color:var(--text-2); display:flex; align-items:center; gap:16px;">
+              <span>CURSOR: <strong id="std-cursor-field-name" style="color:var(--accent); font-size:12.5px;">${cursorField === "DATA" ? `DATA (${dataDigit})` : cursorField}</strong></span>
+              <span>DIR: <strong id="std-step-dir-name" style="color:var(--accent); font-size:12.5px;">${stepDir}</strong></span>
             </div>
           </div>
 
           <!-- Table with Transmitted and Received Words -->
-          <table class="dme-hmi-table dynapro-dme-table" id="std-dme-table">
+          <table class="dme-hmi-table dynapro-dme-table std-dme-table" id="std-dme-table">
             <thead>
               <tr>
                 <th style="width:10%;">CHAN</th>
                 <th style="width:16%;">FUNCT</th>
                 <th style="width:9%;">LABEL</th>
-                <th style="width:18%;">DATA</th>
+                <th style="width:20%;">DATA</th>
                 <th style="width:7%;">SDI</th>
-                <th style="width:13%;">PAD</th>
+                <th style="width:12%;">PAD</th>
                 <th style="width:8%;">SSM</th>
                 <th style="width:8%;">PAR</th>
-                <th style="width:11%;">RATE(ms)</th>
+                <th style="width:10%;">RATE(ms)</th>
               </tr>
             </thead>
             <tbody>
               <!-- Transmitted Word Row (Editable) -->
-              <tr>
+              <tr id="std-tx-row">
                 <td class="clickable-cell" id="std-td-tx-ch"><span class="dme-cell-edit dynapro-cell-edit" id="std-tx-ch-cell">TX-${txCh}</span></td>
                 <td><span>DME FREQ</span></td>
                 <td class="clickable-cell" id="std-td-label"><span class="dme-cell-edit dynapro-cell-edit ${cursorField === "LABEL" ? "cursor-active" : ""}" id="std-label-cell">${curSlot.label_octal}</span></td>
-                <td class="clickable-cell" id="std-td-data"><span class="dme-cell-edit dynapro-cell-edit ${cursorField === "DATA" ? "cursor-active" : ""}" id="std-data-cell" style="font-weight:700;">${curSlot.freq.toFixed(2)} MHZ</span></td>
+                <td class="clickable-cell" id="std-td-data"><span class="dme-cell-edit dynapro-cell-edit ${cursorField === "DATA" ? "cursor-active" : ""}" id="std-data-cell" style="font-weight:700;">${formatFreqDigits(curSlot.freq, cursorField === "DATA", dataDigit)}</span></td>
                 <td class="clickable-cell" id="std-td-sdi"><span class="dme-cell-edit dynapro-cell-edit ${cursorField === "SDI" ? "cursor-active" : ""}" id="std-sdi-cell">${String(curSlot.sdi).padStart(2, "0")}</span></td>
                 <td class="clickable-cell" id="std-td-pad"><span class="dme-cell-edit dynapro-cell-edit ${cursorField === "PAD" ? "cursor-active" : ""}" id="std-pad-cell" style="font-weight:700;">${curSlot.pad}</span></td>
                 <td class="clickable-cell" id="std-td-ssm"><span class="dme-cell-edit dynapro-cell-edit ${cursorField === "SSM" ? "cursor-active" : ""}" id="std-ssm-cell">${curSlot.ssm}</span></td>
@@ -6805,23 +6905,29 @@ function renderCmcChannelsTab(c, r, s) {
                 <td class="clickable-cell" id="std-td-rate"><span class="dme-cell-edit dynapro-cell-edit ${cursorField === "RATE" ? "cursor-active" : ""}" id="std-rate-cell">${curSlot.rate}</span></td>
               </tr>
               <!-- Received Word Row (Strictly Read-Only) -->
-              <tr>
+              <tr id="std-rx-row">
                 <td><span class="dme-cell-readonly dynapro-cell-readonly" id="std-rx-ch-cell">RX-${rxCh}</span></td>
-                <td><span class="dme-cell-readonly dynapro-cell-readonly">DME FREQ</span></td>
-                <td><span class="dme-cell-readonly dynapro-cell-readonly">035</span></td>
-                <td><span class="dme-cell-readonly dynapro-cell-readonly ${curRx035 ? "has-data" : ""}" id="std-rx-data-cell">${rxDataStr}</span></td>
-                <td><span class="dme-cell-readonly dynapro-cell-readonly" id="std-rx-sdi-cell">${rxSdiStr}</span></td>
-                <td><span class="dme-cell-readonly dynapro-cell-readonly" id="std-rx-pad-cell">${rxPadStr}</span></td>
-                <td><span class="dme-cell-readonly dynapro-cell-readonly" id="std-rx-ssm-cell">${rxSsmStr}</span></td>
-                <td><span class="dme-cell-readonly dynapro-cell-readonly" id="std-rx-par-cell">${rxParStr}</span></td>
-                <td><span class="dme-cell-readonly dynapro-cell-readonly" id="std-rx-rate-cell">${rxRateStr}</span></td>
+                <td><span class="dme-cell-readonly dynapro-cell-readonly" id="std-rx-funct-cell">DME FREQ</span></td>
+                <td><span class="dme-cell-readonly dynapro-cell-readonly" id="std-rx-label-cell">035</span></td>
+                <td><span class="dme-cell-readonly dynapro-cell-readonly" id="std-rx-data-cell">WAITING...</span></td>
+                <td><span class="dme-cell-readonly dynapro-cell-readonly" id="std-rx-sdi-cell">--</span></td>
+                <td><span class="dme-cell-readonly dynapro-cell-readonly" id="std-rx-pad-cell">-------</span></td>
+                <td><span class="dme-cell-readonly dynapro-cell-readonly" id="std-rx-ssm-cell">---</span></td>
+                <td><span class="dme-cell-readonly dynapro-cell-readonly" id="std-rx-par-cell">---</span></td>
+                <td><span class="dme-cell-readonly dynapro-cell-readonly" id="std-rx-rate-cell">---</span></td>
               </tr>
             </tbody>
           </table>
 
-          <!-- Middle Rate Status Line -->
-          <div class="dme-std-rate-row dynapro-std-rate-row">
-            <span>BIT RATE: <strong style="color:var(--accent);">${(s.bit_rate_display || (s.bit_rate_kbps ? `${s.bit_rate_kbps} KBPS` : "12.5 KBPS")).toUpperCase()}</strong></span>
+          <!-- Middle Status & Quick RX Label Chips Row -->
+          <div class="dme-std-rate-row dynapro-std-rate-row" style="display:flex; justify-content:space-between; align-items:center; padding:8px 14px; margin:8px 0 12px;">
+            <div style="display:flex; align-items:center; gap:12px;">
+              <span>BIT RATE: <strong id="std-middle-rate-val" style="color:var(--accent); font-size:13.5px;">${curRate.toFixed(1)} KBPS</strong></span>
+              <span id="std-middle-rx-status" style="font-size:12px; color:var(--text-2);">RX ACTIVE: <strong style="color:var(--muted);">WAITING...</strong></span>
+            </div>
+            <div id="std-rx-chips-row" style="display:flex; align-items:center; gap:4px;">
+              <span class="muted" style="font-size:11.5px;">No ARINC 429 words received</span>
+            </div>
           </div>
 
           <!-- Bottom 7 Softkeys (JcAIR T1200B Layout) -->
@@ -6829,7 +6935,7 @@ function renderCmcChannelsTab(c, r, s) {
             <!-- 1: DISP CURSOR (Single button) -->
             <div class="std-sk-col">
               <div class="std-sk-top-label">&nbsp;</div>
-              <button type="button" class="dme-softkey-btn dynapro-softkey-btn dme-softkey-single" id="std-sk-cursor">
+              <button type="button" class="dme-softkey-btn dynapro-softkey-btn dme-softkey-single" id="std-sk-cursor" title="Advance editable cursor / digit position">
                 <div class="dme-softkey-label">DISP<br>CURSOR</div>
               </button>
             </div>
@@ -6837,7 +6943,7 @@ function renderCmcChannelsTab(c, r, s) {
             <!-- 2: DATA STEP (Single button) -->
             <div class="std-sk-col">
               <div class="std-sk-top-label">&nbsp;</div>
-              <button type="button" class="dme-softkey-btn dynapro-softkey-btn dme-softkey-single" id="std-sk-step">
+              <button type="button" class="dme-softkey-btn dynapro-softkey-btn dme-softkey-single" id="std-sk-step" title="Step active data / parameter by direction">
                 <div class="dme-softkey-label">DATA<br>STEP</div>
               </button>
             </div>
@@ -6845,7 +6951,7 @@ function renderCmcChannelsTab(c, r, s) {
             <!-- 3: INC. / DECR (Split Toggle) -->
             <div class="std-sk-col">
               <div class="std-sk-top-label">&nbsp;</div>
-              <button type="button" class="dme-softkey-btn dynapro-softkey-btn dme-softkey-split" id="std-sk-incdec">
+              <button type="button" class="dme-softkey-btn dynapro-softkey-btn dme-softkey-split" id="std-sk-incdec" title="Select stepping direction">
                 <div class="dme-softkey-half dynapro-softkey-half ${stepDir === "INC" ? "active" : ""}" id="std-sk-half-inc">INC.</div>
                 <div class="dme-softkey-divider dynapro-softkey-divider"></div>
                 <div class="dme-softkey-half dynapro-softkey-half ${stepDir === "DECR" ? "active" : ""}" id="std-sk-half-dec">DECR</div>
@@ -6855,7 +6961,7 @@ function renderCmcChannelsTab(c, r, s) {
             <!-- 4: MORE WORDS (Single button) -->
             <div class="std-sk-col">
               <div class="std-sk-top-label">&nbsp;</div>
-              <button type="button" class="dme-softkey-btn dynapro-softkey-btn dme-softkey-single" id="std-sk-more">
+              <button type="button" class="dme-softkey-btn dynapro-softkey-btn dme-softkey-single" id="std-sk-more" title="Cycle through received ARINC 429 words">
                 <div class="dme-softkey-label">MORE<br>WORDS</div>
               </button>
             </div>
@@ -6863,7 +6969,7 @@ function renderCmcChannelsTab(c, r, s) {
             <!-- 5: BIT RATE (Single button with rate text above) -->
             <div class="std-sk-col">
               <div class="std-sk-top-label" id="std-sk-rate-label">${curRate.toFixed(1)} KBPS</div>
-              <button type="button" class="dme-softkey-btn dynapro-softkey-btn dme-softkey-single" id="std-sk-bitrate">
+              <button type="button" class="dme-softkey-btn dynapro-softkey-btn dme-softkey-single" id="std-sk-bitrate" title="Cycle low-speed baud rates (8.1 - 20.0 kbps)">
                 <div class="dme-softkey-label">BIT<br>RATE</div>
               </button>
             </div>
@@ -6871,7 +6977,7 @@ function renderCmcChannelsTab(c, r, s) {
             <!-- 6: TX-A / TX-B (Split Toggle) -->
             <div class="std-sk-col">
               <div class="std-sk-top-label">&nbsp;</div>
-              <button type="button" class="dme-softkey-btn dynapro-softkey-btn dme-softkey-split" id="std-sk-tx">
+              <button type="button" class="dme-softkey-btn dynapro-softkey-btn dme-softkey-split" id="std-sk-tx" title="Toggle transmitter bus">
                 <div class="dme-softkey-half dynapro-softkey-half ${txCh === "A" ? "active" : ""}" id="std-sk-txa-half">TX-A</div>
                 <div class="dme-softkey-divider dynapro-softkey-divider"></div>
                 <div class="dme-softkey-half dynapro-softkey-half ${txCh === "B" ? "active" : ""}" id="std-sk-txb-half">TX-B</div>
@@ -6881,7 +6987,7 @@ function renderCmcChannelsTab(c, r, s) {
             <!-- 7: RX-A / RX-B (Split Toggle) -->
             <div class="std-sk-col">
               <div class="std-sk-top-label">&nbsp;</div>
-              <button type="button" class="dme-softkey-btn dynapro-softkey-btn dme-softkey-split" id="std-sk-rx">
+              <button type="button" class="dme-softkey-btn dynapro-softkey-btn dme-softkey-split" id="std-sk-rx" title="Toggle receiver bus">
                 <div class="dme-softkey-half dynapro-softkey-half ${rxCh === "A" ? "active" : ""}" id="std-sk-rxa-half">RX-A</div>
                 <div class="dme-softkey-divider dynapro-softkey-divider"></div>
                 <div class="dme-softkey-half dynapro-softkey-half ${rxCh === "B" ? "active" : ""}" id="std-sk-rxb-half">RX-B</div>
@@ -6893,6 +6999,8 @@ function renderCmcChannelsTab(c, r, s) {
     `;
     r.appendChild(p);
 
+    let snap = s;
+
     const triggerPress = (btn) => {
       if (!btn) return;
       btn.classList.add("momentary-press");
@@ -6902,6 +7010,9 @@ function renderCmcChannelsTab(c, r, s) {
     const updateTxRowDOM = () => {
       const liveSlot = getStdSlotData(dmeStandardState.activeSlot, dmeStandardState.txBus);
       const liveTxCh = dmeStandardState.txBus || "A";
+      const curFld = dmeStandardState.cursorField || "DATA";
+      const curDigit = dmeStandardState.dataDigit || "0.05M";
+
       const slotBox = p.querySelector("#std-slot-box");
       if (slotBox) slotBox.textContent = String(dmeStandardState.activeSlot || 0);
 
@@ -6912,7 +7023,7 @@ function renderCmcChannelsTab(c, r, s) {
       if (lblCell) lblCell.textContent = liveSlot.label_octal;
 
       const dataCell = p.querySelector("#std-data-cell");
-      if (dataCell) dataCell.textContent = `${liveSlot.freq.toFixed(2)} MHZ`;
+      if (dataCell) dataCell.innerHTML = formatFreqDigits(liveSlot.freq, curFld === "DATA", curDigit);
 
       const sdiCell = p.querySelector("#std-sdi-cell");
       if (sdiCell) sdiCell.textContent = String(liveSlot.sdi).padStart(2, "0");
@@ -6927,37 +7038,45 @@ function renderCmcChannelsTab(c, r, s) {
       if (parCell) parCell.textContent = liveSlot.parity;
 
       const rateCell = p.querySelector("#std-rate-cell");
-      if (rateCell) rateCell.textContent = String(liveSlot.rate);
+      if (rateCell) rateCell.textContent = liveSlot.rate;
 
-      const curFld = dmeStandardState.cursorField || "DATA";
+      // Update cursor hint
+      const curFldEl = p.querySelector("#std-cursor-field-name");
+      if (curFldEl) curFldEl.textContent = curFld === "DATA" ? `DATA (${curDigit})` : curFld;
+
+      const dirEl = p.querySelector("#std-step-dir-name");
+      if (dirEl) dirEl.textContent = dmeStandardState.stepDir || "INC";
+
+      // Update cursor-active classes
       ["LABEL", "DATA", "SDI", "PAD", "SSM", "PAR", "RATE"].forEach((f) => {
         const elCell = p.querySelector(`#std-${f.toLowerCase()}-cell`);
         if (elCell) elCell.classList.toggle("cursor-active", f === curFld);
       });
     };
 
-    const saveCurrentSlot = (overrideParams) => {
-      const liveSlot = getStdSlotData(dmeStandardState.activeSlot, dmeStandardState.txBus);
-      const liveTxCh = dmeStandardState.txBus || "A";
-      const sIdx = dmeStandardState.activeSlot || 0;
-      const merged = Object.assign({
-        index: sIdx,
-        bus: liveTxCh,
-        freq_mhz: liveSlot.freq,
-        pad: liveSlot.pad,
-        sdi: liveSlot.sdi,
-        ssm: liveSlot.ssm,
-        parity: liveSlot.parity,
-        rate_ms: liveSlot.rate,
-        label: liveSlot.label_octal,
-        enabled: true,
-      }, overrideParams || {});
+    const saveCurrentSlot = async (updates) => {
+      const activeSlot = dmeStandardState.activeSlot || 0;
+      const bus = dmeStandardState.txBus || "A";
+      const cur = getStdSlotData(activeSlot, bus);
+      const merged = {
+        index: activeSlot,
+        bus: bus,
+        freq_mhz: updates && updates.freq_mhz != null ? updates.freq_mhz : cur.freq,
+        sdi: updates && updates.sdi != null ? updates.sdi : cur.sdi,
+        ssm: updates && updates.ssm != null ? updates.ssm : cur.ssm,
+        parity: updates && updates.parity != null ? updates.parity : cur.parity,
+        rate_ms: updates && updates.rate_ms != null ? updates.rate_ms : cur.rate,
+        label: updates && updates.label != null ? updates.label : cur.label_octal,
+        pad: updates && updates.pad != null ? updates.pad : cur.pad,
+        enabled: updates && updates.enabled != null ? updates.enabled : cur.enabled,
+      };
 
-      dmeStandardState.slots[sIdx] = {
+      if (!dmeStandardState.slots) dmeStandardState.slots = {};
+      dmeStandardState.slots[activeSlot] = {
         freq: merged.freq_mhz,
-        pad: merged.pad,
         sdi: merged.sdi,
         ssm: merged.ssm,
+        pad: merged.pad,
         parity: merged.parity,
         rate: merged.rate_ms,
         label: merged.label,
@@ -6973,9 +7092,16 @@ function renderCmcChannelsTab(c, r, s) {
       const curFld = dmeStandardState.cursorField || "DATA";
 
       if (curFld === "DATA") {
-        const stepVal = dmeStandardState.stepVal || 0.05;
-        let newFreq = liveSlot.freq + dir * stepVal;
-        newFreq = Math.max(100.0, Math.min(135.95, parseFloat(newFreq.toFixed(2))));
+        const dig = dmeStandardState.dataDigit || "0.05M";
+        let stepAmount = 0.05;
+        if (dig === "10M") stepAmount = 10.0;
+        else if (dig === "1M") stepAmount = 1.0;
+        else if (dig === "0.1M") stepAmount = 0.1;
+        else stepAmount = 0.05;
+
+        let newFreq = liveSlot.freq + dir * stepAmount;
+        newFreq = Math.round(newFreq * 100) / 100;
+        newFreq = Math.max(108.00, Math.min(135.95, newFreq));
         saveCurrentSlot({ freq_mhz: newFreq });
       } else if (curFld === "SDI") {
         const nextSdi = (liveSlot.sdi + (dir === 1 ? 1 : 3)) % 4;
@@ -6986,20 +7112,23 @@ function renderCmcChannelsTab(c, r, s) {
         if (idx === -1) idx = 0;
         const nextSsm = ssmList[(idx + (dir === 1 ? 1 : ssmList.length - 1)) % ssmList.length];
         saveCurrentSlot({ ssm: nextSsm });
+      } else if (curFld === "PAD") {
+        const p = liveSlot.pad || "0100001";
+        const newDisp = p[1] === "1" ? "0" : "1";
+        const newPad = p.slice(0, 1) + newDisp + p.slice(2);
+        saveCurrentSlot({ pad: newPad });
       } else if (curFld === "PAR") {
         const nextPar = (liveSlot.parity === "ODD") ? "EVEN" : "ODD";
         saveCurrentSlot({ parity: nextPar });
       } else if (curFld === "RATE") {
-        const step = 50 * dir;
-        const nextRate = Math.max(10, Math.min(2000, liveSlot.rate + step));
+        const nextRate = Math.max(10, Math.min(2000, liveSlot.rate + dir * 50));
         saveCurrentSlot({ rate_ms: nextRate });
-      } else if (curFld === "PAD") {
-        let pArr = liveSlot.pad.split("");
-        pArr[1] = pArr[1] === "1" ? "0" : "1";
-        saveCurrentSlot({ pad: pArr.join("") });
       } else if (curFld === "LABEL") {
-        const nextLab = liveSlot.label_octal === "035" ? "000" : "035";
-        saveCurrentSlot({ label: nextLab, enabled: nextLab !== "000" });
+        const lbls = ["035", "201", "202", "246"];
+        let idx = lbls.indexOf(liveSlot.label_octal);
+        if (idx === -1) idx = 0;
+        const nextLbl = lbls[(idx + (dir === 1 ? 1 : lbls.length - 1)) % lbls.length];
+        saveCurrentSlot({ label: nextLbl, enabled: true });
       }
     };
 
@@ -7011,7 +7140,7 @@ function renderCmcChannelsTab(c, r, s) {
     };
     p.querySelector("#std-slot-cursor").onclick = advanceSlot;
 
-    // Toggle TX bus (Eliminates stale closure)
+    // Toggle TX bus
     const setTxBus = async (targetBus) => {
       const curBus = dmeStandardState.txBus || "A";
       const nextBus = targetBus || (curBus === "A" ? "B" : "A");
@@ -7031,7 +7160,7 @@ function renderCmcChannelsTab(c, r, s) {
       }
     };
 
-    // Toggle RX bus (Eliminates stale closure)
+    // Toggle RX bus
     const setRxBus = async (targetBus) => {
       const curBus = dmeStandardState.rxBus || "A";
       const nextBus = targetBus || (curBus === "A" ? "B" : "A");
@@ -7058,24 +7187,35 @@ function renderCmcChannelsTab(c, r, s) {
       const decHalf = p.querySelector("#std-sk-half-dec");
       if (incHalf) incHalf.classList.toggle("active", nextDir === "INC");
       if (decHalf) decHalf.classList.toggle("active", nextDir === "DECR");
+      const dirEl = p.querySelector("#std-step-dir-name");
+      if (dirEl) dirEl.textContent = nextDir;
     };
 
     // Softkey 1: DISP CURSOR
     const skCursor = p.querySelector("#std-sk-cursor");
     if (skCursor) {
-      skCursor.onclick = () => {
+      skCursor.onclick = (e) => {
+        e.preventDefault();
         triggerPress(skCursor);
-        const fields = ["DATA", "SDI", "PAD", "SSM", "PAR", "RATE", "LABEL"];
-        const curIdx = fields.indexOf(dmeStandardState.cursorField || "DATA");
-        dmeStandardState.cursorField = fields[(curIdx + 1) % fields.length];
+        const curFld = dmeStandardState.cursorField || "DATA";
+        if (curFld !== "DATA") {
+          dmeStandardState.cursorField = "DATA";
+          dmeStandardState.dataDigit = "10M";
+        } else {
+          const digits = ["10M", "1M", "0.1M", "0.05M"];
+          const dIdx = digits.indexOf(dmeStandardState.dataDigit || "0.05M");
+          dmeStandardState.dataDigit = digits[(dIdx + 1) % digits.length];
+        }
         updateTxRowDOM();
+        patchDmeStandardRx(snap);
       };
     }
 
     // Softkey 2: DATA STEP
     const skStep = p.querySelector("#std-sk-step");
     if (skStep) {
-      skStep.onclick = () => {
+      skStep.onclick = (e) => {
+        e.preventDefault();
         triggerPress(skStep);
         stepActiveField();
       };
@@ -7095,40 +7235,76 @@ function renderCmcChannelsTab(c, r, s) {
     // Softkey 4: MORE WORDS
     const skMore = p.querySelector("#std-sk-more");
     if (skMore) {
-      skMore.onclick = () => {
+      skMore.onclick = (e) => {
+        e.preventDefault();
         triggerPress(skMore);
-        dmeStandardState.rxPage = (dmeStandardState.rxPage || 0) + 1;
+        const rxChLive = dmeStandardState.rxBus || "A";
+        const rxLabs = (snap && snap.rx && snap.rx[rxChLive] && snap.rx[rxChLive].labels) || [];
+        if (rxLabs.length <= 1) {
+          const hdrWords = p.querySelector("#std-hdr-rx-words");
+          if (hdrWords) {
+            const orig = hdrWords.textContent;
+            hdrWords.textContent = (rxLabs.length === 1) ? `1/1 RX WORD (${rxLabs[0].label}) - NO MORE WORDS` : "NO RX WORDS RECEIVED";
+            setTimeout(() => { if (hdrWords) hdrWords.textContent = orig; }, 1200);
+          }
+          return;
+        }
+        dmeStandardState.rxWordIndex = ((dmeStandardState.rxWordIndex || 0) + 1) % rxLabs.length;
         patchDmeStandardRx(snap);
       };
     }
 
     // Softkey 5: BIT RATE
+    const stepBitRate = async () => {
+      const skBitRate = p.querySelector("#std-sk-bitrate");
+      if (skBitRate) triggerPress(skBitRate);
+
+      const t1200Rates = [8.1, 9.4, 11.1, 12.5, 13.9, 15.1, 17.2, 18.5, 20.0];
+      const curRateVal = dmeStandardState.bitRate || (snap && snap.bit_rate_kbps) || 12.5;
+      let closestIdx = 3;
+      let minDiff = 9999;
+      t1200Rates.forEach((rt, idx) => {
+        const diff = Math.abs(rt - curRateVal);
+        if (diff < minDiff) { minDiff = diff; closestIdx = idx; }
+      });
+
+      const dir = (dmeStandardState.stepDir === "DECR") ? -1 : 1;
+      const nextIdx = (closestIdx + dir + t1200Rates.length) % t1200Rates.length;
+      const nextRate = t1200Rates[nextIdx];
+      dmeStandardState.bitRate = nextRate;
+
+      const rateLabel = p.querySelector("#std-sk-rate-label");
+      if (rateLabel) rateLabel.textContent = `${nextRate.toFixed(1)} KBPS`;
+
+      const midRate = p.querySelector("#std-middle-rate-val");
+      if (midRate) midRate.textContent = `${nextRate.toFixed(1)} KBPS`;
+
+      const topRatePill = document.getElementById("rate-pill");
+      if (topRatePill) topRatePill.textContent = `${nextRate.toFixed(1)} kbps`;
+
+      const txBus = dmeStandardState.txBus || "A";
+      try {
+        const updated = await api("/api/arinc/channel", {
+          method: "POST",
+          body: JSON.stringify({
+            bus: txBus,
+            bit_rate_kbps: nextRate,
+            high_speed: false,
+          }),
+        });
+        snap = updated;
+        patchDmeStandardRx(updated);
+      } catch (err) {
+        console.warn("Bitrate update failed:", err);
+      }
+    };
+
     const skBitRate = p.querySelector("#std-sk-bitrate");
     if (skBitRate) {
-      skBitRate.onclick = async () => {
-        triggerPress(skBitRate);
-        const t1200Rates = [8.1, 9.4, 11.1, 12.5, 13.9, 15.1, 17.2, 18.5, 20.0, 100.0];
-        const curKbps = (snap && snap.bit_rate_kbps) || 12.5;
-        let closestIdx = 3;
-        let minDiff = 9999;
-        t1200Rates.forEach((rt, idx) => {
-          const diff = Math.abs(rt - curKbps);
-          if (diff < minDiff) { minDiff = diff; closestIdx = idx; }
-        });
-        const dir = (dmeStandardState.stepDir === "DECR") ? -1 : 1;
-        const nextIdx = Math.max(0, Math.min(t1200Rates.length - 1, closestIdx + dir));
-        const nextRate = t1200Rates[nextIdx];
-        const isHigh = nextRate > 50;
-        const rateLbl = p.querySelector("#std-sk-rate-label");
-        if (rateLbl) rateLbl.textContent = `${nextRate.toFixed(1)} KBPS`;
-        try {
-          const updated = await api("/api/arinc/bitrate", {
-            method: "POST",
-            body: JSON.stringify({ high_speed: isHigh }),
-          });
-          snap = updated;
-          patchDmeStandardRx(updated);
-        } catch (e) { alert(e.message); }
+      skBitRate.onclick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        stepBitRate();
       };
     }
 
@@ -7151,6 +7327,20 @@ function renderCmcChannelsTab(c, r, s) {
         if (e.target && e.target.closest("#std-sk-rxa-half")) { setRxBus("A"); return; }
         if (e.target && e.target.closest("#std-sk-rxb-half")) { setRxBus("B"); return; }
         setRxBus();
+      };
+    }
+
+    // Chip click delegation on #std-rx-chips-row
+    const chipsRow = p.querySelector("#std-rx-chips-row");
+    if (chipsRow) {
+      chipsRow.onclick = (e) => {
+        const chip = e.target.closest(".dme-rx-chip");
+        if (!chip) return;
+        const rxIdx = parseInt(chip.dataset.rxIdx, 10);
+        if (!isNaN(rxIdx)) {
+          dmeStandardState.rxWordIndex = rxIdx;
+          patchDmeStandardRx(snap);
+        }
       };
     }
 
@@ -7179,21 +7369,35 @@ function renderCmcChannelsTab(c, r, s) {
       });
     });
 
-    bindCell("#std-td-data", () => {
-      dmeStandardState.cursorField = "DATA";
-      updateTxRowDOM();
-      const sData = getStdSlotData(dmeStandardState.activeSlot, dmeStandardState.txBus);
-      showDmeKeypadModal({
-        title: `SET SLOT ${dmeStandardState.activeSlot} FREQUENCY (MHz)`,
-        value: sData.freq.toFixed(2),
-        type: "numeric",
-        hint: "Range: 108.00 - 135.95 MHz",
-        onApply: (v) => {
-          const nf = parseFloat(v) || sData.freq;
-          saveCurrentSlot({ freq_mhz: nf });
-        },
-      });
-    });
+    const tdData = p.querySelector("#std-td-data");
+    if (tdData) {
+      tdData.onclick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const digitSpan = e.target.closest(".dme-freq-digit");
+        if (digitSpan && digitSpan.dataset.digit) {
+          dmeStandardState.cursorField = "DATA";
+          dmeStandardState.dataDigit = digitSpan.dataset.digit;
+          updateTxRowDOM();
+          patchDmeStandardRx(snap);
+          return;
+        }
+        dmeStandardState.cursorField = "DATA";
+        updateTxRowDOM();
+        patchDmeStandardRx(snap);
+        const sData = getStdSlotData(dmeStandardState.activeSlot, dmeStandardState.txBus);
+        showDmeKeypadModal({
+          title: `SET SLOT ${dmeStandardState.activeSlot} FREQUENCY (MHz)`,
+          value: sData.freq.toFixed(2),
+          type: "numeric",
+          hint: "Range: 108.00 - 135.95 MHz",
+          onApply: (v) => {
+            const nf = parseFloat(v) || sData.freq;
+            saveCurrentSlot({ freq_mhz: Math.round(nf * 100) / 100 });
+          },
+        });
+      };
+    }
 
     bindCell("#std-td-sdi", () => {
       dmeStandardState.cursorField = "SDI";
@@ -7260,7 +7464,6 @@ function renderCmcChannelsTab(c, r, s) {
     p.querySelector("#btn-dme-std-reset").onclick = async () => {
       if (!confirm("Reset DME Standard Nav settings to factory defaults?")) return;
       try {
-        dmeStandardState.slots = {};
         const snapIn = await api("/api/arinc/dme/mode", {
           method: "POST",
           body: JSON.stringify({ mode: "standard", reset: true }),
@@ -7273,6 +7476,9 @@ function renderCmcChannelsTab(c, r, s) {
     p.querySelector("#btn-dme-std-tx").onclick = () => {
       saveCurrentSlot();
     };
+
+    // Initial RX patch
+    patchDmeStandardRx(snap);
   }
 
   // ====================================================================
