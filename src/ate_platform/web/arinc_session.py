@@ -443,16 +443,20 @@ class ArincSession:
                     "last_ssm": None,
                     "last_ts": None,
                     "age_s": None,
+                    "last_seen_s": None,
+                    "count": 0,
                     "active": False,
                 }
             entry = self._channel_activity[ch]
             entry["hits"] += 1
+            entry["count"] = entry["hits"]
             entry["last_hex"] = f"0x{w:08X}"
             entry["last_label"] = f"{w & 0xFF:03o}"
             entry["last_sdi"] = (w >> 8) & 0x3
             entry["last_ssm"] = (w >> 29) & 0x3
             entry["last_ts"] = now_s
             entry["age_s"] = 0.0
+            entry["last_seen_s"] = 0.0
             entry["active"] = True
 
     def get_channel_activity(self) -> list[dict[str, Any]]:
@@ -462,18 +466,22 @@ class ArincSession:
             result = []
             for ch, entry in sorted(self._channel_activity.items()):
                 item = dict(entry)
+                item["count"] = item["hits"]
                 if item["last_ts"] is not None:
                     age = round(now - item["last_ts"], 2)
                     item["age_s"] = age
+                    item["last_seen_s"] = age
                     item["active"] = age <= 2.5
                 else:
                     item["age_s"] = None
+                    item["last_seen_s"] = None
                     item["active"] = False
                 result.append(item)
             return result
 
     def hardware_selftest(self) -> dict[str, Any]:
         """Execute non-destructive Ballard internal hardware selftest loopback across all 4 buses."""
+        self._force_reconfig = True
         if not HAS_BTIDRIVER or self._sim_override:
             return {
                 "success": True,
@@ -532,6 +540,10 @@ class ArincSession:
                 "summary": f"Hardware selftest error: {exc}",
                 "buses": {},
             }
+        finally:
+            # Force background worker to re-apply channel configuration, filters, and restart card
+            self._force_reconfig = True
+            time.sleep(0.15)
 
     # --- navigation -----------------------------------------------------
 
@@ -916,7 +928,9 @@ class ArincSession:
             tc = self.time_constant_s
         rec = decode_received(int(raw), display_mode=dm)
         if filters and rec["label_octal"] not in filters:
-            return None
+            dme_active = (self.active_profile == "dme" or getattr(self, "dme_mode", "") in {"standard", "single", "multi"} or getattr(self, "screen", "") in {"dme_diagnostic", "dme_single", "dme_multi", "standard_dme"})
+            if not (dme_active and rec["label_octal"] in {"035", "201", "202", "246", "247"}):
+                return None
         eng_val = rec.get("eng_value")
         if tc > 0 and rec["label_octal"] in FILTER_LABELS and isinstance(eng_val, (int, float)):
             key = (bus, rec["label_octal"])
@@ -1571,18 +1585,17 @@ class ArincSession:
                 )
                 self.ingest_rx_word(bus, echo_raw, ts=now)
 
-                # Ingest RX 202 (BNR Distance: 50.0 NM matching ATC-1400A bench setting!)
-                bnr_counts = int(round(50.0 / 0.0048828125))
-                w202 = (0o202) | ((bnr_counts & 0xFFFF) << 13) | (3 << 29)  # SSM=3 (NML)
-                w202 = bti429.FldPutParBit(w202) if bti429 else w202
+                # Ingest RX 202 (BNR Distance: 50.00 NM matching ATC-1400A bench setting!)
+                bnr_counts = int(round(50.0 / 0.0078125))  # 6400 -> 0x61900082
+                w202 = 0x82 | ((bnr_counts & 0xFFFF) << 12) | (3 << 29)  # SSM=3 (NML)
+                if bin(w202).count('1') % 2 == 0:
+                    w202 |= (1 << 31)
                 self.ingest_rx_word(bus, w202, ts=now)
 
-                # Ingest RX 201 (BCD Distance: 50.0 NM)
-                w201 = bti429.FldPutLabel(0, 0o201) if bti429 else 0o201
-                if bti429:
-                    w201 = bti429.BCDPutMant(w201, 5000, 5, 0)
-                    w201 = bti429.BCDPutSSM(w201, 0)
-                    w201 = bti429.FldPutParBit(w201)
+                # Ingest RX 201 (BCD Distance: 50.00 NM)
+                w201 = 0x81 | ((0x05000 & 0x7FFFF) << 10)  # 5000 hundredths of NM
+                if bin(w201).count('1') % 2 == 0:
+                    w201 |= (1 << 31)
                 self.ingest_rx_word(bus, w201, ts=now)
 
                 # Ingest RX 246 (Station Ident: "PRES")
@@ -1708,7 +1721,7 @@ class ArincSession:
             ident_age = round(now - rx246.ts, 2)
             id1 = rx246.data_text or ""
             id2 = rx247.data_text if (rx247_fresh and rx247.data_text) else ""
-            ident_text = f"{id1}{id2}".strip() or "PRES"
+            ident_text = f"{id1}{id2}".strip() or "----"
 
         # 10. Raw 32-bit Word Protocol Inspector
         words_list: list[dict[str, Any]] = []
@@ -2432,7 +2445,9 @@ class ArincSession:
 
             while not self._stop.is_set():
                 fp = self._config_fingerprint()
-                if fp != last_cfg:
+                force = getattr(self, "_force_reconfig", False)
+                if fp != last_cfg or force:
+                    self._force_reconfig = False
                     try:
                         bticard.CardStop(h_core)
                     except Exception:

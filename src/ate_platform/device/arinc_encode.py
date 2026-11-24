@@ -74,7 +74,7 @@ SSM_NAMES = {
 # ARINC bits 30–31 via BCDGetSSM (2 bits). BNRGetSSM is 3 bits and showed "6" for NML.
 # BNR: 00=FW 01=NCD 10=FT 11=NO(NML)
 # BCD: 00=Plus 01=NCD 10=FT 11=Minus — T1200 still labels Plus as NML on 030/047/032.
-_BCD_SSM_ENCODINGS = {"bcd", "bcd_freq_khz", "bcd_tenths_khz", "hf_pair"}
+_BCD_SSM_ENCODINGS = {"bcd", "bcd_freq_khz", "bcd_tenths_khz", "hf_pair", "dme_freq"}
 _PLUS_SSM = {"NML", "PLS", "PLUS", "N.", "E.", "INT", "NORM"}
 _MINUS_SSM = {"FAIL", "FW", "UND", "MIN", "MINUS"}
 SSM_CODES = {
@@ -405,17 +405,16 @@ def encode_dme_frequency_035(
     """Encode ARINC 709 DME Frequency word (Label 035).
     
     Parameters per ARINC 709 / Aeroflex JcAIR T1200B:
-    - Label 035 (bits 1-8)
+    - Label 035 (bits 1-8): 0x1D
     - SDI (bits 9-10): default 00 (All Call)
     - Mode (bits 11-13 / data19 bits 0-2): 001 for DF1
     - Nav (bits 14-15 / data19 bits 3-4): 00 for VOR
     - DISP (bit 16 / data19 bit 5): 1 (requests BCD distance)
     - IDENT (bit 17 / data19 bit 6): 0 or 1
     - Frequency (bits 18-29 / data19 bits 7-18): 12-bit BCD (108.00 - 135.95 MHz)
-    - SSM (bits 30-31): default 00 (Normal Operation)
+    - SSM (bits 30-31): default 00 (Normal Operation for BCD)
     - Parity (bit 32): Odd Parity
     """
-    _need_bti()
     mhz_int = int(freq_mhz)
     fract = int(round((freq_mhz - mhz_int) * 100))
     bit_50k = 1 if (fract % 10 == 5) else 0
@@ -434,14 +433,13 @@ def encode_dme_frequency_035(
     
     data19 = (freq12 << 7) | p_val
     
-    word = bti429.FldPutLabel(0, 0o035)
-    word = bti429.FldPutSDI(word, int(sdi) & 0x3)
-    word = bti429.FldPutData(word, data19)
-    word = bti429.BCDPutSSM(word, int(ssm) & 0x3)
-    word = bti429.FldPutParBit(word)
+    label_035 = 0x1D  # Label 035 (0o035)
+    word31 = (label_035 & 0xFF) | ((int(sdi) & 0x3) << 8) | ((int(data19) & 0x7FFFF) << 10) | ((int(ssm) & 0x3) << 29)
+    num_ones = bin(word31).count('1')
+    par_bit = 0 if (num_ones % 2 == 1) else 1
     if not odd_parity:
-        word ^= 1 << 31
-    return int(word) & 0xFFFFFFFF
+        par_bit ^= 1
+    return int((par_bit << 31) | word31) & 0xFFFFFFFF
 
 
 def decode_dme_frequency_035(word_or_data19: int) -> dict[str, Any]:
@@ -490,22 +488,24 @@ def decode_dme_frequency_035(word_or_data19: int) -> dict[str, Any]:
 def decode_dme_distance_202(word: int) -> dict[str, Any]:
     """Decode ARINC 709 DME BNR Distance (Label 202).
     
-    Bits 14-29 (16 bits) encode distance in NM (LSB = 0.0048828125 NM or 1/128 NM).
-    Bits 30-31 SSM: 11=NML, 01=NCD, 10=FT, 00=FW/FAIL.
+    Per ARINC 709 & Aeroflex JcAIR T1200B:
+    Bit 11: MEM (0=OFF, 1=ON)
+    Bit 12: B/F (0=B, 1=F)
+    Bits 13-28 (16 bits): Magnitude, LSB = 1/128 NM = 0.0078125 NM.
+    Bits 30-31 SSM: 11=NML, 01=NCD, 10=FT, 00=FAIL.
+    Bit 32: Odd Parity.
     """
-    _need_bti()
     w = int(word) & 0xFFFFFFFF
-    label = int(bti429.FldGetLabel(w))
-    sdi = int(bti429.FldGetSDI(w))
-    ssm = get_ssm_bits(w)
+    label = w & 0xFF
+    sdi = (w >> 8) & 0x3
+    ssm = (w >> 29) & 0x3
     ssm_names = {3: "NML", 1: "NCD", 2: "FT", 0: "FAIL"}
     ssm_str = ssm_names.get(ssm, "FAIL")
     
-    mask16 = 0xFFFF
-    counts = (w >> 13) & mask16
-    dist_nm = round(float(counts) * 0.0048828125, 2)
-    if dist_nm > 400.0:
-        dist_nm = round(float(counts) * (1.0 / 128.0), 2)
+    mem = "ON" if ((w >> 10) & 1) else "OFF"
+    bf = "F" if ((w >> 11) & 1) else "B"
+    counts = (w >> 12) & 0xFFFF
+    dist_nm = round(float(counts) * 0.0078125, 2)
         
     parity_odd = word_parity_odd(w)
     return {
@@ -514,8 +514,10 @@ def decode_dme_distance_202(word: int) -> dict[str, Any]:
         "sdi": sdi,
         "ssm": ssm,
         "ssm_name": ssm_str,
+        "mem": mem,
+        "bf": bf,
         "dist_nm": dist_nm,
-        "dist_text": f"{dist_nm:.1f} NM" if ssm_str != "NCD" else "NCD",
+        "dist_text": f"{dist_nm:.2f} NM" if ssm_str != "NCD" else "NCD",
         "parity_odd": parity_odd,
         "raw": w,
     }
@@ -524,24 +526,41 @@ def decode_dme_distance_202(word: int) -> dict[str, Any]:
 def decode_dme_distance_201(word: int) -> dict[str, Any]:
     """Decode ARINC 709 DME BCD Distance (Label 201).
     
-    4 or 5 BCD digits in data19: tenths or hundredths of NM.
-    Bits 30-31 SSM: 00=Plus(NML), 01=NCD, 10=FT, 11=Minus.
+    Per ARINC 709 & Aeroflex JcAIR T1200B:
+    5 BCD digits in data19: hundredths of NM (or tenths of NM if > 400 NM).
+    Bits 30-31 SSM: 00=Plus(NML), 01=NCD, 10=FT, 11=Minus(FAIL).
+    Bit 32: Odd Parity.
     """
-    _need_bti()
     w = int(word) & 0xFFFFFFFF
-    label = int(bti429.FldGetLabel(w))
-    sdi = int(bti429.FldGetSDI(w))
-    ssm = get_ssm_bits(w)
+    label = w & 0xFF
+    sdi = (w >> 8) & 0x3
+    ssm = (w >> 29) & 0x3
     ssm_names = {0: "NML", 1: "NCD", 2: "FT", 3: "FAIL"}
     ssm_str = ssm_names.get(ssm, "FAIL")
     
-    try:
-        mant = int(bti429.BCDGetMant(w, 5))
-        dist_nm = round(mant / 100.0, 2)
+    dist_nm = 0.0
+    if bti429 is not None:
+        try:
+            mant = int(bti429.BCDGetMant(w, 5))
+            dist_nm = round(mant / 100.0, 2)
+            if dist_nm > 400.0:
+                dist_nm = round(mant / 10.0, 1)
+        except Exception:
+            dist_nm = 0.0
+            
+    if dist_nm == 0.0:
+        # Direct bitwise BCD extraction from bits 11-29
+        data19 = (w >> 10) & 0x7FFFF
+        val = 0
+        mult = 1
+        b = data19
+        for _ in range(5):
+            val += (b & 0xF) * mult
+            mult *= 10
+            b >>= 4
+        dist_nm = round(val / 100.0, 2)
         if dist_nm > 400.0:
-            dist_nm = round(mant / 10.0, 1)
-    except Exception:
-        dist_nm = 0.0
+            dist_nm = round(val / 10.0, 1)
         
     parity_odd = word_parity_odd(w)
     return {
@@ -551,7 +570,7 @@ def decode_dme_distance_201(word: int) -> dict[str, Any]:
         "ssm": ssm,
         "ssm_name": ssm_str,
         "dist_nm": dist_nm,
-        "dist_text": f"{dist_nm:.1f} NM" if ssm_str != "NCD" else "NCD",
+        "dist_text": f"{dist_nm:.2f} NM" if ssm_str != "NCD" else "NCD",
         "parity_odd": parity_odd,
         "raw": w,
     }

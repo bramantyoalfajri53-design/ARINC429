@@ -4580,9 +4580,9 @@ function renderCmcChannelsTab(c, r, s) {
     dispChan: true,
     sqntMode: "SQNT",
     replyEff: 70,
-    rfLevel: -107,
+    rfLevel: -86,
     replySpeed: 0,
-    replyDist: "--.-",
+    replyDist: "--.--",
     echo: "NONE",
     mode: "DF1",
     ch: 1,
@@ -4590,11 +4590,12 @@ function renderCmcChannelsTab(c, r, s) {
     freq: 134.40,
     sdi: 0,
     disp: "ON",
-    ident: "ON",
+    ident: "OFF",
     nav: "VOR",
     parity: "ODD",
     rate: 150,
     pad: "0100001",
+    rxDisplayMode: "BCD",
   };
 
   let dmeMultiState = {
@@ -4896,14 +4897,43 @@ function renderCmcChannelsTab(c, r, s) {
 
     const rxLabs = (s.rx && s.rx[rxCh] && s.rx[rxCh].labels) || [];
     const curRx035 = rxLabs.find((l) => l.label === "035") || null;
+    const curRx201 = rxLabs.find((l) => l.label === "201") || null;
     const curRx202 = rxLabs.find((l) => l.label === "202") || null;
     const curRx246 = rxLabs.find((l) => l.label === "246") || null;
 
-    const bnrDist = curRx202 && curRx202.eng_value != null ? Number(curRx202.eng_value).toFixed(1) : (dmeSingleState.replyDist || "--.-");
+    const bnrDist = curRx202 && curRx202.eng_value != null ? Number(curRx202.eng_value).toFixed(2) : "--.--";
     const memVal = curRx202 && curRx202.mem ? curRx202.mem : "--";
     const bfVal = curRx202 && curRx202.bf ? curRx202.bf : "--";
-    const displayedBnrDist = dispVal === "OFF" ? "--.-" : bnrDist;
-    const bcdIdent = curRx246 ? (curRx246.data_text || "PRES") : "----";
+    const displayedBnrDist = dispVal === "OFF" ? "--.--" : bnrDist;
+
+    // Live ECHO comparison: compare curRx035 vs freqVal
+    let echoVal = "NONE";
+    let echoColor = "color:var(--text-2);";
+    if (curRx035) {
+      const rxFreq = curRx035.eng_value != null ? Number(curRx035.eng_value) : null;
+      if (rxFreq != null && Math.abs(rxFreq - freqVal) < 0.05) {
+        echoVal = "OK";
+        echoColor = "color:#16a34a; font-weight:700;";
+      } else {
+        echoVal = "ERR";
+        echoColor = "color:#dc2626; font-weight:700;";
+      }
+    }
+
+    const rxDispMode = dmeSingleState.rxDisplayMode || "BCD";
+    let rightmostHeader = rxDispMode === "BCD" ? "BCDDIST" : "IDENT";
+    let rightmostData = "----";
+    if (rxDispMode === "BCD") {
+      if (curRx201 && curRx201.eng_value != null) {
+        rightmostData = Number(curRx201.eng_value).toFixed(2);
+      } else if (dispVal === "OFF") {
+        rightmostData = "DISP OFF";
+      } else {
+        rightmostData = "No BCD";
+      }
+    } else {
+      rightmostData = curRx246 ? (curRx246.data_text || "----") : "----";
+    }
 
     const p = el("div", "panel");
     p.innerHTML = `
@@ -4935,7 +4965,7 @@ function renderCmcChannelsTab(c, r, s) {
                 <th colspan="7" style="padding-bottom:0;">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;MODE</th>
                 <th style="padding-bottom:0;">BNR</th>
                 <th colspan="3" style="padding-bottom:0;"></th>
-                <th style="padding-bottom:0;">BCDDIST</th>
+                <th style="padding-bottom:0;">${rightmostHeader}</th>
               </tr>
               <tr>
                 <th style="width:10%;">ECHO</th>
@@ -4949,12 +4979,12 @@ function renderCmcChannelsTab(c, r, s) {
                 <th style="width:7%;">MEM</th>
                 <th style="width:7%;">B/F</th>
                 <th style="width:7%;">DELTA</th>
-                <th style="width:9%;">IDENT</th>
+                <th style="width:9%;">${rightmostHeader}</th>
               </tr>
             </thead>
             <tbody>
               <tr>
-                <td><span class="dme-cell-edit dynapro-cell-edit" id="s-cell-echo">${echoVal}</span></td>
+                <td><span class="dme-cell-edit dynapro-cell-edit" id="s-cell-echo" style="${echoColor}">${echoVal}</span></td>
                 <td><span class="dme-cell-edit dynapro-cell-edit" id="s-cell-mode">${modeVal}</span></td>
                 <td><span class="dme-cell-edit dynapro-cell-edit" id="s-cell-chan">${dmeSingleState.dispChan ? `${chanInfo.ch} ${chanInfo.xy}` : freqVal.toFixed(2)}</span></td>
                 <td><span class="dme-cell-edit dynapro-cell-edit" id="s-cell-sdi">${sdiVal === 0 ? "ALL" : String(sdiVal).padStart(2, "0")}</span></td>
@@ -4965,7 +4995,7 @@ function renderCmcChannelsTab(c, r, s) {
                 <td><span class="dme-cell-readonly dynapro-cell-readonly ${curRx202 && curRx202.mem ? "has-data" : ""}">${memVal}</span></td>
                 <td><span class="dme-cell-readonly dynapro-cell-readonly ${curRx202 && curRx202.bf ? "has-data" : ""}">${bfVal}</span></td>
                 <td><span class="dme-cell-readonly dynapro-cell-readonly">--</span></td>
-                <td><span class="dme-cell-readonly dynapro-cell-readonly ${curRx246 ? "has-data" : ""}">${bcdIdent}</span></td>
+                <td><span class="dme-cell-readonly dynapro-cell-readonly ${(rxDispMode === "BCD" ? curRx201 : curRx246) ? "has-data" : ""}">${rightmostData}</span></td>
               </tr>
             </tbody>
           </table>
@@ -4975,7 +5005,7 @@ function renderCmcChannelsTab(c, r, s) {
             <div class="dme-sqnt-row dynapro-sqnt-row" style="margin-bottom:2px;">
               <span style="font-weight:700;">SQ/NT</span>
               <span><span class="dme-cell-edit dynapro-cell-edit" id="sqnt-cell-chan">${chanInfo.ch} ${chanInfo.xy}</span></span>
-              <span><span class="dme-cell-edit dynapro-cell-edit" id="sqnt-cell-dist">${bnrDist}</span></span>
+              <span><span class="dme-cell-edit dynapro-cell-edit" id="sqnt-cell-dist">${dmeSingleState.replyDist || "--.--"}</span></span>
               <span><span class="dme-cell-edit dynapro-cell-edit" id="sqnt-cell-speed">${dmeSingleState.replySpeed}</span></span>
               <span><span class="dme-cell-edit dynapro-cell-edit" id="sqnt-cell-eff">${dmeSingleState.replyEff} %</span></span>
               <span><span class="dme-cell-edit dynapro-cell-edit" id="sqnt-cell-rf">${dmeSingleState.rfLevel} dBm</span></span>
@@ -5024,15 +5054,15 @@ function renderCmcChannelsTab(c, r, s) {
             </button>
             <!-- 6: [ MODE / ADVAN ] -->
             <button type="button" class="dme-softkey-btn dynapro-softkey-btn" id="s-sk-mode">
-              <div class="dme-softkey-half dynapro-softkey-half">MODE</div>
+              <div class="dme-softkey-half dynapro-softkey-half" id="s-sk-mode-half">MODE</div>
               <div class="dme-softkey-divider dynapro-softkey-divider"></div>
-              <div class="dme-softkey-half dynapro-softkey-half active">ADVAN</div>
+              <div class="dme-softkey-half dynapro-softkey-half" id="s-sk-advan-half">ADVAN</div>
             </button>
             <!-- 7: [ BCD / IDENT ] -->
-            <button type="button" class="dme-softkey-btn dynapro-softkey-btn" id="s-sk-ident">
-              <div class="dme-softkey-half dynapro-softkey-half ${identVal === "ON" ? "active" : ""}">BCD</div>
+            <button type="button" class="dme-softkey-btn dynapro-softkey-btn" id="s-sk-rx-disp">
+              <div class="dme-softkey-half dynapro-softkey-half ${rxDispMode === "BCD" ? "active" : ""}" id="s-sk-bcd-half">BCD</div>
               <div class="dme-softkey-divider dynapro-softkey-divider"></div>
-              <div class="dme-softkey-half dynapro-softkey-half ${identVal === "ON" ? "active" : ""}">IDENT</div>
+              <div class="dme-softkey-half dynapro-softkey-half ${rxDispMode === "IDENT" ? "active" : ""}" id="s-sk-ident-half">IDENT</div>
             </button>
           </div>
         </div>
@@ -5042,14 +5072,14 @@ function renderCmcChannelsTab(c, r, s) {
 
     // Direct cell click handlers
     p.querySelector("#s-cell-echo").onclick = () => {
-      dmeSingleState.echo = echoVal === "NONE" ? "ECHO" : "NONE";
       render(snap);
     };
 
-    const modesList = ["DF1", "DF2", "DF3", "DF4", "DF5", "SCAN"];
-    const advanceMode = () => {
-      const idx = modesList.indexOf(dmeSingleState.mode || "DF1");
-      dmeSingleState.mode = modesList[(idx + 1) % modesList.length];
+    // SSM / Operating Mode cycle (DF1 -> STBY -> OFF -> NCD -> FT -> UND -> DF1)
+    const ssmModesList = ["DF1", "STBY", "OFF", "NCD", "FT", "UND"];
+    const cycleSsmMode = () => {
+      const idx = ssmModesList.indexOf(dmeSingleState.mode || "DF1");
+      dmeSingleState.mode = ssmModesList[(idx + 1) % ssmModesList.length];
       applyDmeSlotHelper({
         index: 0,
         bus: txCh,
@@ -5059,8 +5089,36 @@ function renderCmcChannelsTab(c, r, s) {
         enabled: true,
       });
     };
-    p.querySelector("#s-cell-mode").onclick = advanceMode;
-    p.querySelector("#s-sk-mode").onclick = advanceMode;
+    p.querySelector("#s-cell-mode").onclick = cycleSsmMode;
+    const modeHalf = p.querySelector("#s-sk-mode-half");
+    if (modeHalf) {
+      modeHalf.onclick = (e) => {
+        e.stopPropagation();
+        cycleSsmMode();
+      };
+    }
+
+    // Advance Directed Frequency (DF1 -> DF2 -> DF3 -> DF4 -> DF5 -> SCAN -> DF1)
+    const advanModesList = ["DF1", "DF2", "DF3", "DF4", "DF5", "SCAN"];
+    const advanceDf = () => {
+      const idx = advanModesList.indexOf(dmeSingleState.mode || "DF1");
+      dmeSingleState.mode = advanModesList[(idx + 1) % advanModesList.length];
+      applyDmeSlotHelper({
+        index: 0,
+        bus: txCh,
+        mode: dmeSingleState.mode,
+        freq_mhz: freqVal,
+        pad: padStr,
+        enabled: true,
+      });
+    };
+    const advanHalf = p.querySelector("#s-sk-advan-half");
+    if (advanHalf) {
+      advanHalf.onclick = (e) => {
+        e.stopPropagation();
+        advanceDf();
+      };
+    }
 
     const editChannelOrFreq = () => {
       showDmeKeypadModal({
@@ -5134,8 +5192,8 @@ function renderCmcChannelsTab(c, r, s) {
       });
     };
 
-    // IDENT toggle
-    const toggleIdent = () => {
+    // TX IDENT toggle (Bit 17) - ONLY triggered by clicking #s-cell-ident in the table!
+    const toggleTxIdent = () => {
       const newIdent = identVal !== "ON";
       let arr = padStr.split("");
       arr[0] = newIdent ? "1" : "0";
@@ -5149,8 +5207,32 @@ function renderCmcChannelsTab(c, r, s) {
         enabled: true,
       });
     };
-    p.querySelector("#s-cell-ident").onclick = toggleIdent;
-    p.querySelector("#s-sk-ident").onclick = toggleIdent;
+    p.querySelector("#s-cell-ident").onclick = toggleTxIdent;
+
+    // RX Display Mode Softkey (BCD vs IDENT) - Softkey 7
+    const toggleRxDisp = (e) => {
+      if (e) e.stopPropagation();
+      dmeSingleState.rxDisplayMode = (dmeSingleState.rxDisplayMode === "IDENT") ? "BCD" : "IDENT";
+      render(snap);
+    };
+    const rxDispBtn = p.querySelector("#s-sk-rx-disp");
+    if (rxDispBtn) rxDispBtn.onclick = toggleRxDisp;
+    const bcdHalf = p.querySelector("#s-sk-bcd-half");
+    if (bcdHalf) {
+      bcdHalf.onclick = (e) => {
+        e.stopPropagation();
+        dmeSingleState.rxDisplayMode = "BCD";
+        render(snap);
+      };
+    }
+    const identHalf = p.querySelector("#s-sk-ident-half");
+    if (identHalf) {
+      identHalf.onclick = (e) => {
+        e.stopPropagation();
+        dmeSingleState.rxDisplayMode = "IDENT";
+        render(snap);
+      };
+    }
 
     // NAV cycle (VOR -> ILS -> MLS)
     const navList = ["VOR", "ILS", "MLS"];
@@ -6213,7 +6295,9 @@ function renderCmcChannelsTab(c, r, s) {
           : `<span class="muted">⚪ IDLE</span>`;
         const lastHex = c.last_hex ? `<span style="font-family:var(--font-mono); color:var(--accent); font-weight:700;">${c.last_hex}</span>` : `<span class="muted">--</span>`;
         const labelOct = c.last_label && c.last_label !== "---" ? `<strong>${c.last_label}</strong>` : `<span class="muted">--</span>`;
-        const ageStr = c.last_seen_s != null ? `${c.last_seen_s}s ago` : `<span class="muted">never</span>`;
+        const hitsCount = c.hits != null ? c.hits : (c.count != null ? c.count : 0);
+        const ageVal = c.age_s != null ? c.age_s : c.last_seen_s;
+        const ageStr = ageVal != null ? `${ageVal}s ago` : `<span class="muted">never</span>`;
         return `
           <tr style="${c.active ? "background:rgba(22,163,74,0.06);" : ""}">
             <td>${typePill}</td>
@@ -6221,7 +6305,7 @@ function renderCmcChannelsTab(c, r, s) {
             <td>${c.t1200_label || "-"}</td>
             <td><code>${c.db37_pins || "-"}</code></td>
             <td>${activeLed}</td>
-            <td style="font-family:var(--font-mono); font-weight:700;">${c.count || 0}</td>
+            <td style="font-family:var(--font-mono); font-weight:700;">${hitsCount}</td>
             <td>${lastHex}</td>
             <td>${labelOct}</td>
             <td class="muted">${ageStr}</td>

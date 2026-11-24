@@ -922,7 +922,7 @@ labels:
       default: 0.0
     doc_page: 1-4-141
     bnr:
-      lsb: 0.0048828125
+      lsb: 0.0078125
       offset: 0.0
       bits: 16
   '203':

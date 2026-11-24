@@ -13,6 +13,8 @@ from ate_platform.paths import REPO_ROOT
 from ate_platform.device.arinc_encode import (
     DATA_MASK19,
     SSM_NAMES,
+    decode_dme_distance_201,
+    decode_dme_distance_202,
     get_data19,
     label_octal_str,
     parse_label,
@@ -650,7 +652,7 @@ def encode_label(spec: LabelSpec, value: Any) -> int:
             ident=bool(extra.get("ident", False)),
             pad_bits=extra.get("pad_bits") or extra.get("pad"),
         )
-        word = bti429.FldPutData(word, data)
+        word = put_data19(word, data)
         word = put_ssm_bits(word, ssm_i)
     elif enc == "iso5":
         text = str(scalar if scalar is not None else extra.get("text") or "")
@@ -739,11 +741,21 @@ def decode_label(spec: LabelSpec, word: int) -> dict[str, Any]:
             text = f"{eng_value:g} {units}".strip()
 
     if spec.label_octal == "202":
-        # ARINC 709 DME BNR Distance: bit 11 = MEM, bit 12 = B/F
+        # ARINC 709 DME BNR Distance: bit 11 = MEM, bit 12 = B/F, bits 13-28 = 16-bit magnitude (LSB = 1/128 NM = 0.0078125 NM)
         mem = "ON" if ((w >> 10) & 1) else "OFF"
         bf = "F" if ((w >> 11) & 1) else "B"
+        counts = (w >> 12) & 0xFFFF
+        dist_nm = round(float(counts) * 0.0078125, 2)
+        eng_value = dist_nm
+        text = f"{dist_nm:.2f} NM"
         extra["mem"] = mem
         extra["bf"] = bf
+        extra["dist_nm"] = dist_nm
+    elif spec.label_octal == "201":
+        d201 = decode_dme_distance_201(w)
+        eng_value = d201["dist_nm"]
+        text = f"{d201['dist_nm']:.2f} NM"
+        extra["dist_nm"] = d201["dist_nm"]
     elif spec.label_octal == "353":
         adc = decode_vhf2100_adc_353(w)
         extra["adc"] = adc
