@@ -589,7 +589,7 @@ class ArincSession:
             if bit_rate_kbps is not None:
                 cfg.bit_rate_kbps = float(bit_rate_kbps)
                 cfg.high_speed = rate_to_high_speed(cfg.bit_rate_kbps)
-            if high_speed is not None:
+            elif high_speed is not None:
                 cfg.high_speed = bool(high_speed)
                 cfg.bit_rate_kbps = 100.0 if cfg.high_speed else 12.5
             if selftest is not None:
@@ -2346,18 +2346,20 @@ class ArincSession:
             active_highs = [self.channel[b].high_speed for b in active_buses]
             has_high = any(active_highs)
             has_low = any(not h for h in active_highs)
+            primary_bus = (self.tx_ch or "A").upper()
+            primary_cfg = self.channel.get(primary_bus, self.channel["A"])
             if has_high and has_low:
                 bit_rate_display = "12.5 / 100 kbps"
                 bit_rate_kbps = 100.0
                 high_speed = True
             elif has_high:
-                bit_rate_display = "100 kbps"
-                bit_rate_kbps = 100.0
+                bit_rate_kbps = primary_cfg.bit_rate_kbps if primary_cfg.high_speed else 100.0
                 high_speed = True
+                bit_rate_display = f"{bit_rate_kbps:.2f} kbps" if bit_rate_kbps not in (100.0, 100) else "100 kbps"
             else:
-                bit_rate_display = "12.5 kbps"
-                bit_rate_kbps = 12.5
+                bit_rate_kbps = primary_cfg.bit_rate_kbps
                 high_speed = False
+                bit_rate_display = f"{bit_rate_kbps:.1f} kbps" if (bit_rate_kbps * 10) % 10 != 0 else f"{int(bit_rate_kbps)} kbps"
             dme = None
             if self.dme_mode:
                 try:

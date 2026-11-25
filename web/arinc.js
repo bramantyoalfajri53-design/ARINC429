@@ -4446,10 +4446,11 @@ function renderStandardLru(r, s) {
   if (isVdr && !standardLruState._customBus) {
     standardLruState.txBus = "C";
     standardLruState.rxBus = "A";
-    standardLruState.bitRate = 100.0;
+    if (standardLruState.bitRate == null) standardLruState.bitRate = 100.0;
   } else if (!standardLruState._customBus) {
     standardLruState.txBus = (s && s.tx_ch) || standardLruState.txBus || "A";
     standardLruState.rxBus = (s && s.rx_ch) || standardLruState.rxBus || "A";
+    if (standardLruState.bitRate == null) standardLruState.bitRate = (s && s.bit_rate_kbps) || 12.5;
   }
 
   const txCh = standardLruState.txBus;
@@ -5043,12 +5044,44 @@ function renderStandardLru(r, s) {
   if (resetBtn) {
     resetBtn.onclick = async () => {
       try {
+        const defRate = isHighSpeed ? 100.0 : 12.5;
+        const defTxBus = isVdr ? "C" : "A";
+        const defRxBus = isVdr ? "A" : "A";
+        standardLruState.slots = {};
+        standardLruState.activeSlot = 0;
+        standardLruState.cursorActive = false;
+        standardLruState.cursorField = "DATA";
+        standardLruState.cursorPos = 0;
+        standardLruState.stepDir = "INC";
+        standardLruState.rxWordIndex = 0;
+        standardLruState.bitRate = defRate;
+        standardLruState.txBus = defTxBus;
+        standardLruState.rxBus = defRxBus;
+        standardLruState._customBus = false;
+
         const snapIn = await api("/api/arinc/profile/apply", {
           method: "POST",
           body: JSON.stringify({ profile: pid, reset: true }),
         });
-        standardLruState.slots = {};
+        await api("/api/arinc/channel", {
+          method: "POST",
+          body: JSON.stringify({ bus: defTxBus, bit_rate_kbps: defRate, tx_ch: defTxBus, rx_ch: defRxBus }),
+        });
+        if (snapIn) snap = snapIn;
         renderStandardLru(r, snapIn);
+
+        const newResetBtn = r.querySelector("#btn-std-reset-def");
+        if (newResetBtn) {
+          const origText = newResetBtn.textContent;
+          newResetBtn.textContent = "✓ Defaults Restored";
+          newResetBtn.style.color = "var(--accent)";
+          setTimeout(() => {
+            if (newResetBtn) {
+              newResetBtn.textContent = origText;
+              newResetBtn.style.color = "";
+            }
+          }, 1000);
+        }
       } catch (e) {
         alert(e.message);
       }
@@ -5266,17 +5299,20 @@ function renderStandardLru(r, s) {
       const highSpeedRates = [83.33, 100.0, 125.0];
       const rates = isHighSpeed ? highSpeedRates : lowSpeedRates;
       const dir = (standardLruState.stepDir === "DECR") ? -1 : 1;
-      let idx = rates.findIndex(r => Math.abs(r - curRate) < 0.3);
+      const liveCurRate = Number(standardLruState.bitRate != null ? standardLruState.bitRate : (curRate || (isHighSpeed ? 100.0 : 12.5)));
+      let idx = rates.findIndex(r => Math.abs(r - liveCurRate) < 0.05);
       if (idx === -1) idx = isHighSpeed ? 1 : 3;
       const nextRate = rates[(idx + dir + rates.length) % rates.length];
       standardLruState.bitRate = nextRate;
       standardLruState._customBus = true;
       updateStdLruTxRowDOM();
       try {
-        await api("/api/arinc/channel", {
+        const curTxBus = standardLruState.txBus || txCh || "A";
+        const res = await api("/api/arinc/channel", {
           method: "POST",
-          body: JSON.stringify({ bus: txCh, bit_rate_kbps: nextRate }),
+          body: JSON.stringify({ bus: curTxBus, bit_rate_kbps: nextRate }),
         });
+        if (res && snap) snap = res;
       } catch (err) {
         console.error("Set bitrate failed:", err);
       }
@@ -5669,8 +5705,31 @@ function renderHfScreen(r, s) {
       hfScreenState.par = "ODD";
       hfScreenState.rateMs = 200;
       hfScreenState.cursorPos = 2;
+      hfScreenState.stepDir = "INC";
+      hfScreenState.bitRate = 12.5;
+      hfScreenState.txBus = "A";
+      hfScreenState.rxBus = "B";
+      hfScreenState.rxWordIndex = 0;
       updateHfTxRowDOM();
       await saveHfConfig();
+      try {
+        const snapIn = await api("/api/arinc/channel", {
+          method: "POST",
+          body: JSON.stringify({ bus: "A", bit_rate_kbps: 12.5, tx_ch: "A", rx_ch: "B" }),
+        });
+        if (snapIn) snap = snapIn;
+      } catch (e) {
+        console.error("Reset HF channel failed:", e);
+      }
+      const origText = hfResetBtn.textContent;
+      hfResetBtn.textContent = "✓ Defaults Restored";
+      hfResetBtn.style.color = "var(--accent)";
+      setTimeout(() => {
+        if (hfResetBtn) {
+          hfResetBtn.textContent = origText;
+          hfResetBtn.style.color = "";
+        }
+      }, 1000);
     });
   }
 
@@ -5842,10 +5901,26 @@ function renderHfScreen(r, s) {
   // Softkey 4: BIT RATE
   const btnBitrate = container.querySelector("#btn-hf-bitrate");
   if (btnBitrate) {
-    btnBitrate.addEventListener("click", () => {
+    btnBitrate.addEventListener("click", async () => {
       triggerPress(btnBitrate);
-      hfScreenState.bitRate = (hfScreenState.bitRate === 100.0) ? 12.5 : 100.0;
+      const lowSpeedRates = [8.1, 9.4, 11.1, 12.5, 13.9, 15.1, 17.2, 18.5, 20.0];
+      const dir = (hfScreenState.stepDir === "DECR") ? -1 : 1;
+      const curRateVal = Number(hfScreenState.bitRate || 12.5);
+      let idx = lowSpeedRates.findIndex(r => Math.abs(r - curRateVal) < 0.05);
+      if (idx === -1) idx = 3; // 12.5
+      const nextRate = lowSpeedRates[(idx + dir + lowSpeedRates.length) % lowSpeedRates.length];
+      hfScreenState.bitRate = nextRate;
       updateHfTxRowDOM();
+      try {
+        const curTxBus = hfScreenState.txBus || "A";
+        const res = await api("/api/arinc/channel", {
+          method: "POST",
+          body: JSON.stringify({ bus: curTxBus, bit_rate_kbps: nextRate }),
+        });
+        if (res && snap) snap = res;
+      } catch (err) {
+        console.error("Set HF bitrate failed:", err);
+      }
     });
   }
 
@@ -8906,6 +8981,18 @@ async function ensureProfiles(force) {
           body: JSON.stringify({ mode: "single", reset: true }),
         });
         render(snapIn);
+        const newResetBtn = p.querySelector("#btn-dme-single-reset");
+        if (newResetBtn) {
+          const origText = newResetBtn.textContent;
+          newResetBtn.textContent = "✓ Defaults Restored";
+          newResetBtn.style.color = "var(--accent)";
+          setTimeout(() => {
+            if (newResetBtn) {
+              newResetBtn.textContent = origText;
+              newResetBtn.style.color = "";
+            }
+          }, 1000);
+        }
       } catch (e) { alert(e.message); }
     };
     p.querySelector("#btn-dme-single-tx").onclick = () => {
@@ -9346,6 +9433,18 @@ async function ensureProfiles(force) {
         });
         snap = snapIn;
         render(snapIn);
+        const newResetBtn = p.querySelector("#btn-dme-multi-reset");
+        if (newResetBtn) {
+          const origText = newResetBtn.textContent;
+          newResetBtn.textContent = "✓ Defaults Restored";
+          newResetBtn.style.color = "var(--accent)";
+          setTimeout(() => {
+            if (newResetBtn) {
+              newResetBtn.textContent = origText;
+              newResetBtn.style.color = "";
+            }
+          }, 1000);
+        }
       } catch (e) { alert(e.message); }
     };
     p.querySelector("#btn-dme-multi-tx").onclick = async () => {
@@ -9910,10 +10009,11 @@ async function ensureProfiles(force) {
       if (skBitRate) triggerPress(skBitRate);
 
       const t1200Rates = [8.1, 9.4, 11.1, 12.5, 13.9, 15.1, 17.2, 18.5, 20.0];
-      const cur = dmeStandardState.bitRate != null ? dmeStandardState.bitRate : (curRate || 12.5);
-      let idx = t1200Rates.findIndex((r) => Math.abs(r - cur) < 0.2);
+      const cur = Number(dmeStandardState.bitRate != null ? dmeStandardState.bitRate : (curRate || 12.5));
+      let idx = t1200Rates.findIndex((r) => Math.abs(r - cur) < 0.05);
       if (idx === -1) idx = 3; // 12.5
-      const nextRate = t1200Rates[(idx + 1) % t1200Rates.length];
+      const dir = (dmeStandardState.stepDir === "DECR") ? -1 : 1;
+      const nextRate = t1200Rates[(idx + dir + t1200Rates.length) % t1200Rates.length];
       dmeStandardState.bitRate = nextRate;
 
       const rateLbl = p.querySelector("#std-sk-rate-label");
@@ -9922,20 +10022,17 @@ async function ensureProfiles(force) {
       if (midRate) midRate.textContent = `${nextRate.toFixed(1)} KBPS`;
 
       try {
-        const res = await fetch("/api/arinc/channel", {
+        const res = await api("/api/arinc/channel", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             bus: dmeStandardState.txBus || "A",
             bit_rate_kbps: nextRate,
-            high_speed: false,
           }),
         });
-        if (res.ok) {
-          const fresh = await res.json();
-          snap = fresh;
-          dmeStandardState.lastSnap = fresh;
-          patchDmeStandardRx(fresh);
+        if (res) {
+          snap = res;
+          dmeStandardState.lastSnap = res;
+          patchDmeStandardRx(res);
         }
       } catch (e) {
         console.error("Failed to update bitrate", e);
@@ -10064,21 +10161,38 @@ async function ensureProfiles(force) {
       dmeStandardState.txBus = "A";
       dmeStandardState.rxBus = "A";
       dmeStandardState.stepDir = "INC";
-      dmeStandardState.cursorActive = true;
+      dmeStandardState.cursorActive = false;
       dmeStandardState.cursorField = "DATA";
-      dmeStandardState.cursorPos = 3;
+      dmeStandardState.cursorPos = 0;
       dmeStandardState.rxWordIndex = 0;
+      dmeStandardState.bitRate = 12.5;
       dmeStandardState.slots = {};
       try {
-        await fetch("/api/dme/mode", {
+        const snapIn = await api("/api/arinc/dme/mode", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ mode: "standard", reset: true }),
         });
-        const fresh = await (await fetch("/api/arinc/state")).json();
-        snap = fresh;
-        dmeStandardState.lastSnap = fresh;
-        render(fresh);
+        await api("/api/arinc/channel", {
+          method: "POST",
+          body: JSON.stringify({ bus: "A", bit_rate_kbps: 12.5, tx_ch: "A", rx_ch: "A" }),
+        });
+        if (snapIn) {
+          snap = snapIn;
+          dmeStandardState.lastSnap = snapIn;
+          render(snapIn);
+        }
+        const newResetBtn = p.querySelector("#btn-dme-std-reset");
+        if (newResetBtn) {
+          const origText = newResetBtn.textContent;
+          newResetBtn.textContent = "✓ Defaults Restored";
+          newResetBtn.style.color = "var(--accent)";
+          setTimeout(() => {
+            if (newResetBtn) {
+              newResetBtn.textContent = origText;
+              newResetBtn.style.color = "";
+            }
+          }, 1000);
+        }
       } catch (e) {
         console.error("Reset failed", e);
       }

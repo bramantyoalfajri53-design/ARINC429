@@ -269,3 +269,32 @@ def test_snapshot_latency_and_lightweight_payload(client: TestClient):
     assert len(v_align_active.get("tfm_vars", [])) == 40
     assert len(v_align_active.get("cal_vars", [])) == 40
 
+
+def test_channel_bit_rate_stepping_and_snapshot(client: TestClient):
+    """Verify that bit_rate_kbps stepping is preserved without being overwritten by high_speed."""
+    low_rates = [8.1, 9.4, 11.1, 12.5, 13.9, 15.1, 17.2, 18.5, 20.0]
+    for rate in low_rates:
+        r = client.post("/api/arinc/channel", json={"bus": "A", "bit_rate_kbps": rate})
+        assert r.status_code == 200
+        snap = r.json()
+        assert abs(snap["bit_rate_kbps"] - rate) < 0.01
+        assert snap["high_speed"] is False
+        assert f"{rate:.1f}" in snap["bit_rate_display"] or f"{int(rate)}" in snap["bit_rate_display"]
+
+    high_rates = [83.33, 100.0, 125.0]
+    for rate in high_rates:
+        r = client.post("/api/arinc/channel", json={"bus": "A", "bit_rate_kbps": rate})
+        assert r.status_code == 200
+        snap = r.json()
+        assert abs(snap["bit_rate_kbps"] - rate) < 0.01
+        assert snap["high_speed"] is True
+
+
+def test_profile_reset_and_defaults_restored(client: TestClient):
+    """Verify profile reset endpoint applies cleanly."""
+    r_apply = client.post("/api/arinc/profile/apply", json={"profile": "vor", "reset": True})
+    assert r_apply.status_code == 200
+    data = r_apply.json()
+    assert data["active_profile"] == "vor"
+
+
