@@ -3696,9 +3696,17 @@ function renderCmcChannelsTab(c, r, s) {
     const idx = stack.indexOf(screen);
     if (idx >= 0) {
       const pops = stack.length - idx - 1;
+      let finalRes = null;
       for (let i = 0; i < pops; i++) {
-        try { render(await api("/api/arinc/screen/pop", { method: "POST" })); }
-        catch (e) { alert(e.message); break; }
+        try {
+          finalRes = await api("/api/arinc/screen/pop", { method: "POST" });
+        } catch (e) {
+          alert(e.message);
+          break;
+        }
+      }
+      if (finalRes) {
+        render(finalRes);
       }
     } else {
       await pushScreen(screen);
@@ -4067,14 +4075,6 @@ function renderLruPicker(r, s) {
 
   p.appendChild(container);
 
-  // Return button at bottom
-  const retBtn = el("button", "btn btn-ghost");
-  retBtn.type = "button";
-  retBtn.style.marginTop = "0.75rem";
-  retBtn.textContent = "← RETURN TO OPERATING MODE";
-  retBtn.addEventListener("click", () => popScreen());
-  p.appendChild(retBtn);
-
   // Event listener for top return button
   const topRet = toolbar.querySelector("#btn-lru-ret-mode");
   if (topRet) topRet.addEventListener("click", () => popScreen());
@@ -4119,11 +4119,10 @@ function selectCatalog(c) {
       pushScreen("dme_config");
       return;
     }
-    if (c.kind === "mmr") {
-      pushScreen("mmr_755");
+    if (c.kind === "mmr" || c.id === "mmr_755") {
       api("/api/arinc/mmr/menu", { method: "POST", body: JSON.stringify({ menu: "ils" }) })
         .then(res => render(res))
-        .catch(() => {});
+        .catch(e => alert(e.message));
       return;
     }
     if (c.kind === "vhf_align" || c.id === "vhf_align") {
@@ -4290,6 +4289,8 @@ function renderStandardLru(r, s) {
 
   // Card Outer Toolbar (Single clean line)
   const lruTitle = OFFICIAL_LRU_NAMES[pid] || (isVdr ? "750 VDR" : pid.toUpperCase());
+  const isHighSpeed = (curRate === 100.0 || curRate === 100 || txCh === "C" || txCh === "D" || isVdr || pid === "mmr_755");
+  const rateModeStr = isHighSpeed ? "High Speed 100 kbps Mode" : `${curRate} kbps Mode`;
   const toolbar = el("div", "lru-toolbar");
   toolbar.style.display = "flex";
   toolbar.style.justifyContent = "space-between";
@@ -4300,7 +4301,7 @@ function renderStandardLru(r, s) {
   toolbar.innerHTML = `
     <div style="min-width:0; flex-shrink:1;">
       <div class="panel-title" style="margin-bottom:0.2rem; white-space:nowrap;">${lruTitle} FORMAT</div>
-      <p class="muted" style="margin:0; font-size:11.5px; white-space:nowrap;">Standard LRU Format (ARINC 429 ${isVdr ? "High Speed 100 kbps" : "12.5 kbps"} Mode)</p>
+      <p class="muted" style="margin:0; font-size:11.5px; white-space:nowrap;">Standard LRU Format (ARINC 429 ${rateModeStr})</p>
     </div>
     <div style="display:flex; gap:8px; align-items:center; flex-wrap:nowrap; flex-shrink:0;">
       <span class="pill pill-run" style="white-space:nowrap;">BUS TX-${txCh} &bull; RX-${rxCh} &bull; ${curRate} KBPS</span>
@@ -4479,7 +4480,7 @@ function renderStandardLru(r, s) {
   container.appendChild(skGrid);
 
   const topBack = toolbar.querySelector("#btn-std-lru-back");
-  if (topBack) topBack.addEventListener("click", () => pushScreen("avionics_lru"));
+  if (topBack) topBack.addEventListener("click", () => navTo("avionics_lru"));
 
   const resetBtn = toolbar.querySelector("#btn-std-reset-def");
   if (resetBtn) {
@@ -4876,7 +4877,7 @@ function renderHfScreen(r, s) {
   container.appendChild(skGrid);
 
   const topBack = toolbar.querySelector("#btn-hf-back");
-  if (topBack) topBack.addEventListener("click", () => pushScreen("avionics_lru"));
+  if (topBack) topBack.addEventListener("click", () => navTo("avionics_lru"));
 
   // Save backend helper
   const saveHfConfig = async () => {
@@ -5157,7 +5158,7 @@ function renderVhfAlign(r, s) {
 
     p.appendChild(container);
     const topBack = toolbar.querySelector('#btn-vhf-top-back');
-    if (topBack) topBack.addEventListener('click', () => pushScreen('avionics_lru'));
+    if (topBack) topBack.addEventListener('click', () => navTo('avionics_lru'));
     r.appendChild(p);
 
     container.querySelector("#btn-vhf-tfm").addEventListener("click", () => {
@@ -5176,7 +5177,7 @@ function renderVhfAlign(r, s) {
       renderVhfAlign(r, snap);
     });
     container.querySelector("#btn-vhf-back").addEventListener("click", () => {
-      pushScreen("avionics_lru");
+      navTo("avionics_lru");
     });
 
     const ssmBtn = container.querySelector("#btn-vhf-ssm");
@@ -5313,7 +5314,7 @@ function renderVhfAlign(r, s) {
 
     p.appendChild(container);
     const topBack = toolbar.querySelector('#btn-vhf-top-back');
-    if (topBack) topBack.addEventListener('click', () => pushScreen('avionics_lru'));
+    if (topBack) topBack.addEventListener('click', () => navTo('avionics_lru'));
     r.appendChild(p);
     attachVhfScreenHandlers(container, r, "tfm");
     return;
@@ -5392,7 +5393,7 @@ function renderVhfAlign(r, s) {
 
     p.appendChild(container);
     const topBack = toolbar.querySelector('#btn-vhf-top-back');
-    if (topBack) topBack.addEventListener('click', () => pushScreen('avionics_lru'));
+    if (topBack) topBack.addEventListener('click', () => navTo('avionics_lru'));
     r.appendChild(p);
     attachVhfScreenHandlers(container, r, "cal");
     return;
@@ -5439,7 +5440,7 @@ function renderVhfAlign(r, s) {
 
     p.appendChild(container);
     const topBack = toolbar.querySelector('#btn-vhf-top-back');
-    if (topBack) topBack.addEventListener('click', () => pushScreen('avionics_lru'));
+    if (topBack) topBack.addEventListener('click', () => navTo('avionics_lru'));
     r.appendChild(p);
     container.querySelector("#btn-menu-ret").addEventListener("click", () => {
       vhfAlignState.page = "menu";
@@ -9223,7 +9224,7 @@ async function ensureProfiles(force) {
 
     // Navigation and Action buttons in toolbar
     p.querySelector("#btn-dme-std-back").onclick = () => selectMode("standard");
-    p.querySelector("#btn-dme-std-lrus").onclick = () => pushScreen("avionics_lru");
+    p.querySelector("#btn-dme-std-lrus").onclick = () => navTo("avionics_lru");
     p.querySelector("#btn-dme-std-diag").onclick = () => pushScreen("dme_diagnostic");
     p.querySelector("#btn-dme-std-reset").onclick = async () => {
       dmeStandardState.activeSlot = 0;
@@ -9844,18 +9845,51 @@ async function ensureProfiles(force) {
   }
 
   function renderMmrMenu(r, s) {
-    renderHub(r, "755 MMR", "Background TX on B (DADS) and C (IRS) stays armed.", [
-      { id: "_ils", title: "710 ILS", desc: "Labels 033 / 017 on channel A" },
-      { id: "_dads", title: "DADS / FMS", desc: "Channel B 12.5 kbps background" },
-      { id: "_fms", title: "IRS / FMS", desc: "Channel C 100 kbps background" },
-    ]);
-    r.querySelectorAll(".mode-card").forEach((card, i) => {
-      const menus = ["ils", "dads", "fms"];
-      card.onclick = async () => {
-        try { render(await api("/api/arinc/mmr/menu", { method: "POST", body: JSON.stringify({ menu: menus[i] }) })); }
-        catch (e) { alert(e.message); }
-      };
+    const p = el("div", "panel");
+    p.style.maxWidth = "860px";
+    p.style.margin = "0 auto";
+
+    const toolbar = el("div", "lru-toolbar");
+    toolbar.style.display = "flex";
+    toolbar.style.justifyContent = "space-between";
+    toolbar.style.alignItems = "center";
+    toolbar.style.marginBottom = "1rem";
+    toolbar.innerHTML = `
+      <div>
+        <div class="panel-title" style="margin-bottom:0.2rem;">755 MMR (Multi-Mode Receiver)</div>
+        <p class="muted" style="margin:0; font-size:12px;">Background TX on B (DADS) and C (IRS) stays armed.</p>
+      </div>
+      <div>
+        <button type="button" class="btn btn-ghost btn-sm" id="btn-mmr-back">&lt; Avionics LRU</button>
+      </div>
+    `;
+    p.appendChild(toolbar);
+
+    const grid = el("div", "hub-grid");
+    const items = [
+      { id: "ils", title: "710 ILS", desc: "Labels 033 / 017 on channel A" },
+      { id: "dads", title: "DADS / FMS", desc: "Channel B 12.5 kbps background" },
+      { id: "fms", title: "IRS / FMS", desc: "Channel C 100 kbps background" },
+    ];
+    items.forEach((it) => {
+      const card = el("div", "mode-card");
+      card.innerHTML = `<h2>${it.title}</h2><p>${it.desc}</p>`;
+      card.addEventListener("click", async () => {
+        try {
+          render(await api("/api/arinc/mmr/menu", { method: "POST", body: JSON.stringify({ menu: it.id }) }));
+        } catch (e) {
+          alert(e.message);
+        }
+      });
+      grid.appendChild(card);
     });
+    p.appendChild(grid);
+    r.appendChild(p);
+
+    const backBtn = toolbar.querySelector("#btn-mmr-back");
+    if (backBtn) {
+      backBtn.addEventListener("click", () => navTo("avionics_lru"));
+    }
   }
 
   function assignedCh(s, kind) {
