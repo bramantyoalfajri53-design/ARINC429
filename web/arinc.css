@@ -1618,12 +1618,29 @@ tr.slot-off td { color: var(--muted); }
   border-bottom: 1px solid var(--border);
 }
 
+.dme-hmi-table tr,
+.dynapro-dme-table tr,
+#std-lru-tx-row,
+#std-lru-rx-row,
+#hf-tx-row,
+#hf-rx-row {
+  display: table-row !important;
+}
+
+.dme-hmi-table th,
+.dynapro-dme-table th,
 .dme-hmi-table td,
-.dynapro-dme-table td {
+.dynapro-dme-table td,
+#std-lru-tx-row td,
+#std-lru-rx-row td,
+#hf-tx-row td,
+#hf-rx-row td {
+  display: table-cell !important;
+  vertical-align: middle !important;
   color: var(--text);
   padding: 5px 6px;
   white-space: nowrap;
-  vertical-align: middle;
+  box-sizing: border-box !important;
 }
 
 .dme-hmi-table tr.active-line,

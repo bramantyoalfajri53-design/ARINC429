@@ -2469,9 +2469,15 @@ class ArincSession:
                 (b, c.high_speed, c.bit_rate_kbps, c.selftest, c.tx_enable, c.rx_enable, c.odd_parity, c.display_mode)
                 for b, c in sorted(self.channel.items())
             )
-            tx_fp = tuple(
+            tx_struct_fp = tuple(
                 (b, tuple(
-                    (s.index, s.enabled, s.raw, s.rate_ms, s.mode) for s in self.tx[b]
+                    (s.index, s.enabled, s.rate_ms, s.mode) for s in self.tx[b]
+                ))
+                for b in sorted(self.tx)
+            )
+            tx_raw_fp = tuple(
+                (b, tuple(
+                    (s.index, s.raw) for s in self.tx[b]
                 ))
                 for b in sorted(self.tx)
             )
@@ -2479,7 +2485,7 @@ class ArincSession:
                 (b, v.enabled, tuple(v.filter_labels), v.filter_sdi)
                 for b, v in sorted(self.rx.items())
             )
-            return bus_fp, tx_fp, rx_fp
+            return (bus_fp, tx_struct_fp, rx_fp), tx_raw_fp
 
     def _worker(self) -> None:
         from btidriver import bticard, bti429, DriverError
@@ -2508,7 +2514,7 @@ class ArincSession:
             def apply_config() -> dict[str, Any]:
                 bticard.CardReset(h_core)
                 meta: dict[str, Any] = {
-                    "tx_addrs": {}, "rx_chans": {}, "tx_chans": {},
+                    "tx_addrs": {}, "tx_slot_addrs": {b: {} for b in BUSES}, "rx_chans": {}, "tx_chans": {},
                     "phys_tx": {}, "phys_rx": {}, "log_tx": {}, "log_rx": {},
                 }
                 with self._lock:
@@ -2586,6 +2592,7 @@ class ArincSession:
                         addr = bti429.MsgCreate(bti429.MSGCRT429_DEFAULT, h_core)
                         bti429.MsgDataWr(sl.raw, addr, h_core)
                         addrs_rates.append((addr, max(10, int(sl.rate_ms))))
+                        meta["tx_slot_addrs"][letter][sl.index] = addr
                     if addrs_rates:
                         kbps = float(cfg.bit_rate_kbps) or (100.0 if cfg.high_speed else 12.5)
                         _build_tx_bit_schedule(bti429, addrs_rates, kbps, meta["tx_chans"][letter], h_core)
@@ -2603,7 +2610,7 @@ class ArincSession:
             meta = apply_config()
             buf = bticard.uint16_buffer(8192)
             rx_by_chan = {v: k for k, v in meta["rx_chans"].items()}
-            last_cfg = self._config_fingerprint()
+            last_struct_cfg, last_raw_cfg = self._config_fingerprint()
 
             def drain_seq() -> None:
                 try:
@@ -2629,9 +2636,9 @@ class ArincSession:
                                 continue
 
             while not self._stop.is_set():
-                fp = self._config_fingerprint()
+                struct_fp, raw_fp = self._config_fingerprint()
                 force = getattr(self, "_force_reconfig", False)
-                if fp != last_cfg or force:
+                if struct_fp != last_struct_cfg or force:
                     self._force_reconfig = False
                     try:
                         bticard.CardStop(h_core)
@@ -2639,7 +2646,35 @@ class ArincSession:
                         pass
                     meta = apply_config()
                     rx_by_chan = {v: k for k, v in meta["rx_chans"].items()}
-                    last_cfg = fp
+                    last_struct_cfg = struct_fp
+                    last_raw_cfg = raw_fp
+                elif raw_fp != last_raw_cfg:
+                    with self._lock:
+                        current_tx = {b: list(self.tx[b]) for b in BUSES}
+                    needs_rebuild = False
+                    for letter, slots in current_tx.items():
+                        slot_addrs = meta.get("tx_slot_addrs", {}).get(letter, {})
+                        for sl in slots:
+                            if sl.enabled and sl.raw:
+                                if sl.index in slot_addrs:
+                                    try:
+                                        bti429.MsgDataWr(sl.raw, slot_addrs[sl.index], h_core)
+                                    except Exception as e:
+                                        logger.warning(f"MsgDataWr error on bus {letter}[{sl.index}]: {e}")
+                                else:
+                                    needs_rebuild = True
+                                    break
+                        if needs_rebuild:
+                            break
+                    if needs_rebuild:
+                        try:
+                            bticard.CardStop(h_core)
+                        except Exception:
+                            pass
+                        meta = apply_config()
+                        rx_by_chan = {v: k for k, v in meta["rx_chans"].items()}
+                        last_struct_cfg = struct_fp
+                    last_raw_cfg = raw_fp
 
                 drain_seq()
                 time.sleep(0.05)

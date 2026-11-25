@@ -4151,6 +4151,73 @@ function selectCatalog(c) {
 // ============================================================================
 // 3. renderStandardLru & patchStandardLruRx
 // ============================================================================
+const OFFICIAL_LRU_NAMES = {
+  adf_032: "712 ADF",
+  vor: "711 VOR",
+  ils: "710 ILS",
+  atc_xpdr: "718 ATC",
+  radio_alt: "707 LRA",
+  vhf_comm: "716 VHF",
+  hf_719: "719 HF",
+  vdr_750: "750 VDR",
+  hfdu_753: "753 HFDU",
+  hfdr_753: "753 HFDR",
+  hf_rmp: "719 HF RMP",
+  hf_acars: "719 HF ACARS",
+  hfdu_rmp: "753 HFDU RMP",
+  hfdr_rmp: "753 HFDR RMP",
+  vhf_833: "716 8.33",
+  mmr_755: "755 MMR",
+  vhf_align: "VHF ALIGN",
+  vdl_mode: "VDL MODE",
+  vor_579: "579 VOR"
+};
+
+function formatLruPad(id, rawPad) {
+  if (id === "adf_032") return "000";
+  if (id === "vor" || id === "ils" || id === "vor_579") return "0000";
+  if (id === "atc_xpdr") return "0000001";
+  if (id === "radio_alt" || id === "vhf_comm" || id === "vhf_833") return "---";
+  return (rawPad && rawPad !== "-") ? String(rawPad).padStart(7, "0") : "0000000";
+}
+
+function formatLruDataAndUnit(id, dataVal, curSlotIdx) {
+  let unit = "";
+  let formatted = "";
+  if (id === "adf_032") {
+    unit = "KHZ";
+    let n = Number(dataVal);
+    formatted = Number.isFinite(n) ? n.toFixed(1) : "577.0";
+  } else if (id === "vor" || id === "ils" || id === "vor_579") {
+    unit = "MHZ";
+    let n = Number(dataVal);
+    formatted = Number.isFinite(n) ? n.toFixed(2) : (id === "ils" ? "110.30" : "108.00");
+  } else if (id === "atc_xpdr") {
+    unit = (curSlotIdx === 1) ? "FT" : "SQWK";
+    formatted = String(dataVal != null ? dataVal : (curSlotIdx === 1 ? "10000" : "1234"));
+  } else if (id === "radio_alt") {
+    unit = "FT";
+    let n = Number(dataVal);
+    formatted = Number.isFinite(n) ? n.toFixed(1) : "1000.0";
+  } else if (id === "vhf_comm") {
+    unit = "MHZ";
+    let n = Number(dataVal);
+    formatted = Number.isFinite(n) ? n.toFixed(3) : "118.000";
+  } else if (id === "vhf_833") {
+    unit = "MHZ";
+    let n = Number(dataVal);
+    formatted = Number.isFinite(n) ? n.toFixed(3) : "117.992";
+  } else if (id === "vdr_750" || id === "vdl_mode") {
+    unit = "";
+    const rawVal = Number.isFinite(Number(dataVal)) ? Number(dataVal) : 0;
+    const bin24 = (rawVal & 0xFFFFFF).toString(2).padStart(24, "0");
+    formatted = bin24.match(/.{1,4}/g).join(" ");
+  } else {
+    formatted = String(dataVal != null ? dataVal : "0.00");
+  }
+  return { formatted, unit };
+}
+
 function renderStandardLru(r, s) {
   standardLruState.lastSnap = s;
   const curSlotIdx = standardLruState.activeSlot || 0;
@@ -4185,8 +4252,8 @@ function renderStandardLru(r, s) {
     let parity = backendSlot.par || backendSlot.parity || cached.parity || "ODD";
     let rate = backendSlot.rate_ms || cached.rate || (isVdr ? 100 : (pid === "vor" ? 200 : 150));
     let label = backendSlot.label || backendSlot.label_octal || cached.label || (isVdr ? (sIdx === 1 ? "270" : "172") : (pid === "vor" ? "034" : "000"));
-    let funct = backendSlot.funct || cached.funct || (isVdr ? (sIdx === 1 ? "DSCR DAT1" : "VDR SAL") : (pid === "vor" ? "VOR FREQ" : "NAV"));
-    let pad = (backendSlot.pads && backendSlot.pads !== "-") ? backendSlot.pads.padStart(7, "0") : (cached.pad || (pid === "vor" ? "0000" : "0000000"));
+    let funct = backendSlot.funct || cached.funct || (isVdr ? (sIdx === 1 ? "DSCR DAT1" : "VDR SAL") : (pid === "vor" ? "VOR FREQ" : (pid === "adf_032" ? "ADF FREQ" : "NAV")));
+    let pad = (backendSlot.pads && backendSlot.pads !== "-") ? backendSlot.pads : (cached.pad || formatLruPad(pid));
 
     return { dataVal, sdi, ssm, parity, rate, label, funct, pad, enabled: backendSlot.enabled !== false };
   };
@@ -4222,6 +4289,7 @@ function renderStandardLru(r, s) {
   p.style.margin = "0 auto";
 
   // Card Outer Toolbar (Single clean line)
+  const lruTitle = OFFICIAL_LRU_NAMES[pid] || (isVdr ? "750 VDR" : pid.toUpperCase());
   const toolbar = el("div", "lru-toolbar");
   toolbar.style.display = "flex";
   toolbar.style.justifyContent = "space-between";
@@ -4231,7 +4299,7 @@ function renderStandardLru(r, s) {
   toolbar.style.gap = "12px";
   toolbar.innerHTML = `
     <div style="min-width:0; flex-shrink:1;">
-      <div class="panel-title" style="margin-bottom:0.2rem; white-space:nowrap;">${isVdr ? "750 VDR FORMAT" : pid.toUpperCase() + " FORMAT"}</div>
+      <div class="panel-title" style="margin-bottom:0.2rem; white-space:nowrap;">${lruTitle} FORMAT</div>
       <p class="muted" style="margin:0; font-size:11.5px; white-space:nowrap;">Standard LRU Format (ARINC 429 ${isVdr ? "High Speed 100 kbps" : "12.5 kbps"} Mode)</p>
     </div>
     <div style="display:flex; gap:8px; align-items:center; flex-wrap:nowrap; flex-shrink:0;">
@@ -4264,14 +4332,14 @@ function renderStandardLru(r, s) {
       case "hfdu_rmp":
       case "hfdr_rmp":
       case "hf_acars": return "HF-A COMM / HF-A COMM / HF MODE";
-      default: return curSlot.funct || "NAV";
+      default: return (curSlot.funct || "NAV").replace(/_/g, " ");
     }
   };
 
   const txWordsStr = getProfileTxWords(pid);
   const rxLabs = (s && s.rx && s.rx[rxCh] && s.rx[rxCh].labels) || [];
   const rxWordsStr = rxLabs.length > 0
-    ? rxLabs.map(l => l.funct || l.label || l.label_octal).filter(Boolean).slice(0, 4).join(" / ")
+    ? rxLabs.map(l => (l.funct || l.label || l.label_octal || "").replace(/_/g, " ")).filter(Boolean).slice(0, 4).join(" / ")
     : "---";
 
   // Header row inside white panel
@@ -4296,31 +4364,30 @@ function renderStandardLru(r, s) {
   tbl.style.borderCollapse = "collapse";
   tbl.style.fontFamily = "var(--font-mono, monospace)";
 
-  // Format DATA string
+  // Format DATA string with cursor and unit
   const isField = (f) => standardLruState.cursorField === f;
   const cPos = standardLruState.cursorPos || 0;
 
-  let dataStr = String(curSlot.dataVal != null ? curSlot.dataVal : "0.00");
-  if (isVdr) {
-    const rawVal = Number.isFinite(Number(curSlot.dataVal)) ? Number(curSlot.dataVal) : 0;
-    const bin24 = (rawVal & 0xFFFFFF).toString(2).padStart(24, "0");
-    dataStr = bin24.match(/.{1,4}/g).join(" ");
-  }
-
+  const { formatted: dataStr, unit: dataUnit } = formatLruDataAndUnit(pid, curSlot.dataVal, curSlotIdx);
   let dataHtml = "";
   for (let i = 0; i < dataStr.length; i++) {
     const isAct = isField("DATA") && cPos === i;
     dataHtml += `<span class="dme-cursor-bit ${isAct ? "cursor-active-bit" : ""}" data-field="DATA" data-pos="${i}">${dataStr.charAt(i)}</span>`;
   }
+  const unitSuffix = dataUnit ? ` <span class="dme-unit">${dataUnit}</span>` : "";
 
   const sdiStr = String(curSlot.sdi != null ? curSlot.sdi : 0).padStart(2, "0");
   const sdiHtml = `<span class="dme-cursor-bit ${isField("SDI") && cPos === 0 ? "cursor-active-bit" : ""}" data-field="SDI" data-pos="0">${sdiStr.charAt(0)}</span><span class="dme-cursor-bit ${isField("SDI") && cPos === 1 ? "cursor-active-bit" : ""}" data-field="SDI" data-pos="1">${sdiStr.charAt(1)}</span>`;
 
   let padHtml = "";
-  const padStr = String(curSlot.pad || "0000000");
-  for (let i = 0; i < padStr.length; i++) {
-    const isAct = isField("PAD") && cPos === i;
-    padHtml += `<span class="dme-cursor-bit ${isAct ? "cursor-active-bit" : ""}" data-field="PAD" data-pos="${i}">${padStr.charAt(i)}</span>`;
+  const padStr = formatLruPad(pid, curSlot.pad);
+  if (padStr === "---") {
+    padHtml = `<span class="dme-cursor-bit">---</span>`;
+  } else {
+    for (let i = 0; i < padStr.length; i++) {
+      const isAct = isField("PAD") && cPos === i;
+      padHtml += `<span class="dme-cursor-bit ${isAct ? "cursor-active-bit" : ""}" data-field="PAD" data-pos="${i}">${padStr.charAt(i)}</span>`;
+    }
   }
 
   const ssmHtml = `<span class="dme-cursor-bit ${isField("SSM") ? "cursor-active-bit" : ""}" data-field="SSM" data-pos="0">${curSlot.ssm}</span>`;
@@ -4329,6 +4396,7 @@ function renderStandardLru(r, s) {
   const curRx = rxLabs.length > 0 ? rxLabs[Math.min(standardLruState.rxWordIndex || 0, rxLabs.length - 1)] : null;
   const rxDataStr = curRx ? (curRx.data || curRx.data_eng || "---") : "WAITING...";
   const rxHasData = curRx && curRx.data;
+  const functDisplay = (curSlot.funct || "NAV").replace(/_/g, " ");
 
   tbl.innerHTML = `
     <thead>
@@ -4346,58 +4414,69 @@ function renderStandardLru(r, s) {
     </thead>
     <tbody>
       <tr class="tx-row" id="std-lru-tx-row">
-        <td class="dme-cell-edit dynapro-cell-edit" id="std-lru-tx-ch-cell">TX-${txCh}</td>
-        <td class="dme-cell-edit dynapro-cell-edit" id="std-lru-tx-funct-cell">${curSlot.funct}</td>
-        <td class="dme-cell-edit dynapro-cell-edit" id="std-lru-tx-label-cell">${curSlot.label}</td>
-        <td class="dme-cell-edit dynapro-cell-edit ${isField("DATA") ? "field-active" : ""}" id="std-lru-tx-data-cell">${dataHtml}</td>
-        <td class="dme-cell-edit dynapro-cell-edit ${isField("SDI") ? "field-active" : ""}" id="std-lru-tx-sdi-cell">${sdiHtml}</td>
-        <td class="dme-cell-edit dynapro-cell-edit ${isField("PAD") ? "field-active" : ""}" id="std-lru-tx-pad-cell">${padHtml}</td>
-        <td class="dme-cell-edit dynapro-cell-edit ${isField("SSM") ? "field-active" : ""}" id="std-lru-tx-ssm-cell">${ssmHtml}</td>
-        <td class="dme-cell-edit dynapro-cell-edit" id="std-lru-tx-par-cell">${curSlot.parity}</td>
-        <td class="dme-cell-edit dynapro-cell-edit" id="std-lru-tx-rate-cell">${curSlot.rate}</td>
+        <td><span class="dme-cell-edit dynapro-cell-edit" id="std-lru-tx-ch-cell">TX-${txCh}</span></td>
+        <td><span class="dme-cell-edit dynapro-cell-edit" id="std-lru-tx-funct-cell">${functDisplay}</span></td>
+        <td><span class="dme-cell-edit dynapro-cell-edit" id="std-lru-tx-label-cell">${curSlot.label}</span></td>
+        <td><span class="dme-cell-edit dynapro-cell-edit ${isField("DATA") ? "field-active" : ""}" id="std-lru-tx-data-cell">${dataHtml}${unitSuffix}</span></td>
+        <td><span class="dme-cell-edit dynapro-cell-edit ${isField("SDI") ? "field-active" : ""}" id="std-lru-tx-sdi-cell">${sdiHtml}</span></td>
+        <td><span class="dme-cell-edit dynapro-cell-edit ${isField("PAD") ? "field-active" : ""}" id="std-lru-tx-pad-cell">${padHtml}</span></td>
+        <td><span class="dme-cell-edit dynapro-cell-edit ${isField("SSM") ? "field-active" : ""}" id="std-lru-tx-ssm-cell">${ssmHtml}</span></td>
+        <td><span class="dme-cell-edit dynapro-cell-edit" id="std-lru-tx-par-cell">${curSlot.parity}</span></td>
+        <td><span class="dme-cell-edit dynapro-cell-edit" id="std-lru-tx-rate-cell">${curSlot.rate}</span></td>
       </tr>
       <tr class="rx-row" id="std-lru-rx-row">
-        <td class="dme-cell-readonly dynapro-cell-readonly" id="std-lru-rx-ch-cell">RX-${rxCh}</td>
-        <td class="dme-cell-readonly dynapro-cell-readonly" id="std-lru-rx-funct-cell">${curRx ? (curRx.funct || "---") : "---"}</td>
-        <td class="dme-cell-readonly dynapro-cell-readonly" id="std-lru-rx-label-cell">${curRx ? (curRx.label || curRx.label_octal || "---") : "---"}</td>
-        <td class="dme-cell-readonly dynapro-cell-readonly ${rxHasData ? "has-data" : ""}" id="std-lru-rx-data-cell">${rxDataStr}</td>
-        <td class="dme-cell-readonly dynapro-cell-readonly" id="std-lru-rx-sdi-cell">${curRx ? (curRx.sdi != null ? String(curRx.sdi).padStart(2, "0") : "00") : "--"}</td>
-        <td class="dme-cell-readonly dynapro-cell-readonly" id="std-lru-rx-pad-cell">${curRx ? (curRx.pads || "-------") : "-------"}</td>
-        <td class="dme-cell-readonly dynapro-cell-readonly" id="std-lru-rx-ssm-cell">${curRx ? (curRx.ssm || "--") : "--"}</td>
-        <td class="dme-cell-readonly dynapro-cell-readonly" id="std-lru-rx-par-cell">${curRx ? (curRx.par || curRx.parity || "--") : "--"}</td>
-        <td class="dme-cell-readonly dynapro-cell-readonly" id="std-lru-rx-rate-cell">${curRx ? (curRx.rate_ms || 100) : "--"}</td>
+        <td><span class="dme-cell-readonly dynapro-cell-readonly" id="std-lru-rx-ch-cell">RX-${rxCh}</span></td>
+        <td><span class="dme-cell-readonly dynapro-cell-readonly" id="std-lru-rx-funct-cell">${curRx ? ((curRx.funct || "").replace(/_/g, " ") || "---") : "---"}</span></td>
+        <td><span class="dme-cell-readonly dynapro-cell-readonly" id="std-lru-rx-label-cell">${curRx ? (curRx.label || curRx.label_octal || "---") : "---"}</span></td>
+        <td><span class="dme-cell-readonly dynapro-cell-readonly ${rxHasData ? "has-data" : ""}" id="std-lru-rx-data-cell">${rxDataStr}</span></td>
+        <td><span class="dme-cell-readonly dynapro-cell-readonly" id="std-lru-rx-sdi-cell">${curRx ? (curRx.sdi != null ? String(curRx.sdi).padStart(2, "0") : "00") : "--"}</span></td>
+        <td><span class="dme-cell-readonly dynapro-cell-readonly" id="std-lru-rx-pad-cell">${curRx ? (curRx.pads || "-------") : "-------"}</span></td>
+        <td><span class="dme-cell-readonly dynapro-cell-readonly" id="std-lru-rx-ssm-cell">${curRx ? (curRx.ssm || "--") : "--"}</span></td>
+        <td><span class="dme-cell-readonly dynapro-cell-readonly" id="std-lru-rx-par-cell">${curRx ? (curRx.par || curRx.parity || "--") : "--"}</span></td>
+        <td><span class="dme-cell-readonly dynapro-cell-readonly" id="std-lru-rx-rate-cell">${curRx ? (curRx.rate_ms || 100) : "--"}</span></td>
       </tr>
     </tbody>
   `;
   tableWrap.appendChild(tbl);
   container.appendChild(tableWrap);
 
-  // Softkeys (7 full width columns)
+  // Softkeys (7 full width columns matching DME Standard Nav)
   const skGrid = el("div", "dme-softkeys-row dynapro-softkeys-row dme-standard-softkeys");
 
   const bitRateLabel = isVdr ? "HI SPD<br>BIT RT" : "BIT<br>RATE";
   const bitRateVal = `${curRate} KBPS`;
-  const txToggleLabel = isVdr ? (txCh === "C" ? "TX-C / [TX-D]" : "[TX-C] / TX-D") : (txCh === "A" ? "TX-A / [TX-B]" : "[TX-A] / TX-B");
-  const rxToggleLabel = rxCh === "A" ? "RX-A / [RX-B]" : "[RX-A] / RX-B";
 
   skGrid.innerHTML = `
+    <!-- 1: DISP CURSOR -->
     <div class="std-sk-col"><div class="std-sk-top-label">&nbsp;</div><button type="button" class="dme-softkey-btn dynapro-softkey-btn dme-softkey-single" id="btn-std-cursor"><div class="dme-softkey-label">DISP<br>CURSOR</div></button></div>
+    <!-- 2: DATA STEP -->
     <div class="std-sk-col"><div class="std-sk-top-label">&nbsp;</div><button type="button" class="dme-softkey-btn dynapro-softkey-btn dme-softkey-single" id="btn-std-step"><div class="dme-softkey-label">DATA<br>STEP</div></button></div>
+    <!-- 3: INC / DECR Split Toggle -->
     <div class="std-sk-col"><div class="std-sk-top-label">&nbsp;</div><button type="button" class="dme-softkey-btn dynapro-softkey-btn dme-softkey-split" id="btn-std-dir"><div class="dme-softkey-half dynapro-softkey-half ${stepDir === "INC" ? "active" : ""}" id="btn-std-inc">INC.</div><div class="dme-softkey-divider dynapro-softkey-divider"></div><div class="dme-softkey-half dynapro-softkey-half ${stepDir === "DECR" ? "active" : ""}" id="btn-std-decr">DECR</div></button></div>
+    <!-- 4: MORE WORDS -->
     <div class="std-sk-col"><div class="std-sk-top-label">&nbsp;</div><button type="button" class="dme-softkey-btn dynapro-softkey-btn dme-softkey-single" id="btn-std-more"><div class="dme-softkey-label">MORE<br>WORDS</div></button></div>
+    <!-- 5: BIT RATE -->
     <div class="std-sk-col"><div class="std-sk-top-label" id="std-rate-display">${bitRateVal}</div><button type="button" class="dme-softkey-btn dynapro-softkey-btn dme-softkey-single" id="btn-std-bitrate"><div class="dme-softkey-label">${bitRateLabel}</div></button></div>
-    <div class="std-sk-col"><div class="std-sk-top-label" id="std-tx-display">${txToggleLabel}</div><button type="button" class="dme-softkey-btn dynapro-softkey-btn dme-softkey-single" id="btn-std-txch"><div class="dme-softkey-label">${isVdr ? "TX-C /<br>TX-D" : "TX-A /<br>TX-B"}</div></button></div>
-    <div class="std-sk-col"><div class="std-sk-top-label" id="std-rx-display">${rxToggleLabel}</div><button type="button" class="dme-softkey-btn dynapro-softkey-btn dme-softkey-single" id="btn-std-rxch"><div class="dme-softkey-label">RX-A /<br>RX-B</div></button></div>
+    <!-- 6: TX Split Toggle -->
+    <div class="std-sk-col">
+      <div class="std-sk-top-label">&nbsp;</div>
+      <button type="button" class="dme-softkey-btn dynapro-softkey-btn dme-softkey-split" id="btn-std-txch" title="Toggle transmitter bus">
+        <div class="dme-softkey-half dynapro-softkey-half ${txCh === (isVdr ? "C" : "A") ? "active" : ""}" id="btn-std-tx-left">${isVdr ? "TX-C" : "TX-A"}</div>
+        <div class="dme-softkey-divider dynapro-softkey-divider"></div>
+        <div class="dme-softkey-half dynapro-softkey-half ${txCh === (isVdr ? "D" : "B") ? "active" : ""}" id="btn-std-tx-right">${isVdr ? "TX-D" : "TX-B"}</div>
+      </button>
+    </div>
+    <!-- 7: RX Split Toggle -->
+    <div class="std-sk-col">
+      <div class="std-sk-top-label">&nbsp;</div>
+      <button type="button" class="dme-softkey-btn dynapro-softkey-btn dme-softkey-split" id="btn-std-rxch" title="Toggle receiver bus">
+        <div class="dme-softkey-half dynapro-softkey-half ${rxCh === "A" ? "active" : ""}" id="btn-std-rx-left">RX-A</div>
+        <div class="dme-softkey-divider dynapro-softkey-divider"></div>
+        <div class="dme-softkey-half dynapro-softkey-half ${rxCh === "B" ? "active" : ""}" id="btn-std-rx-right">RX-B</div>
+      </button>
+    </div>
   `;
   container.appendChild(skGrid);
-
-  // Return button
-  const retBtn = el("button", "btn btn-ghost");
-  retBtn.type = "button";
-  retBtn.style.marginTop = "0.75rem";
-  retBtn.textContent = "← AVIONICS LRU MENU";
-  retBtn.addEventListener("click", () => pushScreen("avionics_lru"));
-  p.appendChild(retBtn);
 
   const topBack = toolbar.querySelector("#btn-std-lru-back");
   if (topBack) topBack.addEventListener("click", () => pushScreen("avionics_lru"));
@@ -4565,27 +4644,45 @@ function renderStandardLru(r, s) {
     });
   }
 
-  // Softkey 6: TX-A / TX-B (or TX-C / TX-D)
+  // Softkey 6: TX Split Toggle
   const btnTxCh = container.querySelector("#btn-std-txch");
+  const btnTxLeft = container.querySelector("#btn-std-tx-left");
+  const btnTxRight = container.querySelector("#btn-std-tx-right");
+  const setTxBus = (bus) => {
+    standardLruState._customBus = true;
+    standardLruState.txBus = bus;
+    renderStandardLru(r, snap);
+  };
+  if (btnTxLeft && btnTxRight) {
+    btnTxLeft.addEventListener("click", (e) => { e.stopPropagation(); setTxBus(isVdr ? "C" : "A"); });
+    btnTxRight.addEventListener("click", (e) => { e.stopPropagation(); setTxBus(isVdr ? "D" : "B"); });
+  }
   if (btnTxCh) {
     btnTxCh.addEventListener("click", () => {
-      standardLruState._customBus = true;
       if (isVdr) {
-        standardLruState.txBus = (txCh === "C") ? "D" : "C";
+        setTxBus(txCh === "C" ? "D" : "C");
       } else {
-        standardLruState.txBus = (txCh === "A") ? "B" : "A";
+        setTxBus(txCh === "A" ? "B" : "A");
       }
-      renderStandardLru(r, snap);
     });
   }
 
-  // Softkey 7: RX-A / RX-B
+  // Softkey 7: RX Split Toggle
   const btnRxCh = container.querySelector("#btn-std-rxch");
+  const btnRxLeft = container.querySelector("#btn-std-rx-left");
+  const btnRxRight = container.querySelector("#btn-std-rx-right");
+  const setRxBus = (bus) => {
+    standardLruState._customBus = true;
+    standardLruState.rxBus = bus;
+    renderStandardLru(r, snap);
+  };
+  if (btnRxLeft && btnRxRight) {
+    btnRxLeft.addEventListener("click", (e) => { e.stopPropagation(); setRxBus("A"); });
+    btnRxRight.addEventListener("click", (e) => { e.stopPropagation(); setRxBus("B"); });
+  }
   if (btnRxCh) {
     btnRxCh.addEventListener("click", () => {
-      standardLruState._customBus = true;
-      standardLruState.rxBus = (rxCh === "A") ? "B" : "A";
-      renderStandardLru(r, snap);
+      setRxBus(rxCh === "A" ? "B" : "A");
     });
   }
 }
@@ -4717,28 +4814,28 @@ function renderHfScreen(r, s) {
     </thead>
     <tbody>
       <tr class="tx-row" id="hf-tx-row">
-        <td class="dme-cell-edit dynapro-cell-edit" id="hf-tx-ch-cell">TX-${txCh}</td>
-        <td class="dme-cell-edit dynapro-cell-edit" id="hf-tx-funct-cell">HF COMM</td>
-        <td class="dme-cell-readonly dynapro-cell-readonly" id="hf-tx-label-cell" title="Locked">037</td>
-        <td class="dme-cell-edit dynapro-cell-edit field-active" id="hf-tx-data-cell">${dataHtml}</td>
-        <td class="dme-cell-edit dynapro-cell-edit" id="hf-tx-sb-cell" style="cursor:pointer;">${hfScreenState.sb}</td>
-        <td class="dme-cell-edit dynapro-cell-edit" id="hf-tx-mod-cell" style="cursor:pointer;">${hfScreenState.mod}</td>
-        <td class="dme-cell-edit dynapro-cell-edit" id="hf-tx-cw-cell" style="cursor:pointer;">${hfScreenState.cw ? "ON" : "OFF"}</td>
-        <td class="dme-cell-edit dynapro-cell-edit" id="hf-tx-ssm-cell" style="cursor:pointer;">${hfScreenState.ssm}</td>
-        <td class="dme-cell-edit dynapro-cell-edit" id="hf-tx-par-cell">${hfScreenState.par}</td>
-        <td class="dme-cell-edit dynapro-cell-edit" id="hf-tx-rate-cell">${hfScreenState.rateMs}</td>
+        <td><span class="dme-cell-edit dynapro-cell-edit" id="hf-tx-ch-cell">TX-${txCh}</span></td>
+        <td><span class="dme-cell-edit dynapro-cell-edit" id="hf-tx-funct-cell">HF COMM</span></td>
+        <td><span class="dme-cell-readonly dynapro-cell-readonly" id="hf-tx-label-cell" title="Locked">037</span></td>
+        <td><span class="dme-cell-edit dynapro-cell-edit field-active" id="hf-tx-data-cell">${dataHtml}</span></td>
+        <td><span class="dme-cell-edit dynapro-cell-edit" id="hf-tx-sb-cell" style="cursor:pointer;">${hfScreenState.sb}</span></td>
+        <td><span class="dme-cell-edit dynapro-cell-edit" id="hf-tx-mod-cell" style="cursor:pointer;">${hfScreenState.mod}</span></td>
+        <td><span class="dme-cell-edit dynapro-cell-edit" id="hf-tx-cw-cell" style="cursor:pointer;">${hfScreenState.cw ? "ON" : "OFF"}</span></td>
+        <td><span class="dme-cell-edit dynapro-cell-edit" id="hf-tx-ssm-cell" style="cursor:pointer;">${hfScreenState.ssm}</span></td>
+        <td><span class="dme-cell-edit dynapro-cell-edit" id="hf-tx-par-cell">${hfScreenState.par}</span></td>
+        <td><span class="dme-cell-edit dynapro-cell-edit" id="hf-tx-rate-cell">${hfScreenState.rateMs}</span></td>
       </tr>
       <tr class="rx-row" id="hf-rx-row">
-        <td class="dme-cell-readonly dynapro-cell-readonly" id="hf-rx-ch-cell">RX-${rxCh}</td>
-        <td class="dme-cell-readonly dynapro-cell-readonly" id="hf-rx-funct-cell">${curRx ? (curRx.funct || "HF COMM") : "---"}</td>
-        <td class="dme-cell-readonly dynapro-cell-readonly" id="hf-rx-label-cell">${curRx ? (curRx.label || "037") : "---"}</td>
-        <td class="dme-cell-readonly dynapro-cell-readonly ${rxHasData ? "has-data" : ""}" id="hf-rx-data-cell">${rxDataStr}</td>
-        <td class="dme-cell-readonly dynapro-cell-readonly" id="hf-rx-sb-cell">--</td>
-        <td class="dme-cell-readonly dynapro-cell-readonly" id="hf-rx-mod-cell">--</td>
-        <td class="dme-cell-readonly dynapro-cell-readonly" id="hf-rx-cw-cell">--</td>
-        <td class="dme-cell-readonly dynapro-cell-readonly" id="hf-rx-ssm-cell">${curRx ? (curRx.ssm || "--") : "--"}</td>
-        <td class="dme-cell-readonly dynapro-cell-readonly" id="hf-rx-par-cell">${curRx ? (curRx.par || curRx.parity || "--") : "--"}</td>
-        <td class="dme-cell-readonly dynapro-cell-readonly" id="hf-rx-rate-cell">${curRx ? (curRx.rate_ms || 200) : "--"}</td>
+        <td><span class="dme-cell-readonly dynapro-cell-readonly" id="hf-rx-ch-cell">RX-${rxCh}</span></td>
+        <td><span class="dme-cell-readonly dynapro-cell-readonly" id="hf-rx-funct-cell">${curRx ? (curRx.funct || "HF COMM") : "---"}</span></td>
+        <td><span class="dme-cell-readonly dynapro-cell-readonly" id="hf-rx-label-cell">${curRx ? (curRx.label || "037") : "---"}</span></td>
+        <td><span class="dme-cell-readonly dynapro-cell-readonly ${rxHasData ? "has-data" : ""}" id="hf-rx-data-cell">${rxDataStr}</span></td>
+        <td><span class="dme-cell-readonly dynapro-cell-readonly" id="hf-rx-sb-cell">--</span></td>
+        <td><span class="dme-cell-readonly dynapro-cell-readonly" id="hf-rx-mod-cell">--</span></td>
+        <td><span class="dme-cell-readonly dynapro-cell-readonly" id="hf-rx-cw-cell">--</span></td>
+        <td><span class="dme-cell-readonly dynapro-cell-readonly" id="hf-rx-ssm-cell">${curRx ? (curRx.ssm || "--") : "--"}</span></td>
+        <td><span class="dme-cell-readonly dynapro-cell-readonly" id="hf-rx-par-cell">${curRx ? (curRx.par || curRx.parity || "--") : "--"}</span></td>
+        <td><span class="dme-cell-readonly dynapro-cell-readonly" id="hf-rx-rate-cell">${curRx ? (curRx.rate_ms || 200) : "--"}</span></td>
       </tr>
     </tbody>
   `;
@@ -4748,26 +4845,35 @@ function renderHfScreen(r, s) {
   // Softkeys (EXACTLY 6 FULL-WIDTH COLUMNS, NO dummy 4th column, NO MORE WORDS)
   const skGrid = el("div", "dme-softkeys-row dynapro-softkeys-row hf-softkeys-row");
 
-  const txToggleLabel = txCh === "A" ? "TX-A / [TX-B]" : "[TX-A] / TX-B";
-  const rxToggleLabel = rxCh === "A" ? "RX-A / [RX-B]" : "[RX-A] / RX-B";
-
   skGrid.innerHTML = `
+    <!-- 1: DISP CURSOR -->
     <div class="std-sk-col"><div class="std-sk-top-label">&nbsp;</div><button type="button" class="dme-softkey-btn dynapro-softkey-btn dme-softkey-single" id="btn-hf-cursor"><div class="dme-softkey-label">DISP<br>CURSOR</div></button></div>
+    <!-- 2: DATA STEP -->
     <div class="std-sk-col"><div class="std-sk-top-label">&nbsp;</div><button type="button" class="dme-softkey-btn dynapro-softkey-btn dme-softkey-single" id="btn-hf-step"><div class="dme-softkey-label">DATA<br>STEP</div></button></div>
+    <!-- 3: INC / DECR Split Toggle -->
     <div class="std-sk-col"><div class="std-sk-top-label">&nbsp;</div><button type="button" class="dme-softkey-btn dynapro-softkey-btn dme-softkey-split" id="btn-hf-dir"><div class="dme-softkey-half dynapro-softkey-half ${stepDir === "INC" ? "active" : ""}" id="btn-hf-inc">INC.</div><div class="dme-softkey-divider dynapro-softkey-divider"></div><div class="dme-softkey-half dynapro-softkey-half ${stepDir === "DECR" ? "active" : ""}" id="btn-hf-decr">DECR</div></button></div>
+    <!-- 4: BIT RATE -->
     <div class="std-sk-col"><div class="std-sk-top-label" id="hf-rate-display">${hfScreenState.bitRate.toFixed(1)} KBPS</div><button type="button" class="dme-softkey-btn dynapro-softkey-btn dme-softkey-single" id="btn-hf-bitrate"><div class="dme-softkey-label">BIT<br>RATE</div></button></div>
-    <div class="std-sk-col"><div class="std-sk-top-label" id="hf-tx-display">${txToggleLabel}</div><button type="button" class="dme-softkey-btn dynapro-softkey-btn dme-softkey-single" id="btn-hf-txch"><div class="dme-softkey-label">TX-A /<br>TX-B</div></button></div>
-    <div class="std-sk-col"><div class="std-sk-top-label" id="hf-rx-display">${rxToggleLabel}</div><button type="button" class="dme-softkey-btn dynapro-softkey-btn dme-softkey-single" id="btn-hf-rxch"><div class="dme-softkey-label">RX-A /<br>RX-B</div></button></div>
+    <!-- 5: TX-A / TX-B Split Toggle -->
+    <div class="std-sk-col">
+      <div class="std-sk-top-label">&nbsp;</div>
+      <button type="button" class="dme-softkey-btn dynapro-softkey-btn dme-softkey-split" id="btn-hf-txch" title="Toggle transmitter bus">
+        <div class="dme-softkey-half dynapro-softkey-half ${txCh === "A" ? "active" : ""}" id="btn-hf-tx-left">TX-A</div>
+        <div class="dme-softkey-divider dynapro-softkey-divider"></div>
+        <div class="dme-softkey-half dynapro-softkey-half ${txCh === "B" ? "active" : ""}" id="btn-hf-tx-right">TX-B</div>
+      </button>
+    </div>
+    <!-- 6: RX-A / RX-B Split Toggle -->
+    <div class="std-sk-col">
+      <div class="std-sk-top-label">&nbsp;</div>
+      <button type="button" class="dme-softkey-btn dynapro-softkey-btn dme-softkey-split" id="btn-hf-rxch" title="Toggle receiver bus">
+        <div class="dme-softkey-half dynapro-softkey-half ${rxCh === "A" ? "active" : ""}" id="btn-hf-rx-left">RX-A</div>
+        <div class="dme-softkey-divider dynapro-softkey-divider"></div>
+        <div class="dme-softkey-half dynapro-softkey-half ${rxCh === "B" ? "active" : ""}" id="btn-hf-rx-right">RX-B</div>
+      </button>
+    </div>
   `;
   container.appendChild(skGrid);
-
-  // Return button
-  const retBtn = el("button", "btn btn-ghost");
-  retBtn.type = "button";
-  retBtn.style.marginTop = "0.75rem";
-  retBtn.textContent = "← AVIONICS LRU MENU";
-  retBtn.addEventListener("click", () => pushScreen("avionics_lru"));
-  p.appendChild(retBtn);
 
   const topBack = toolbar.querySelector("#btn-hf-back");
   if (topBack) topBack.addEventListener("click", () => pushScreen("avionics_lru"));
@@ -4923,21 +5029,39 @@ function renderHfScreen(r, s) {
     });
   }
 
-  // Softkey 5: TX-A / TX-B
+  // Softkey 5: TX Split Toggle
   const btnTxCh = container.querySelector("#btn-hf-txch");
+  const btnTxLeft = container.querySelector("#btn-hf-tx-left");
+  const btnTxRight = container.querySelector("#btn-hf-tx-right");
+  const setHfTxBus = (bus) => {
+    hfScreenState.txBus = bus;
+    renderHfScreen(r, snap);
+  };
+  if (btnTxLeft && btnTxRight) {
+    btnTxLeft.addEventListener("click", (e) => { e.stopPropagation(); setHfTxBus("A"); });
+    btnTxRight.addEventListener("click", (e) => { e.stopPropagation(); setHfTxBus("B"); });
+  }
   if (btnTxCh) {
     btnTxCh.addEventListener("click", () => {
-      hfScreenState.txBus = hfScreenState.txBus === "A" ? "B" : "A";
-      renderHfScreen(r, snap);
+      setHfTxBus(hfScreenState.txBus === "A" ? "B" : "A");
     });
   }
 
-  // Softkey 6: RX-A / RX-B
+  // Softkey 6: RX Split Toggle
   const btnRxCh = container.querySelector("#btn-hf-rxch");
+  const btnRxLeft = container.querySelector("#btn-hf-rx-left");
+  const btnRxRight = container.querySelector("#btn-hf-rx-right");
+  const setHfRxBus = (bus) => {
+    hfScreenState.rxBus = bus;
+    renderHfScreen(r, snap);
+  };
+  if (btnRxLeft && btnRxRight) {
+    btnRxLeft.addEventListener("click", (e) => { e.stopPropagation(); setHfRxBus("A"); });
+    btnRxRight.addEventListener("click", (e) => { e.stopPropagation(); setHfRxBus("B"); });
+  }
   if (btnRxCh) {
     btnRxCh.addEventListener("click", () => {
-      hfScreenState.rxBus = hfScreenState.rxBus === "A" ? "B" : "A";
-      renderHfScreen(r, snap);
+      setHfRxBus(hfScreenState.rxBus === "A" ? "B" : "A");
     });
   }
 }
@@ -5280,32 +5404,37 @@ function renderVhfAlign(r, s) {
   if (currentScreen === "faults" || currentScreen === "fail") {
     const faults = vState.faults || {};
     container.innerHTML = `
-      <div class="vhf-failure-panel">
-        <div class="vhf-align-title" style="margin-bottom:1.5rem; text-align:center;">VHF900 ALIGNMENT MODE FAILURE MESSAGES</div>
-        <div class="vhf-failure-line">
-          <div class="fl-key">LABEL 350 DATA</div>
-          <div class="fl-val">= &nbsp; ${faults.label_350_raw && faults.label_350_raw !== "00000000" ? faults.label_350_raw : ""}</div>
+      <div class="vhf-failure-panel" style="max-width:720px; margin:1.5rem auto; border:2px solid var(--border-strong); border-radius:var(--radius); padding:28px 36px; background:var(--surface);">
+        <div class="vhf-align-title" style="margin-bottom:1.75rem; text-align:center; font-weight:700; font-size:15px; letter-spacing:1px;">VHF900 ALIGNMENT MODE FAILURE MESSAGES</div>
+        <div class="vhf-failure-line" style="display:flex; margin:14px 0; font-family:var(--mono); font-size:14px;">
+          <div class="fl-key" style="width:230px; font-weight:600; color:var(--text-2);">LABEL 350 DATA</div>
+          <div class="fl-val" style="font-weight:700; color:var(--text);">= &nbsp; ${faults.label_350_raw && faults.label_350_raw !== "00000000" ? faults.label_350_raw : ""}</div>
         </div>
-        <div class="vhf-failure-line">
-          <div class="fl-key">FAULT CODE &nbsp;&nbsp;&nbsp; 1</div>
-          <div class="fl-val">= &nbsp; ${faults.code1 && faults.code1 !== "NONE" ? faults.code1 : ""}</div>
+        <div style="margin:16px 0;"></div>
+        <div class="vhf-failure-line" style="display:flex; margin:10px 0; font-family:var(--mono); font-size:14px;">
+          <div class="fl-key" style="width:230px; font-weight:600; color:var(--text-2);">FAULT CODE &nbsp;&nbsp;&nbsp; 1</div>
+          <div class="fl-val" style="font-weight:700; color:var(--text);">= &nbsp; ${faults.code1 && faults.code1 !== "NONE" ? faults.code1 : ""}</div>
         </div>
-        <div class="vhf-failure-line">
-          <div class="fl-key">FAULT MESSAGE &nbsp; 1</div>
-          <div class="fl-val">= &nbsp; ${faults.msg1 && faults.msg1 !== "NO FAULT DETECTED" ? faults.msg1 : ""}</div>
+        <div class="vhf-failure-line" style="display:flex; margin:10px 0; font-family:var(--mono); font-size:14px;">
+          <div class="fl-key" style="width:230px; font-weight:600; color:var(--text-2);">FAULT MESSAGE &nbsp; 1</div>
+          <div class="fl-val" style="font-weight:700; color:var(--text);">= &nbsp; ${faults.msg1 && faults.msg1 !== "NO FAULT DETECTED" ? faults.msg1 : ""}</div>
         </div>
-        <div style="margin:1rem 0;"></div>
-        <div class="vhf-failure-line">
-          <div class="fl-key">FAULT CODE &nbsp;&nbsp;&nbsp; 2</div>
-          <div class="fl-val">= &nbsp; ${faults.code2 && faults.code2 !== "NONE" ? faults.code2 : ""}</div>
+        <div style="margin:20px 0;"></div>
+        <div class="vhf-failure-line" style="display:flex; margin:10px 0; font-family:var(--mono); font-size:14px;">
+          <div class="fl-key" style="width:230px; font-weight:600; color:var(--text-2);">FAULT CODE &nbsp;&nbsp;&nbsp; 2</div>
+          <div class="fl-val" style="font-weight:700; color:var(--text);">= &nbsp; ${faults.code2 && faults.code2 !== "NONE" ? faults.code2 : ""}</div>
         </div>
-        <div class="vhf-failure-line">
-          <div class="fl-key">FAULT MESSAGE &nbsp; 2</div>
-          <div class="fl-val">= &nbsp; ${faults.msg2 && faults.msg2 !== "NO FAULT DETECTED" ? faults.msg2 : ""}</div>
+        <div class="vhf-failure-line" style="display:flex; margin:10px 0; font-family:var(--mono); font-size:14px;">
+          <div class="fl-key" style="width:230px; font-weight:600; color:var(--text-2);">FAULT MESSAGE &nbsp; 2</div>
+          <div class="fl-val" style="font-weight:700; color:var(--text);">= &nbsp; ${faults.msg2 && faults.msg2 !== "NO FAULT DETECTED" ? faults.msg2 : ""}</div>
         </div>
-        ${renderBannerHtml()}
+        <div style="margin:28px 0 10px 0;">
+          ${renderBannerHtml()}
+        </div>
       </div>
-      <button type="button" class="vhf-menu-btn" id="btn-menu-ret" style="max-width:200px; margin:1.25rem auto 0 auto; display:flex;">VHF900<br>MENU</button>
+      <div style="display:flex; justify-content:center; margin-top:1.25rem;">
+        <button type="button" class="vhf-menu-btn" id="btn-menu-ret" style="width:160px; height:50px;">VHF900<br>MENU</button>
+      </div>
     `;
 
     p.appendChild(container);
