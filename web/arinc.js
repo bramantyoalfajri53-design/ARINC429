@@ -3909,6 +3909,7 @@ function renderCmcChannelsTab(c, r, s) {
   }
 
 
+
 // State objects
 const standardLruState = {
   activeSlot: 0,
@@ -3957,8 +3958,29 @@ const vhfAlignState = {
 // 1. SELECT LRU TO BE TESTED: (Avionics LRU Menu)
 // ============================================================================
 function renderLruPicker(r, s) {
+  const p = el("div", "panel");
+  p.style.maxWidth = "1060px";
+  p.style.margin = "0 auto";
+
+  const toolbar = el("div", "lru-toolbar");
+  toolbar.style.display = "flex";
+  toolbar.style.justifyContent = "space-between";
+  toolbar.style.alignItems = "center";
+  toolbar.style.marginBottom = "1rem";
+  toolbar.style.flexWrap = "nowrap";
+  toolbar.style.gap = "12px";
+  toolbar.innerHTML = `
+    <div style="min-width:0; flex-shrink:1;">
+      <div class="panel-title" style="margin-bottom:0.2rem; white-space:nowrap;">SELECT LRU TO BE TESTED:</div>
+      <p class="muted" style="margin:0; font-size:12.5px; white-space:nowrap;">Aeroflex / JcAIR T1200B Avionics Characteristic Set</p>
+    </div>
+    <div style="display:flex; gap:8px; align-items:center; flex-wrap:nowrap; flex-shrink:0;">
+      <button type="button" class="btn btn-ghost btn-sm" id="btn-lru-ret-mode" style="white-space:nowrap;">&lt; Operating Modes</button>
+    </div>
+  `;
+  p.appendChild(toolbar);
+
   const container = el("div", "lru-selector-dynapro");
-  container.innerHTML = `<div class="lru-selector-title">SELECT LRU TO BE TESTED:</div>`;
 
   const catalog = s.catalog || [];
   const findItem = (id) => catalog.find((c) => c.id === id) || { id, char: id, title: id, kind: "lru" };
@@ -4009,7 +4031,7 @@ function renderLruPicker(r, s) {
   tcBox.innerHTML = `
     <div class="tc-title">TIME CONSTANT</div>
     <div class="tc-sub">VOR ILS ADF FILTER</div>
-    <div class="tc-val" id="tc-val-display">${curTc === 0 ? "OFF" : curTc + " s"}</div>
+    <div class="tc-val ${curTc > 0 ? "active-filter" : ""}" id="tc-val-display">${curTc === 0 ? "OFF" : curTc + " s"}</div>
   `;
   const tcSteps = [0, 0.4, 0.8, 1.6, 3.2, 6.4, 12.8];
   tcBox.addEventListener("click", async () => {
@@ -4040,15 +4062,49 @@ function renderLruPicker(r, s) {
   row4.appendChild(btn579);
   container.appendChild(row4);
 
-  // Return button
+  p.appendChild(container);
+
+  // Return button at bottom
   const retBtn = el("button", "btn btn-ghost");
   retBtn.type = "button";
   retBtn.style.marginTop = "0.75rem";
   retBtn.textContent = "← RETURN TO OPERATING MODE";
   retBtn.addEventListener("click", () => popScreen());
-  container.appendChild(retBtn);
+  p.appendChild(retBtn);
 
-  r.appendChild(container);
+  // Event listener for top return button
+  const topRet = toolbar.querySelector("#btn-lru-ret-mode");
+  if (topRet) topRet.addEventListener("click", () => popScreen());
+
+  // Custom LRUs (if any exist)
+  ensureProfiles().then((list) => {
+    const custom = (list || []).filter((pr) => !pr.catalog);
+    if (custom.length) {
+      const customTitle = el("div", "panel-title");
+      customTitle.textContent = "Custom LRUs";
+      customTitle.style.margin = "1.5rem 0 .5rem";
+      p.appendChild(customTitle);
+      const grid = el("div", "mode-grid");
+      custom.forEach((prof) => {
+        const card = el("div", "mode-card");
+        const tags = (prof.labels || []).slice(0, 4).map((l) => `<span class="chan-card-map">${l}</span>`).join(" ");
+        card.innerHTML = `<div class="tag">${prof.funct || prof.id}</div><h2>${prof.name}</h2>
+          <p>TX CH ${prof.tx_ch || prof.bus || "A"} · RX CH ${prof.rx_ch || prof.bus || "A"} · ${prof.characteristic || "ARINC"} · labels ${tags}</p>
+          <div class="card-actions">
+            <button type="button" class="btn btn-sm" data-act="use">Use</button>
+            <button type="button" class="btn btn-sm btn-ghost" data-act="edit">Edit</button>
+            <button type="button" class="btn btn-sm btn-ghost" data-act="del">Delete</button>
+          </div>`;
+        card.querySelector("[data-act=use]").addEventListener("click", (ev) => { ev.stopPropagation(); applyProfile(prof.id); });
+        card.querySelector("[data-act=edit]").addEventListener("click", (ev) => { ev.stopPropagation(); openLruForm(prof.id); });
+        card.querySelector("[data-act=del]").addEventListener("click", (ev) => { ev.stopPropagation(); deleteLru(prof.id, prof.name); });
+        grid.appendChild(card);
+      });
+      p.appendChild(grid);
+    }
+  }).catch(() => {});
+
+  r.appendChild(p);
 }
 
 // ============================================================================
@@ -4150,19 +4206,36 @@ function renderStandardLru(r, s) {
     }
   };
 
-  const container = el("div", "dynapro-dme-crt dynapro-chassis");
-  container.style.maxWidth = "1060px";
-  container.style.margin = "0 auto";
+  const p = el("div", "panel");
+  p.style.maxWidth = "1060px";
+  p.style.margin = "0 auto";
+
+  const toolbar = el("div", "lru-toolbar");
+  toolbar.style.display = "flex";
+  toolbar.style.justifyContent = "space-between";
+  toolbar.style.alignItems = "center";
+  toolbar.style.marginBottom = "0.75rem";
+  toolbar.style.flexWrap = "nowrap";
+  toolbar.style.gap = "12px";
+  toolbar.innerHTML = `
+    <div style="min-width:0; flex-shrink:1;">
+      <div class="panel-title" style="margin-bottom:0.2rem; white-space:nowrap;">${isVdr ? "750 VDR FORMAT" : pid.toUpperCase() + " FORMAT"}</div>
+      <p class="muted" style="margin:0; font-size:11.5px; white-space:nowrap;">Standard LRU Format (ARINC 429 Low/High Speed Mode)</p>
+    </div>
+    <div style="display:flex; gap:8px; align-items:center; flex-wrap:nowrap; flex-shrink:0;">
+      <span class="pill pill-run" style="white-space:nowrap;">BUS TX-${txCh} &bull; RX-${rxCh}</span>
+      <button type="button" class="btn btn-ghost btn-sm" id="btn-std-lru-back" style="white-space:nowrap;">&lt; LRU Select</button>
+    </div>
+  `;
+  p.appendChild(toolbar);
+
+  const container = el("div", "dme-hmi-workbench dynapro-dme-crt");
+  container.style.width = "100%";
+  p.appendChild(container);
 
   // Header row
-  const hdr = el("div", "dynapro-screen-header dynapro-dme-hdr-line");
-  hdr.style.display = "flex";
-  hdr.style.justifyContent = "space-between";
-  hdr.style.alignItems = "center";
-  hdr.style.marginBottom = "0.75rem";
-  hdr.style.fontSize = "0.95rem";
-  hdr.style.fontFamily = "var(--font-mono, monospace)";
-  hdr.style.color = "#33ff33";
+  const hdr = el("div", "dme-hmi-hdr-line dynapro-dme-hdr-line");
+  hdr.style.color = "var(--text)";
   hdr.innerHTML = `
     <div id="std-lru-hdr-tx">CHANNEL ${txCh} &mdash; TRANSMITTED WORDS &nbsp;&nbsp;&nbsp; ${isVdr ? "VDR SAL, DSCR DAT1 &nbsp;&nbsp;&nbsp; " : ""}SLOT <span class="dme-inv-box dynapro-inv-box" id="std-lru-slot-box" style="cursor:pointer; vertical-align:middle;">${curSlotIdx}</span></div>
     <div id="std-lru-hdr-rx">CHANNEL ${rxCh} &mdash; RECEIVED WORDS</div>
@@ -4252,25 +4325,21 @@ function renderStandardLru(r, s) {
   container.appendChild(tableWrap);
 
   // Softkeys (7 full width columns)
-  const skGrid = el("div", "dme-standard-softkeys");
-  skGrid.style.display = "grid";
-  skGrid.style.gridTemplateColumns = "repeat(7, 1fr)";
-  skGrid.style.gap = "6px";
-  skGrid.style.width = "100%";
+  const skGrid = el("div", "dme-softkeys-row dynapro-softkeys-row dme-standard-softkeys");
 
-  const bitRateLabel = isVdr ? "HI SPD BIT RT" : "BIT RATE";
+  const bitRateLabel = isVdr ? "HI SPD<br>BIT RT" : "BIT<br>RATE";
   const bitRateVal = `${curRate} KBPS`;
   const txToggleLabel = isVdr ? (txCh === "C" ? "TX-C / [TX-D]" : "[TX-C] / TX-D") : (txCh === "A" ? "TX-A / [TX-B]" : "[TX-A] / TX-B");
   const rxToggleLabel = rxCh === "A" ? "RX-A / [RX-B]" : "[RX-A] / RX-B";
 
   skGrid.innerHTML = `
-    <div class="std-sk-col"><button type="button" class="dme-softkey-btn" id="btn-std-cursor"><div class="std-sk-top-label">DISP</div><div class="std-sk-top-label">CURSOR</div></button></div>
-    <div class="std-sk-col"><button type="button" class="dme-softkey-btn" id="btn-std-step"><div class="std-sk-top-label">DATA</div><div class="std-sk-top-label">STEP</div></button></div>
-    <div class="std-sk-col"><button type="button" class="dme-softkey-btn dme-softkey-split" id="btn-std-dir"><div class="dme-softkey-half ${stepDir === "INC" ? "active" : ""}" id="btn-std-inc">INC.</div><div class="dme-softkey-half ${stepDir === "DECR" ? "active" : ""}" id="btn-std-decr">DECR</div></button></div>
-    <div class="std-sk-col"><button type="button" class="dme-softkey-btn" id="btn-std-more"><div class="std-sk-top-label">MORE</div><div class="std-sk-top-label">WORDS</div></button></div>
-    <div class="std-sk-col"><button type="button" class="dme-softkey-btn" id="btn-std-bitrate"><div class="std-sk-top-label">${bitRateLabel}</div><div class="std-sk-top-label" id="std-rate-display">${bitRateVal}</div></button></div>
-    <div class="std-sk-col"><button type="button" class="dme-softkey-btn" id="btn-std-txch"><div class="std-sk-top-label">${isVdr ? "TX-C / TX-D" : "TX-A / TX-B"}</div><div class="std-sk-top-label" id="std-tx-display">${txToggleLabel}</div></button></div>
-    <div class="std-sk-col"><button type="button" class="dme-softkey-btn" id="btn-std-rxch"><div class="std-sk-top-label">RX-A / RX-B</div><div class="std-sk-top-label" id="std-rx-display">${rxToggleLabel}</div></button></div>
+    <div class="std-sk-col"><div class="std-sk-top-label">&nbsp;</div><button type="button" class="dme-softkey-btn dynapro-softkey-btn dme-softkey-single" id="btn-std-cursor"><div class="dme-softkey-label">DISP<br>CURSOR</div></button></div>
+    <div class="std-sk-col"><div class="std-sk-top-label">&nbsp;</div><button type="button" class="dme-softkey-btn dynapro-softkey-btn dme-softkey-single" id="btn-std-step"><div class="dme-softkey-label">DATA<br>STEP</div></button></div>
+    <div class="std-sk-col"><div class="std-sk-top-label">&nbsp;</div><button type="button" class="dme-softkey-btn dynapro-softkey-btn dme-softkey-split" id="btn-std-dir"><div class="dme-softkey-half dynapro-softkey-half ${stepDir === "INC" ? "active" : ""}" id="btn-std-inc">INC.</div><div class="dme-softkey-divider dynapro-softkey-divider"></div><div class="dme-softkey-half dynapro-softkey-half ${stepDir === "DECR" ? "active" : ""}" id="btn-std-decr">DECR</div></button></div>
+    <div class="std-sk-col"><div class="std-sk-top-label">&nbsp;</div><button type="button" class="dme-softkey-btn dynapro-softkey-btn dme-softkey-single" id="btn-std-more"><div class="dme-softkey-label">MORE<br>WORDS</div></button></div>
+    <div class="std-sk-col"><div class="std-sk-top-label" id="std-rate-display">${bitRateVal}</div><button type="button" class="dme-softkey-btn dynapro-softkey-btn dme-softkey-single" id="btn-std-bitrate"><div class="dme-softkey-label">${bitRateLabel}</div></button></div>
+    <div class="std-sk-col"><div class="std-sk-top-label" id="std-tx-display">${txToggleLabel}</div><button type="button" class="dme-softkey-btn dynapro-softkey-btn dme-softkey-single" id="btn-std-txch"><div class="dme-softkey-label">${isVdr ? "TX-C /<br>TX-D" : "TX-A /<br>TX-B"}</div></button></div>
+    <div class="std-sk-col"><div class="std-sk-top-label" id="std-rx-display">${rxToggleLabel}</div><button type="button" class="dme-softkey-btn dynapro-softkey-btn dme-softkey-single" id="btn-std-rxch"><div class="dme-softkey-label">RX-A /<br>RX-B</div></button></div>
   `;
   container.appendChild(skGrid);
 
@@ -4280,9 +4349,12 @@ function renderStandardLru(r, s) {
   retBtn.style.marginTop = "0.75rem";
   retBtn.textContent = "← AVIONICS LRU MENU";
   retBtn.addEventListener("click", () => pushScreen("avionics_lru"));
-  container.appendChild(retBtn);
+  p.appendChild(retBtn);
 
-  r.appendChild(container);
+  const topBack = toolbar.querySelector("#btn-std-lru-back");
+  if (topBack) topBack.addEventListener("click", () => pushScreen("avionics_lru"));
+
+  r.appendChild(p);
 
   // Event bindings
   // Slot box click
@@ -4459,23 +4531,40 @@ function patchStandardLruRx(s) {
 // 4. renderHfScreen & patchHfRx (Dedicated Dual-Word HF Comm)
 // ============================================================================
 function renderHfScreen(r, s) {
-  const container = el("div", "dynapro-dme-crt dynapro-chassis");
-  container.style.maxWidth = "1060px";
-  container.style.margin = "0 auto";
+  const p = el("div", "panel");
+  p.style.maxWidth = "1060px";
+  p.style.margin = "0 auto";
 
   const txCh = hfScreenState.txBus || "A";
   const rxCh = hfScreenState.rxBus || "B";
   const stepDir = hfScreenState.stepDir || "INC";
 
+  const toolbar = el("div", "lru-toolbar");
+  toolbar.style.display = "flex";
+  toolbar.style.justifyContent = "space-between";
+  toolbar.style.alignItems = "center";
+  toolbar.style.marginBottom = "0.75rem";
+  toolbar.style.flexWrap = "nowrap";
+  toolbar.style.gap = "12px";
+  toolbar.innerHTML = `
+    <div style="min-width:0; flex-shrink:1;">
+      <div class="panel-title" style="margin-bottom:0.2rem; white-space:nowrap;">HF COMM FORMAT</div>
+      <p class="muted" style="margin:0; font-size:11.5px; white-space:nowrap;">ARINC 719 High Frequency Communication Transceiver (Dual Word Mode)</p>
+    </div>
+    <div style="display:flex; gap:8px; align-items:center; flex-wrap:nowrap; flex-shrink:0;">
+      <span class="pill pill-run" style="white-space:nowrap;">BUS TX-${txCh} &bull; RX-${rxCh}</span>
+      <button type="button" class="btn btn-ghost btn-sm" id="btn-hf-back" style="white-space:nowrap;">&lt; LRU Select</button>
+    </div>
+  `;
+  p.appendChild(toolbar);
+
+  const container = el("div", "dme-hmi-workbench dynapro-dme-crt");
+  container.style.width = "100%";
+  p.appendChild(container);
+
   // Header ONLY "HF COMM" (no slot box)
-  const hdr = el("div", "dynapro-screen-header dynapro-dme-hdr-line");
-  hdr.style.display = "flex";
-  hdr.style.justifyContent = "space-between";
-  hdr.style.alignItems = "center";
-  hdr.style.marginBottom = "0.75rem";
-  hdr.style.fontSize = "1.05rem";
-  hdr.style.fontFamily = "var(--font-mono, monospace)";
-  hdr.style.color = "#33ff33";
+  const hdr = el("div", "dme-hmi-hdr-line dynapro-dme-hdr-line");
+  hdr.style.color = "var(--text)";
   hdr.innerHTML = `
     <div>HF COMM &mdash; CHANNEL ${txCh} TRANSMIT</div>
     <div>CHANNEL ${rxCh} &mdash; RECEIVED WORDS</div>
@@ -4559,23 +4648,19 @@ function renderHfScreen(r, s) {
   container.appendChild(tableWrap);
 
   // Softkeys (6 bottom softkeys, matching T1200 manual without MORE WORDS)
-  const skGrid = el("div", "dme-standard-softkeys");
-  skGrid.style.display = "grid";
-  skGrid.style.gridTemplateColumns = "repeat(7, 1fr)";
-  skGrid.style.gap = "6px";
-  skGrid.style.width = "100%";
+  const skGrid = el("div", "dme-softkeys-row dynapro-softkeys-row dme-standard-softkeys");
 
   const txToggleLabel = txCh === "A" ? "TX-A / [TX-B]" : "[TX-A] / TX-B";
   const rxToggleLabel = rxCh === "A" ? "[RX-A] / RX-B" : "RX-A / [RX-B]";
 
   skGrid.innerHTML = `
-    <div class="std-sk-col"><button type="button" class="dme-softkey-btn" id="btn-hf-cursor"><div class="std-sk-top-label">DISP</div><div class="std-sk-top-label">CURSOR</div></button></div>
-    <div class="std-sk-col"><button type="button" class="dme-softkey-btn" id="btn-hf-step"><div class="std-sk-top-label">DATA</div><div class="std-sk-top-label">STEP</div></button></div>
-    <div class="std-sk-col"><button type="button" class="dme-softkey-btn dme-softkey-split" id="btn-hf-dir"><div class="dme-softkey-half ${stepDir === "INC" ? "active" : ""}" id="btn-hf-inc">INC.</div><div class="dme-softkey-half ${stepDir === "DECR" ? "active" : ""}" id="btn-hf-decr">DECR</div></button></div>
-    <div class="std-sk-col"><button type="button" class="dme-softkey-btn" style="opacity:0.3; pointer-events:none;"><div class="std-sk-top-label">&nbsp;</div><div class="std-sk-top-label">&nbsp;</div></button></div>
-    <div class="std-sk-col"><button type="button" class="dme-softkey-btn" id="btn-hf-bitrate"><div class="std-sk-top-label">BIT RATE</div><div class="std-sk-top-label">${hfScreenState.bitRate} KBPS</div></button></div>
-    <div class="std-sk-col"><button type="button" class="dme-softkey-btn" id="btn-hf-txch"><div class="std-sk-top-label">TX-A / TX-B</div><div class="std-sk-top-label">${txToggleLabel}</div></button></div>
-    <div class="std-sk-col"><button type="button" class="dme-softkey-btn" id="btn-hf-rxch"><div class="std-sk-top-label">RX-A / RX-B</div><div class="std-sk-top-label">${rxToggleLabel}</div></button></div>
+    <div class="std-sk-col"><div class="std-sk-top-label">&nbsp;</div><button type="button" class="dme-softkey-btn dynapro-softkey-btn dme-softkey-single" id="btn-hf-cursor"><div class="dme-softkey-label">DISP<br>CURSOR</div></button></div>
+    <div class="std-sk-col"><div class="std-sk-top-label">&nbsp;</div><button type="button" class="dme-softkey-btn dynapro-softkey-btn dme-softkey-single" id="btn-hf-step"><div class="dme-softkey-label">DATA<br>STEP</div></button></div>
+    <div class="std-sk-col"><div class="std-sk-top-label">&nbsp;</div><button type="button" class="dme-softkey-btn dynapro-softkey-btn dme-softkey-split" id="btn-hf-dir"><div class="dme-softkey-half dynapro-softkey-half ${stepDir === "INC" ? "active" : ""}" id="btn-hf-inc">INC.</div><div class="dme-softkey-divider dynapro-softkey-divider"></div><div class="dme-softkey-half dynapro-softkey-half ${stepDir === "DECR" ? "active" : ""}" id="btn-hf-decr">DECR</div></button></div>
+    <div class="std-sk-col"><div class="std-sk-top-label">&nbsp;</div><button type="button" class="dme-softkey-btn dynapro-softkey-btn dme-softkey-single" style="opacity:0.2; pointer-events:none;"><div class="dme-softkey-label">&nbsp;</div></button></div>
+    <div class="std-sk-col"><div class="std-sk-top-label" id="hf-rate-display">${hfScreenState.bitRate.toFixed(1)} KBPS</div><button type="button" class="dme-softkey-btn dynapro-softkey-btn dme-softkey-single" id="btn-hf-bitrate"><div class="dme-softkey-label">BIT<br>RATE</div></button></div>
+    <div class="std-sk-col"><div class="std-sk-top-label" id="hf-tx-display">${txToggleLabel}</div><button type="button" class="dme-softkey-btn dynapro-softkey-btn dme-softkey-single" id="btn-hf-txch"><div class="dme-softkey-label">TX-A /<br>TX-B</div></button></div>
+    <div class="std-sk-col"><div class="std-sk-top-label" id="hf-rx-display">${rxToggleLabel}</div><button type="button" class="dme-softkey-btn dynapro-softkey-btn dme-softkey-single" id="btn-hf-rxch"><div class="dme-softkey-label">RX-A /<br>RX-B</div></button></div>
   `;
   container.appendChild(skGrid);
 
@@ -4585,9 +4670,12 @@ function renderHfScreen(r, s) {
   retBtn.style.marginTop = "0.75rem";
   retBtn.textContent = "← AVIONICS LRU MENU";
   retBtn.addEventListener("click", () => pushScreen("avionics_lru"));
-  container.appendChild(retBtn);
+  p.appendChild(retBtn);
 
-  r.appendChild(container);
+  const topBack = toolbar.querySelector("#btn-hf-back");
+  if (topBack) topBack.addEventListener("click", () => pushScreen("avionics_lru"));
+
+  r.appendChild(p);
 
   // Save backend helper
   const saveHfConfig = async () => {
@@ -4738,6 +4826,29 @@ function renderVhfAlign(r, s) {
   const vState = (s && s.vhf_align) || {};
   const currentScreen = vhfAlignState.currentScreen || "menu";
 
+  const p = el("div", "panel");
+  p.style.maxWidth = "1060px";
+  p.style.margin = "0 auto";
+
+  const toolbar = el("div", "lru-toolbar");
+  toolbar.style.display = "flex";
+  toolbar.style.justifyContent = "space-between";
+  toolbar.style.alignItems = "center";
+  toolbar.style.marginBottom = "0.75rem";
+  toolbar.style.flexWrap = "nowrap";
+  toolbar.style.gap = "12px";
+  toolbar.innerHTML = `
+    <div style="min-width:0; flex-shrink:1;">
+      <div class="panel-title" style="margin-bottom:0.2rem; white-space:nowrap;">COLLINS VHF-900 ALIGNMENT MODE</div>
+      <p class="muted" style="margin:0; font-size:11.5px; white-space:nowrap;">ARINC 429 Channel C High-Speed (100 kbps) Alignment & Calibration</p>
+    </div>
+    <div style="display:flex; gap:8px; align-items:center; flex-wrap:nowrap; flex-shrink:0;">
+      <span class="pill pill-run" style="white-space:nowrap;">BUS TX-C &bull; RX-C &bull; 100 KBPS</span>
+      <button type="button" class="btn btn-ghost btn-sm" id="btn-vhf-top-back" style="white-space:nowrap;">&lt; LRU Select</button>
+    </div>
+  `;
+  p.appendChild(toolbar);
+
   const container = el("div", "vhf-align-container");
 
   // Echo Banner helper
@@ -4766,7 +4877,10 @@ function renderVhfAlign(r, s) {
       <button type="button" class="btn btn-ghost" id="btn-vhf-back" style="margin-top:1.25rem;">← RETURN TO AVIONICS LRU</button>
     `;
 
-    r.appendChild(container);
+    p.appendChild(container);
+    const topBack = toolbar.querySelector('#btn-vhf-top-back');
+    if (topBack) topBack.addEventListener('click', () => pushScreen('avionics_lru'));
+    r.appendChild(p);
 
     container.querySelector("#btn-vhf-tfm").addEventListener("click", () => {
       vhfAlignState.currentScreen = "tfm";
@@ -4884,6 +4998,7 @@ function renderVhfAlign(r, s) {
             <div class="vhf-sub-title">CURRENT LRU FREQUENCY</div>
             <div class="vhf-val-display-row">
               <div class="vhf-freq-box">${renderFreqWithCursor(freqStr, freqPos)}</div>
+              <div class="vhf-cursor-row" style="letter-spacing:3px; padding:0 14px;">${renderFreqCursorRow(freqStr, freqPos)}</div>
             </div>
             <div class="vhf-btn-group">
               <button type="button" class="vhf-sub-btn" id="btn-freq-left">LEFT</button>
@@ -4905,7 +5020,10 @@ function renderVhfAlign(r, s) {
       ${renderBannerHtml()}
     `;
 
-    r.appendChild(container);
+    p.appendChild(container);
+    const topBack = toolbar.querySelector('#btn-vhf-top-back');
+    if (topBack) topBack.addEventListener('click', () => pushScreen('avionics_lru'));
+    r.appendChild(p);
     attachVhfScreenHandlers(container, r, "tfm");
     return;
   }
@@ -4961,6 +5079,7 @@ function renderVhfAlign(r, s) {
             <div class="vhf-sub-title">CURRENT LRU FREQUENCY</div>
             <div class="vhf-val-display-row">
               <div class="vhf-freq-box">${renderFreqWithCursor(freqStr, freqPos)}</div>
+              <div class="vhf-cursor-row" style="letter-spacing:3px; padding:0 14px;">${renderFreqCursorRow(freqStr, freqPos)}</div>
             </div>
             <div class="vhf-btn-group">
               <button type="button" class="vhf-sub-btn" id="btn-freq-left">LEFT</button>
@@ -4980,7 +5099,10 @@ function renderVhfAlign(r, s) {
       ${renderBannerHtml()}
     `;
 
-    r.appendChild(container);
+    p.appendChild(container);
+    const topBack = toolbar.querySelector('#btn-vhf-top-back');
+    if (topBack) topBack.addEventListener('click', () => pushScreen('avionics_lru'));
+    r.appendChild(p);
     attachVhfScreenHandlers(container, r, "cal");
     return;
   }
@@ -4992,34 +5114,37 @@ function renderVhfAlign(r, s) {
     const faults = vState.faults || {};
     container.innerHTML = `
       <div class="vhf-failure-panel">
-        <div class="vhf-align-title" style="margin-bottom:1.5rem; text-align:left;">VHF900 ALIGNMENT MODE FAILURE MESSAGES</div>
+        <div class="vhf-align-title" style="margin-bottom:1.5rem; text-align:center;">VHF900 ALIGNMENT MODE FAILURE MESSAGES</div>
         <div class="vhf-failure-line">
           <div class="fl-key">LABEL 350 DATA</div>
-          <div class="fl-val">= &nbsp; ${faults.label_350_raw || "00000000"}</div>
+          <div class="fl-val">= &nbsp; ${faults.label_350_raw && faults.label_350_raw !== "00000000" ? faults.label_350_raw : ""}</div>
         </div>
         <div class="vhf-failure-line">
           <div class="fl-key">FAULT CODE &nbsp;&nbsp;&nbsp; 1</div>
-          <div class="fl-val">= &nbsp; ${faults.code1 || "NONE"}</div>
+          <div class="fl-val">= &nbsp; ${faults.code1 && faults.code1 !== "NONE" ? faults.code1 : ""}</div>
         </div>
         <div class="vhf-failure-line">
           <div class="fl-key">FAULT MESSAGE &nbsp; 1</div>
-          <div class="fl-val">= &nbsp; ${faults.msg1 || "NO FAULT DETECTED"}</div>
+          <div class="fl-val">= &nbsp; ${faults.msg1 && faults.msg1 !== "NO FAULT DETECTED" ? faults.msg1 : ""}</div>
         </div>
         <div style="margin:1rem 0;"></div>
         <div class="vhf-failure-line">
           <div class="fl-key">FAULT CODE &nbsp;&nbsp;&nbsp; 2</div>
-          <div class="fl-val">= &nbsp; ${faults.code2 || "NONE"}</div>
+          <div class="fl-val">= &nbsp; ${faults.code2 && faults.code2 !== "NONE" ? faults.code2 : ""}</div>
         </div>
         <div class="vhf-failure-line">
           <div class="fl-key">FAULT MESSAGE &nbsp; 2</div>
-          <div class="fl-val">= &nbsp; ${faults.msg2 || "NO FAULT DETECTED"}</div>
+          <div class="fl-val">= &nbsp; ${faults.msg2 && faults.msg2 !== "NO FAULT DETECTED" ? faults.msg2 : ""}</div>
         </div>
+        ${renderBannerHtml()}
       </div>
-      <button type="button" class="vhf-menu-btn" id="btn-menu-ret" style="max-width:200px;">VHF900<br>MENU</button>
-      ${renderBannerHtml()}
+      <button type="button" class="vhf-menu-btn" id="btn-menu-ret" style="max-width:200px; margin-top:1rem;">VHF900<br>MENU</button>
     `;
 
-    r.appendChild(container);
+    p.appendChild(container);
+    const topBack = toolbar.querySelector('#btn-vhf-top-back');
+    if (topBack) topBack.addEventListener('click', () => pushScreen('avionics_lru'));
+    r.appendChild(p);
     container.querySelector("#btn-menu-ret").addEventListener("click", () => {
       vhfAlignState.currentScreen = "menu";
       renderVhfAlign(r, snap);
@@ -5044,6 +5169,23 @@ function renderFreqWithCursor(freqStr, pos) {
     } else {
       const isAct = charIdx === pos;
       out += `<span class="dme-cursor-bit ${isAct ? "cursor-active-bit" : ""}">${c}</span>`;
+      charIdx++;
+    }
+  }
+  return out;
+}
+
+function renderFreqCursorRow(freqStr, pos) {
+  const chars = freqStr.split("");
+  let charIdx = 0;
+  let out = "";
+  for (let i = 0; i < chars.length; i++) {
+    const c = chars[i];
+    if (c === ".") {
+      out += `<span class="dme-cursor-bit" style="visibility:hidden;">.</span>`;
+    } else {
+      const isAct = charIdx === pos;
+      out += `<span class="dme-cursor-bit" style="${isAct ? 'color:var(--accent);font-weight:bold;' : 'visibility:hidden;'}">↑</span>`;
       charIdx++;
     }
   }
