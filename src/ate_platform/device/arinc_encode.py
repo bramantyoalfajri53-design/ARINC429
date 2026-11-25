@@ -110,6 +110,10 @@ def resolve_ssm(ssm: int | str, encoding: str = "bnr") -> int:
     if not isinstance(ssm, str):
         return int(ssm) & 0x3
     key = ssm.strip().upper()
+    if key in {"00", "01", "10", "11"}:
+        return int(key, 2)
+    if key in {"0", "1", "2", "3"}:
+        return int(key)
     bcd = encoding.lower() in _BCD_SSM_ENCODINGS
     if key in {"NCD"}:
         return 1

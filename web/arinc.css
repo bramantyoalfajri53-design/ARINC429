@@ -2665,10 +2665,11 @@ tr.slot-off td { color: var(--muted); }
   display: flex;
   justify-content: center;
   font-family: var(--mono);
-  font-size: 1.15rem;
+  font-size: 1.4rem;
   color: var(--accent);
   margin-top: 1px;
   line-height: 1;
+  letter-spacing: 3px;
 }
 
 .vhf-btn-group {

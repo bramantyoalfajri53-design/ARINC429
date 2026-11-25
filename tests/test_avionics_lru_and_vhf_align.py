@@ -227,3 +227,45 @@ def test_api_hf_config_endpoint(client: TestClient):
     data = r.json()
     assert data["tx_ch"] == "A"
     assert data["rx_ch"] == "B"
+
+
+def test_vhf_align_ssm_sdi_cyclic_and_arinc_words(client: TestClient):
+    """Verify cyclic SSM and SDI transitions, and that ARINC words reflect bits 9-10 (SDI) and 29-30 (SSM)."""
+    for ssm in ["00", "01", "10", "11"]:
+        for sdi in ["00", "01", "10", "11"]:
+            r = client.post("/api/arinc/vhf-align/config", json={"ssm": ssm, "sdi": sdi})
+            assert r.status_code == 200
+            data = r.json()
+            assert data["ssm"] == ssm
+            assert data["sdi"] == sdi
+
+    # Check status snapshot
+    snap = client.get("/api/arinc/status").json()
+    assert "vhf_align" in snap
+    assert snap["vhf_align"]["ssm"] == "11"
+    assert snap["vhf_align"]["sdi"] == "11"
+
+
+def test_snapshot_latency_and_lightweight_payload(client: TestClient):
+    """Verify that snapshot payload is lightweight when not on vhf_align profile, and response time is low."""
+    t0 = time.time()
+    r = client.get("/api/arinc/status")
+    dt = time.time() - t0
+    assert r.status_code == 200
+    assert dt < 0.2
+    data = r.json()
+    v_align = data.get("vhf_align", {})
+    assert len(v_align.get("tfm_vars", [])) == 0
+    assert len(v_align.get("cal_vars", [])) == 0
+
+    # Now switch to vhf_align profile
+    r_apply = client.post("/api/arinc/profile/apply", json={"profile": "vhf_align"})
+    assert r_apply.status_code == 200
+
+    r_align = client.get("/api/arinc/status")
+    assert r_align.status_code == 200
+    data_align = r_align.json()
+    v_align_active = data_align.get("vhf_align", {})
+    assert len(v_align_active.get("tfm_vars", [])) == 40
+    assert len(v_align_active.get("cal_vars", [])) == 40
+

@@ -2011,24 +2011,28 @@ class ArincSession:
     def config_vhf_align(self, **kwargs: Any) -> dict[str, Any]:
         with self._lock:
             self.vhf900.update_config(**kwargs)
-            sl = self.tx["C"][0]
-            if sl and sl.enabled:
-                sdi_int = int(self.vhf900.sdi, 2) if self.vhf900.sdi.isdigit() else 0
-                spec = LabelSpec(
-                    label_octal="030",
-                    funct="VHF_FREQ",
-                    direction="tx",
-                    sdi=sdi_int,
-                    ssm=self.vhf900.ssm,
-                    parity="ODD",
-                    rate_ms=10,
-                    encoding="bcd",
-                    units="MHZ",
-                    bcd_scale=1000.0,
-                    bcd_digits=5,
-                    eng_default=self.vhf900.freq_mhz,
-                )
-                self._paint_slot(sl, spec, self.vhf900.freq_mhz, "vhf_align")
+            sdi_int = int(self.vhf900.sdi, 2) if (isinstance(self.vhf900.sdi, str) and self.vhf900.sdi.isdigit()) else (int(self.vhf900.sdi) if self.vhf900.sdi is not None else 0)
+            ssm_str = str(self.vhf900.ssm).zfill(2)[-2:]
+            for b in BUSES:
+                for sl in self.tx[b]:
+                    if sl and sl.enabled:
+                        lab = sl.label_octal or "030"
+                        if b == "C" or lab in {"030", "047", "130", "131"}:
+                            spec = LabelSpec(
+                                label_octal=lab,
+                                funct=sl.funct or "VHF_FREQ",
+                                direction="tx",
+                                sdi=sdi_int,
+                                ssm=ssm_str,
+                                parity=sl.parity or "ODD",
+                                rate_ms=sl.rate_ms or 10,
+                                encoding=sl.encoding or "bcd",
+                                units=sl.units or "MHZ",
+                                bcd_scale=1000.0,
+                                bcd_digits=5,
+                                eng_default=self.vhf900.freq_mhz,
+                            )
+                            self._paint_slot(sl, spec, self.vhf900.freq_mhz, "vhf_align")
             return self.vhf900.get_state(rx_bus_c=self.rx["C"])
 
     def start_vhf_checksum(self) -> dict[str, Any]:
@@ -2398,7 +2402,7 @@ class ArincSession:
                 "channel_activity": self.get_channel_activity(),
                 "lru_connection": self.check_lru_connected(self.active_lru_code or "709", bus="A"),
                 "simulation_override": self._sim_override,
-                "vhf_align": self.vhf900.get_state(rx_bus_c=self.rx["C"]),
+                "vhf_align": self.vhf900.get_state(rx_bus_c=self.rx["C"], lightweight=(self.active_profile != "vhf_align")),
             }
 
     def start(self) -> None:

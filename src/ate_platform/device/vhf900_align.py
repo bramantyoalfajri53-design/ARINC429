@@ -162,7 +162,7 @@ class Vhf900AlignManager:
         self.confirm_action: str | None = None
         self.confirm_ts: float = 0.0
 
-    def get_state(self, rx_bus_c: Any = None) -> dict[str, Any]:
+    def get_state(self, rx_bus_c: Any = None, lightweight: bool = False) -> dict[str, Any]:
         now = time.time()
 
         # Update checksum routine if running
@@ -189,6 +189,21 @@ class Vhf900AlignManager:
                 label_350_raw = raw350
                 fault_code_1 = (raw350 >> 10) & 0x1F
                 fault_code_2 = (raw350 >> 15) & 0x1F
+
+        if lightweight:
+            return {
+                "freq_mhz": self.freq_mhz,
+                "ssm": self.ssm,
+                "sdi": self.sdi,
+                "tx_inh": self.tx_inh,
+                "tx_phs": self.tx_phs,
+                "current_screen": self.current_screen,
+                "echo_ok": echo_ok,
+                "checksum_status": self.checksum_status,
+                "tfm_vars": [],
+                "cal_vars": [],
+                "faults": {},
+            }
 
         msg1 = FAULT_MESSAGES.get(fault_code_1, f"FAULT CODE {fault_code_1:02d}")
         msg2 = FAULT_MESSAGES.get(fault_code_2, f"FAULT CODE {fault_code_2:02d}")
