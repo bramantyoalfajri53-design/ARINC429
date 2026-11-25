@@ -3964,6 +3964,8 @@ const vhfAlignState = {
   confirmAction: null,
   confirmTimer: null,
 };
+let vhfChecksumTimer = null;
+let vhfChecksumCountdown = 0;
 
 // ============================================================================
 // 1. SELECT LRU TO BE TESTED: (Avionics LRU Menu)
@@ -4050,12 +4052,18 @@ function renderLruPicker(r, s) {
     let idx = tcSteps.findIndex((v) => Math.abs(v - cur) < 0.05);
     let nextIdx = (idx + 1) % tcSteps.length;
     let nextVal = tcSteps[nextIdx];
+    const valDisp = tcBox.querySelector("#tc-val-display");
+    if (valDisp) {
+      valDisp.textContent = nextVal === 0 ? "OFF" : nextVal + " s";
+      valDisp.classList.toggle("active-filter", nextVal > 0);
+    }
+    if (snap) snap.time_constant_s = nextVal;
     try {
       const updated = await api("/api/arinc/time-constant", {
         method: "POST",
         body: JSON.stringify({ seconds: nextVal }),
       });
-      render(updated);
+      if (snap) snap.time_constant_s = updated.time_constant_s != null ? updated.time_constant_s : nextVal;
     } catch (e) {
       alert(e.message);
     }
@@ -4172,6 +4180,207 @@ const OFFICIAL_LRU_NAMES = {
   vor_579: "579 VOR"
 };
 
+// Modal Keypad Dialog (Accessible to all LRU, HF, and DME screens)
+function showDmeKeypadModal({ title, value, type, hint, onApply }) {
+  const existing = document.getElementById("dynapro-modal-root");
+  if (existing) existing.remove();
+
+  const overlay = el("div", "dme-modal-overlay dynapro-modal-overlay");
+  overlay.id = "dynapro-modal-root";
+  const box = el("div", "dme-modal-box dynapro-modal-box");
+  box.innerHTML = `
+    <div class="dme-modal-title dynapro-modal-title">${title}</div>
+    <input type="text" class="dme-modal-input dynapro-modal-input" id="dynapro-modal-input" value="${value || ""}" autofocus />
+    ${hint ? `<div style="font-size:12px; margin-bottom:10px; color:var(--text-2); text-align:center;">${hint}</div>` : ""}
+    <div id="dynapro-modal-extra"></div>
+    <div class="dme-keypad-grid dynapro-keypad-grid" id="dynapro-modal-keypad"></div>
+    <div class="dme-modal-actions dynapro-modal-actions">
+      <button type="button" class="btn btn-ghost" id="dynapro-modal-cancel">Cancel</button>
+      <button type="button" class="btn" id="dynapro-modal-apply">Apply</button>
+    </div>
+  `;
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+
+  const input = box.querySelector("#dynapro-modal-input");
+  const kp = box.querySelector("#dynapro-modal-keypad");
+  const extra = box.querySelector("#dynapro-modal-extra");
+
+  const close = () => overlay.remove();
+  box.querySelector("#dynapro-modal-cancel").onclick = close;
+  box.querySelector("#dynapro-modal-apply").onclick = () => {
+    const val = input.value;
+    close();
+    if (onApply) onApply(val);
+  };
+
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      box.querySelector("#dynapro-modal-apply").click();
+    } else if (e.key === "Escape") {
+      close();
+    }
+  });
+
+  if (type === "pad") {
+    extra.innerHTML = `
+      <div style="font-size:11px; margin-bottom:8px; color:var(--text-2); text-align:center;">
+        Bit 6: IDENT | Bit 5: DISP | Bits 4-3: NAV | Bits 2-0: MODE
+      </div>
+      <div style="display:flex; justify-content:center; gap:6px; margin-bottom:12px;" id="pad-bits-row"></div>
+    `;
+    const row = extra.querySelector("#pad-bits-row");
+    const renderBits = () => {
+      row.innerHTML = "";
+      let padStr = (input.value || "0100001").padEnd(7, "0").slice(0, 7);
+      for (let i = 6; i >= 0; i--) {
+        const bitVal = padStr[6 - i] || "0";
+        const b = el("button", `dme-kp-btn dynapro-kp-btn ${bitVal === "1" ? "active" : ""}`);
+        b.type = "button";
+        b.style.minWidth = "38px";
+        b.style.background = bitVal === "1" ? "var(--accent)" : "var(--surface)";
+        b.style.color = bitVal === "1" ? "#ffffff" : "var(--text)";
+        b.innerHTML = `<span style="font-size:9px; display:block; opacity:0.8;">b${i}</span><strong>${bitVal}</strong>`;
+        b.onclick = () => {
+          const arr = padStr.split("");
+          arr[6 - i] = bitVal === "1" ? "0" : "1";
+          padStr = arr.join("");
+          input.value = padStr;
+          renderBits();
+        };
+        row.appendChild(b);
+      }
+    };
+    renderBits();
+    input.addEventListener("input", renderBits);
+
+    kp.innerHTML = `
+      <button type="button" class="dme-kp-btn dynapro-kp-btn" data-act="0">0</button>
+      <button type="button" class="dme-kp-btn dynapro-kp-btn" data-act="1">1</button>
+      <button type="button" class="dme-kp-btn dynapro-kp-btn" data-act="bs">&larr;</button>
+      <button type="button" class="dme-kp-btn dynapro-kp-btn" data-act="def">DEFAULT</button>
+    `;
+    kp.querySelectorAll("[data-act]").forEach((btn) => {
+      btn.onclick = () => {
+        const a = btn.dataset.act;
+        if (a === "bs") input.value = input.value.slice(0, -1);
+        else if (a === "def") input.value = "0100001";
+        else input.value = (input.value + a).slice(0, 7);
+        renderBits();
+      };
+    });
+  } else {
+    const keys = [
+      "1", "2", "3", "+0.05",
+      "4", "5", "6", "-0.05",
+      "7", "8", "9", "+1.00",
+      ".", "0", "CLR", "-1.00"
+    ];
+    keys.forEach((k) => {
+      const btn = el("button", "dme-kp-btn dynapro-kp-btn");
+      btn.type = "button";
+      btn.textContent = k;
+      btn.onclick = () => {
+        if (k === "CLR") input.value = "";
+        else if (k.startsWith("+") || k.startsWith("-")) {
+          const cur = parseFloat(input.value) || 0;
+          const delta = parseFloat(k);
+          input.value = (cur + delta).toFixed(2);
+        } else {
+          input.value += k;
+        }
+      };
+      kp.appendChild(btn);
+    });
+  }
+
+  input.focus();
+  input.select();
+}
+
+const LRU_TX_WORDS_MAP = {
+  adf_032: [{ slot: 0, name: "ADF FREQ", label: "032", defaultVal: 577.0 }],
+  vor: [
+    { slot: 0, name: "VOR FREQ", label: "034", defaultVal: 108.00 },
+    { slot: 1, name: "CRS1 BCD", label: "024", defaultVal: 0.0 },
+    { slot: 2, name: "CRS2 BCD", label: "027", defaultVal: 0.0 },
+    { slot: 3, name: "CRS1 BNR", label: "100", defaultVal: 0.0 },
+    { slot: 4, name: "CRS2 BNR", label: "110", defaultVal: 0.0 }
+  ],
+  ils: [
+    { slot: 0, name: "ILS FREQ", label: "033", defaultVal: 110.30 },
+    { slot: 1, name: "RHDG BCD", label: "017", defaultVal: 0.0 },
+    { slot: 2, name: "ISO ALPH", label: "015", defaultVal: 0 }
+  ],
+  atc_xpdr: [
+    { slot: 0, name: "ATC RPLY", label: "031", defaultVal: "1234" },
+    { slot: 1, name: "PRES ALT", label: "203", defaultVal: 10000 }
+  ],
+  radio_alt: [
+    { slot: 0, name: "RALT BCD", label: "165", defaultVal: 1000.0 },
+    { slot: 1, name: "RALT BNR", label: "164", defaultVal: 1000.0 }
+  ],
+  vhf_comm: [{ slot: 0, name: "VHF COMM", label: "030", defaultVal: 118.000 }],
+  vhf_833: [{ slot: 0, name: "VHF 8.33", label: "047", defaultVal: 117.992 }],
+  vdr_750: [
+    { slot: 0, name: "VDR SAL", label: "172", defaultVal: 0 },
+    { slot: 1, name: "DSCR DAT1", label: "270", defaultVal: 0 }
+  ],
+  vdl_mode: [
+    { slot: 0, name: "VDR SAL", label: "172", defaultVal: 0 },
+    { slot: 1, name: "DSCR DAT1", label: "270", defaultVal: 0 }
+  ],
+  vor_579: [{ slot: 0, name: "VOR FREQ", label: "034", defaultVal: 108.00 }],
+  hf_rmp: [
+    { slot: 0, name: "HF-A COMM", label: "205", defaultVal: 10.0000 },
+    { slot: 1, name: "HF-B COMM", label: "206", defaultVal: 10.0000 },
+    { slot: 2, name: "HF MODE", label: "207", defaultVal: 0 }
+  ],
+  hf_acars: [
+    { slot: 0, name: "HF-A COMM", label: "205", defaultVal: 10.0000 },
+    { slot: 1, name: "HF-B COMM", label: "206", defaultVal: 10.0000 },
+    { slot: 2, name: "HF MODE", label: "207", defaultVal: 0 }
+  ],
+  hfdu_rmp: [
+    { slot: 0, name: "HF-A COMM", label: "205", defaultVal: 10.0000 },
+    { slot: 1, name: "HF-B COMM", label: "206", defaultVal: 10.0000 },
+    { slot: 2, name: "HF MODE", label: "207", defaultVal: 0 }
+  ],
+  hfdr_rmp: [
+    { slot: 0, name: "HF-A COMM", label: "205", defaultVal: 10.0000 },
+    { slot: 1, name: "HF-B COMM", label: "206", defaultVal: 10.0000 },
+    { slot: 2, name: "HF MODE", label: "207", defaultVal: 0 }
+  ],
+  mmr_755: [
+    { slot: 0, name: "ILS FREQ", label: "033", defaultVal: 110.30 },
+    { slot: 1, name: "GLS FREQ", label: "035", defaultVal: 110.30 },
+    { slot: 2, name: "DADS", label: "203", defaultVal: 10000 },
+    { slot: 3, name: "IRS", label: "310", defaultVal: 0.0 }
+  ]
+};
+
+function getDefaultLruData(pid, slotIdx) {
+  const words = LRU_TX_WORDS_MAP[pid] || [];
+  const found = words.find(w => w.slot === slotIdx);
+  if (found && found.defaultVal !== undefined) return found.defaultVal;
+  return 0.0;
+}
+
+function getDefaultLruLabel(pid, slotIdx) {
+  const words = LRU_TX_WORDS_MAP[pid] || [];
+  const found = words.find(w => w.slot === slotIdx);
+  if (found && found.label) return found.label;
+  return "000";
+}
+
+function getDefaultLruFunct(pid, slotIdx) {
+  const words = LRU_TX_WORDS_MAP[pid] || [];
+  const found = words.find(w => w.slot === slotIdx);
+  if (found && found.name) return found.name;
+  return "NAV";
+}
+
 function formatLruPad(id, rawPad) {
   if (id === "adf_032") return "000";
   if (id === "vor" || id === "ils" || id === "vor_579") return "0000";
@@ -4188,9 +4397,15 @@ function formatLruDataAndUnit(id, dataVal, curSlotIdx) {
     let n = Number(dataVal);
     formatted = Number.isFinite(n) ? n.toFixed(1) : "577.0";
   } else if (id === "vor" || id === "ils" || id === "vor_579") {
-    unit = "MHZ";
-    let n = Number(dataVal);
-    formatted = Number.isFinite(n) ? n.toFixed(2) : (id === "ils" ? "110.30" : "108.00");
+    if (curSlotIdx > 0) {
+      unit = "DEG";
+      let n = Number(dataVal);
+      formatted = Number.isFinite(n) ? n.toFixed(1) : "0.0";
+    } else {
+      unit = "MHZ";
+      let n = Number(dataVal);
+      formatted = Number.isFinite(n) ? n.toFixed(2) : (id === "ils" ? "110.30" : "108.00");
+    }
   } else if (id === "atc_xpdr") {
     unit = (curSlotIdx === 1) ? "FT" : "SQWK";
     formatted = String(dataVal != null ? dataVal : (curSlotIdx === 1 ? "10000" : "1234"));
@@ -4211,6 +4426,10 @@ function formatLruDataAndUnit(id, dataVal, curSlotIdx) {
     const rawVal = Number.isFinite(Number(dataVal)) ? Number(dataVal) : 0;
     const bin24 = (rawVal & 0xFFFFFF).toString(2).padStart(24, "0");
     formatted = bin24.match(/.{1,4}/g).join(" ");
+  } else if (id === "hf_rmp" || id === "hfdu_rmp" || id === "hfdr_rmp" || id === "hf_acars") {
+    unit = "MHZ";
+    let n = Number(dataVal);
+    formatted = Number.isFinite(n) ? n.toFixed(4) : "10.0000";
   } else {
     formatted = String(dataVal != null ? dataVal : "0.00");
   }
@@ -4218,6 +4437,7 @@ function formatLruDataAndUnit(id, dataVal, curSlotIdx) {
 }
 
 function renderStandardLru(r, s) {
+  r.innerHTML = "";
   standardLruState.lastSnap = s;
   const curSlotIdx = standardLruState.activeSlot || 0;
   const pid = (s && s.active_profile) || activeProfile || "vor";
@@ -4238,50 +4458,28 @@ function renderStandardLru(r, s) {
   const stepDir = standardLruState.stepDir || "INC";
 
   const getStdLruSlotData = (slotIdx, bus) => {
-    const b = bus || txCh;
-    const sIdx = slotIdx != null ? slotIdx : curSlotIdx;
+    const b = bus || standardLruState.txBus || "A";
+    const sIdx = slotIdx != null ? slotIdx : (standardLruState.activeSlot || 0);
     const backendSlot = (s && s.tx && s.tx[b] && s.tx[b][sIdx]) || {};
     const cached = (standardLruState.slots && standardLruState.slots[sIdx]) || {};
 
-    let dataVal = (backendSlot.eng_value != null && Number.isFinite(Number(backendSlot.eng_value)))
-      ? backendSlot.eng_value
-      : (cached.data != null ? cached.data : (backendSlot.data_eng || backendSlot.data || (isVdr ? 0 : "0.00")));
-    let sdi = backendSlot.sdi != null ? Number(backendSlot.sdi) : (cached.sdi != null ? cached.sdi : 0);
-    let ssm = backendSlot.ssm || cached.ssm || "NML";
-    let parity = backendSlot.par || backendSlot.parity || cached.parity || "ODD";
-    let rate = backendSlot.rate_ms || cached.rate || (isVdr ? 100 : (pid === "vor" ? 200 : 150));
-    let label = backendSlot.label || backendSlot.label_octal || cached.label || (isVdr ? (sIdx === 1 ? "270" : "172") : (pid === "vor" ? "034" : "000"));
-    let funct = backendSlot.funct || cached.funct || (isVdr ? (sIdx === 1 ? "DSCR DAT1" : "VDR SAL") : (pid === "vor" ? "VOR FREQ" : (pid === "adf_032" ? "ADF FREQ" : "NAV")));
-    let pad = (backendSlot.pads && backendSlot.pads !== "-") ? backendSlot.pads : (cached.pad || formatLruPad(pid));
+    let dataVal = cached.dataVal != null
+      ? cached.dataVal
+      : (backendSlot.eng_value != null && Number.isFinite(Number(backendSlot.eng_value))
+          ? backendSlot.eng_value
+          : (backendSlot.data_eng != null ? backendSlot.data_eng : (backendSlot.data != null ? backendSlot.data : getDefaultLruData(pid, sIdx))));
+    let sdi = cached.sdi != null ? cached.sdi : (backendSlot.sdi != null ? Number(backendSlot.sdi) : 0);
+    let ssm = cached.ssm || backendSlot.ssm || "NML";
+    let parity = cached.parity || backendSlot.par || backendSlot.parity || "ODD";
+    let rate = cached.rate || backendSlot.rate_ms || (isVdr ? 100 : (pid === "vor" ? 200 : 150));
+    let label = cached.label || backendSlot.label || backendSlot.label_octal || getDefaultLruLabel(pid, sIdx);
+    let funct = cached.funct || backendSlot.funct || getDefaultLruFunct(pid, sIdx);
+    let pad = cached.pad || ((backendSlot.pads && backendSlot.pads !== "-") ? backendSlot.pads : formatLruPad(pid));
 
     return { dataVal, sdi, ssm, parity, rate, label, funct, pad, enabled: backendSlot.enabled !== false };
   };
 
   const curSlot = getStdLruSlotData(curSlotIdx, txCh);
-
-  const saveStdLruSlot = async (sIdx, bus) => {
-    const b = bus || txCh;
-    const slData = getStdLruSlotData(sIdx, b);
-    try {
-      await api("/api/arinc/tx/slot", {
-        method: "POST",
-        body: JSON.stringify({
-          index: sIdx,
-          bus: b,
-          freq_mhz: Number.isFinite(Number(slData.dataVal)) ? Number(slData.dataVal) : undefined,
-          value: slData.dataVal,
-          sdi: slData.sdi,
-          ssm: slData.ssm,
-          pad: slData.pad,
-          parity: slData.parity,
-          rate_ms: slData.rate,
-          enabled: slData.enabled,
-        }),
-      });
-    } catch (e) {
-      console.error("Save standard LRU slot failed:", e);
-    }
-  };
 
   const p = el("div", "panel");
   p.style.maxWidth = "1060px";
@@ -4316,28 +4514,7 @@ function renderStandardLru(r, s) {
   container.style.width = "100%";
   p.appendChild(container);
 
-  // Profile-specific transmitted words header list
-  const getProfileTxWords = (id) => {
-    switch (id) {
-      case "adf_032": return "ADF FREQ";
-      case "vor": return "VOR FREQ";
-      case "ils": return "ILS FREQ / RHDG BCD / ISO ALPH";
-      case "atc_xpdr": return "ATC RPLY / PRES ALT";
-      case "radio_alt": return "RALT BCD / RALT BNR";
-      case "vhf_comm": return "VHF COMM";
-      case "vdr_750":
-      case "vdl_mode": return "VDR SAL / DSCR DAT1";
-      case "vhf_833": return "VHF 8.33";
-      case "vor_579": return "VOR FREQ";
-      case "hf_rmp":
-      case "hfdu_rmp":
-      case "hfdr_rmp":
-      case "hf_acars": return "HF-A COMM / HF-A COMM / HF MODE";
-      default: return (curSlot.funct || "NAV").replace(/_/g, " ");
-    }
-  };
-
-  const txWordsStr = getProfileTxWords(pid);
+  const wordsList = LRU_TX_WORDS_MAP[pid] || [{ slot: 0, name: (curSlot.funct || "NAV").replace(/_/g, " ") }];
   const rxLabs = (s && s.rx && s.rx[rxCh] && s.rx[rxCh].labels) || [];
   const rxWordsStr = rxLabs.length > 0
     ? rxLabs.map(l => (l.funct || l.label || l.label_octal || "").replace(/_/g, " ")).filter(Boolean).slice(0, 4).join(" / ")
@@ -4348,7 +4525,13 @@ function renderStandardLru(r, s) {
   hdr.style.color = "var(--text)";
   hdr.innerHTML = `
     <div style="display:flex; justify-content:space-between; align-items:center; width:100%;">
-      <div id="std-lru-hdr-tx">CHANNEL ${txCh} &mdash; TRANSMITTED WORDS &nbsp;&nbsp;&nbsp; <span style="font-weight:600;">${txWordsStr}</span> &nbsp;&nbsp;&nbsp; SLOT <span class="dme-inv-box dynapro-inv-box" id="std-lru-slot-box" style="cursor:pointer; vertical-align:middle;">${curSlotIdx}</span></div>
+      <div id="std-lru-hdr-tx">
+        CHANNEL ${txCh} &mdash; TRANSMITTED WORDS &nbsp;&nbsp;&nbsp;
+        <span style="font-weight:600;" id="std-lru-tx-words-list">
+          ${wordsList.map(w => `<span class="lru-word-jump" data-slot="${w.slot}" style="cursor:pointer; margin-right:8px; ${w.slot === curSlotIdx ? "color:var(--accent); font-weight:700; text-decoration:underline;" : "color:inherit;"}">${w.name}</span>`).join(" / ")}
+        </span>
+        &nbsp;&nbsp;&nbsp; SLOT <span class="dme-inv-box dynapro-inv-box" id="std-lru-slot-box" style="cursor:pointer; vertical-align:middle;">${curSlotIdx}</span>
+      </div>
       <div id="std-lru-hdr-rx">CHANNEL ${rxCh} &mdash; RECEIVED WORDS &nbsp;&nbsp;&nbsp; <span style="font-weight:600;" id="std-lru-rx-words-list">${rxWordsStr}</span></div>
     </div>
   `;
@@ -4358,14 +4541,13 @@ function renderStandardLru(r, s) {
   const tableWrap = el("div", "dynapro-dme-table-wrap");
   tableWrap.style.width = "100%";
   tableWrap.style.overflowX = "auto";
-  tableWrap.style.marginBottom = "1rem";
+  tableWrap.style.marginBottom = "0.4rem";
 
   const tbl = el("table", "dynapro-dme-table dme-hmi-table");
   tbl.style.width = "100%";
   tbl.style.borderCollapse = "collapse";
   tbl.style.fontFamily = "var(--font-mono, monospace)";
 
-  // Format DATA string with cursor and unit
   const isField = (f) => standardLruState.cursorField === f;
   const cPos = standardLruState.cursorPos || 0;
 
@@ -4393,7 +4575,6 @@ function renderStandardLru(r, s) {
 
   const ssmHtml = `<span class="dme-cursor-bit ${isField("SSM") ? "cursor-active-bit" : ""}" data-field="SSM" data-pos="0">${curSlot.ssm}</span>`;
 
-  // Decode current RX word
   const curRx = rxLabs.length > 0 ? rxLabs[Math.min(standardLruState.rxWordIndex || 0, rxLabs.length - 1)] : null;
   const rxDataStr = curRx ? (curRx.data || curRx.data_eng || "---") : "WAITING...";
   const rxHasData = curRx && curRx.data;
@@ -4415,15 +4596,15 @@ function renderStandardLru(r, s) {
     </thead>
     <tbody>
       <tr class="tx-row" id="std-lru-tx-row">
-        <td><span class="dme-cell-edit dynapro-cell-edit" id="std-lru-tx-ch-cell">TX-${txCh}</span></td>
-        <td><span class="dme-cell-edit dynapro-cell-edit" id="std-lru-tx-funct-cell">${functDisplay}</span></td>
-        <td><span class="dme-cell-edit dynapro-cell-edit" id="std-lru-tx-label-cell">${curSlot.label}</span></td>
-        <td><span class="dme-cell-edit dynapro-cell-edit ${isField("DATA") ? "field-active" : ""}" id="std-lru-tx-data-cell">${dataHtml}${unitSuffix}</span></td>
-        <td><span class="dme-cell-edit dynapro-cell-edit ${isField("SDI") ? "field-active" : ""}" id="std-lru-tx-sdi-cell">${sdiHtml}</span></td>
-        <td><span class="dme-cell-edit dynapro-cell-edit ${isField("PAD") ? "field-active" : ""}" id="std-lru-tx-pad-cell">${padHtml}</span></td>
-        <td><span class="dme-cell-edit dynapro-cell-edit ${isField("SSM") ? "field-active" : ""}" id="std-lru-tx-ssm-cell">${ssmHtml}</span></td>
-        <td><span class="dme-cell-edit dynapro-cell-edit" id="std-lru-tx-par-cell">${curSlot.parity}</span></td>
-        <td><span class="dme-cell-edit dynapro-cell-edit" id="std-lru-tx-rate-cell">${curSlot.rate}</span></td>
+        <td class="clickable-cell" id="std-lru-td-tx-ch"><span class="dme-cell-edit dynapro-cell-edit" id="std-lru-tx-ch-cell">TX-${txCh}</span></td>
+        <td id="std-lru-td-funct"><span class="dme-cell-edit dynapro-cell-edit" id="std-lru-tx-funct-cell">${functDisplay}</span></td>
+        <td class="clickable-cell" id="std-lru-td-label"><span class="dme-cell-edit dynapro-cell-edit" id="std-lru-tx-label-cell">${curSlot.label}</span></td>
+        <td class="clickable-cell" id="std-lru-td-data"><span class="dme-cell-edit dynapro-cell-edit ${isField("DATA") ? "field-active" : ""}" id="std-lru-tx-data-cell">${dataHtml}${unitSuffix}</span></td>
+        <td class="clickable-cell" id="std-lru-td-sdi"><span class="dme-cell-edit dynapro-cell-edit ${isField("SDI") ? "field-active" : ""}" id="std-lru-tx-sdi-cell">${sdiHtml}</span></td>
+        <td class="clickable-cell" id="std-lru-td-pad"><span class="dme-cell-edit dynapro-cell-edit ${isField("PAD") ? "field-active" : ""}" id="std-lru-tx-pad-cell">${padHtml}</span></td>
+        <td class="clickable-cell" id="std-lru-td-ssm"><span class="dme-cell-edit dynapro-cell-edit ${isField("SSM") ? "field-active" : ""}" id="std-lru-tx-ssm-cell">${ssmHtml}</span></td>
+        <td class="clickable-cell" id="std-lru-td-par"><span class="dme-cell-edit dynapro-cell-edit" id="std-lru-tx-par-cell">${curSlot.parity}</span></td>
+        <td class="clickable-cell" id="std-lru-td-rate"><span class="dme-cell-edit dynapro-cell-edit" id="std-lru-tx-rate-cell">${curSlot.rate}</span></td>
       </tr>
       <tr class="rx-row" id="std-lru-rx-row">
         <td><span class="dme-cell-readonly dynapro-cell-readonly" id="std-lru-rx-ch-cell">RX-${rxCh}</span></td>
@@ -4449,15 +4630,15 @@ function renderStandardLru(r, s) {
 
   skGrid.innerHTML = `
     <!-- 1: DISP CURSOR -->
-    <div class="std-sk-col"><div class="std-sk-top-label">&nbsp;</div><button type="button" class="dme-softkey-btn dynapro-softkey-btn dme-softkey-single" id="btn-std-cursor"><div class="dme-softkey-label">DISP<br>CURSOR</div></button></div>
+    <div class="std-sk-col"><div class="std-sk-top-label">&nbsp;</div><button type="button" class="dme-softkey-btn dynapro-softkey-btn dme-softkey-single" id="btn-std-cursor" title="Advance editable cursor / digit position"><div class="dme-softkey-label">DISP<br>CURSOR</div></button></div>
     <!-- 2: DATA STEP -->
-    <div class="std-sk-col"><div class="std-sk-top-label">&nbsp;</div><button type="button" class="dme-softkey-btn dynapro-softkey-btn dme-softkey-single" id="btn-std-step"><div class="dme-softkey-label">DATA<br>STEP</div></button></div>
+    <div class="std-sk-col"><div class="std-sk-top-label">&nbsp;</div><button type="button" class="dme-softkey-btn dynapro-softkey-btn dme-softkey-single" id="btn-std-step" title="Step active data / parameter by direction"><div class="dme-softkey-label">DATA<br>STEP</div></button></div>
     <!-- 3: INC / DECR Split Toggle -->
-    <div class="std-sk-col"><div class="std-sk-top-label">&nbsp;</div><button type="button" class="dme-softkey-btn dynapro-softkey-btn dme-softkey-split" id="btn-std-dir"><div class="dme-softkey-half dynapro-softkey-half ${stepDir === "INC" ? "active" : ""}" id="btn-std-inc">INC.</div><div class="dme-softkey-divider dynapro-softkey-divider"></div><div class="dme-softkey-half dynapro-softkey-half ${stepDir === "DECR" ? "active" : ""}" id="btn-std-decr">DECR</div></button></div>
+    <div class="std-sk-col"><div class="std-sk-top-label">&nbsp;</div><button type="button" class="dme-softkey-btn dynapro-softkey-btn dme-softkey-split" id="btn-std-dir" title="Select stepping direction"><div class="dme-softkey-half dynapro-softkey-half ${stepDir === "INC" ? "active" : ""}" id="btn-std-inc">INC.</div><div class="dme-softkey-divider dynapro-softkey-divider"></div><div class="dme-softkey-half dynapro-softkey-half ${stepDir === "DECR" ? "active" : ""}" id="btn-std-decr">DECR</div></button></div>
     <!-- 4: MORE WORDS -->
-    <div class="std-sk-col"><div class="std-sk-top-label">&nbsp;</div><button type="button" class="dme-softkey-btn dynapro-softkey-btn dme-softkey-single" id="btn-std-more"><div class="dme-softkey-label">MORE<br>WORDS</div></button></div>
+    <div class="std-sk-col"><div class="std-sk-top-label">&nbsp;</div><button type="button" class="dme-softkey-btn dynapro-softkey-btn dme-softkey-single" id="btn-std-more" title="Cycle through received ARINC 429 words"><div class="dme-softkey-label">MORE<br>WORDS</div></button></div>
     <!-- 5: BIT RATE -->
-    <div class="std-sk-col"><div class="std-sk-top-label" id="std-rate-display">${bitRateVal}</div><button type="button" class="dme-softkey-btn dynapro-softkey-btn dme-softkey-single" id="btn-std-bitrate"><div class="dme-softkey-label">${bitRateLabel}</div></button></div>
+    <div class="std-sk-col"><div class="std-sk-top-label" id="std-rate-display">${bitRateVal}</div><button type="button" class="dme-softkey-btn dynapro-softkey-btn dme-softkey-single" id="btn-std-bitrate" title="Cycle baud rates"><div class="dme-softkey-label">${bitRateLabel}</div></button></div>
     <!-- 6: TX Split Toggle -->
     <div class="std-sk-col">
       <div class="std-sk-top-label">&nbsp;</div>
@@ -4478,13 +4659,389 @@ function renderStandardLru(r, s) {
     </div>
   `;
   container.appendChild(skGrid);
+  r.appendChild(p);
 
+  const triggerPress = (btn) => {
+    if (!btn) return;
+    btn.classList.add("momentary-press");
+    setTimeout(() => btn.classList.remove("momentary-press"), 150);
+  };
+
+  const updateStdLruTxRowDOM = () => {
+    const curSlotIdx = standardLruState.activeSlot || 0;
+    const txCh = standardLruState.txBus || "A";
+    const rxCh = standardLruState.rxBus || "A";
+    const liveSlot = getStdLruSlotData(curSlotIdx, txCh);
+    const curFld = standardLruState.cursorField || "DATA";
+    const curPos = standardLruState.cursorPos != null ? standardLruState.cursorPos : 0;
+    const isCurAct = standardLruState.cursorActive !== false;
+
+    const slotBox = container.querySelector("#std-lru-slot-box");
+    if (slotBox) slotBox.textContent = String(curSlotIdx);
+
+    // Jump words in header
+    container.querySelectorAll(".lru-word-jump").forEach(wj => {
+      const s = parseInt(wj.getAttribute("data-slot"), 10);
+      const isCur = s === curSlotIdx;
+      wj.style.color = isCur ? "var(--accent)" : "inherit";
+      wj.style.fontWeight = isCur ? "700" : "inherit";
+      wj.style.textDecoration = isCur ? "underline" : "none";
+    });
+
+    const txChEl = container.querySelector("#std-lru-tx-ch-cell");
+    if (txChEl) txChEl.textContent = `TX-${txCh}`;
+
+    const functEl = container.querySelector("#std-lru-tx-funct-cell");
+    if (functEl) functEl.textContent = (liveSlot.funct || "NAV").replace(/_/g, " ");
+
+    const lblEl = container.querySelector("#std-lru-tx-label-cell");
+    if (lblEl) lblEl.textContent = liveSlot.label;
+
+    const dataEl = container.querySelector("#std-lru-tx-data-cell");
+    if (dataEl) {
+      const { formatted: dStr, unit: dUnit } = formatLruDataAndUnit(pid, liveSlot.dataVal, curSlotIdx);
+      let dHtml = "";
+      for (let i = 0; i < dStr.length; i++) {
+        const isAct = isCurAct && curFld === "DATA" && curPos === i;
+        dHtml += `<span class="dme-cursor-bit ${isAct ? "cursor-active-bit" : ""}" data-field="DATA" data-pos="${i}">${dStr.charAt(i)}</span>`;
+      }
+      const uSuf = dUnit ? ` <span class="dme-unit">${dUnit}</span>` : "";
+      dataEl.innerHTML = `${dHtml}${uSuf}`;
+    }
+
+    const sdiEl = container.querySelector("#std-lru-tx-sdi-cell");
+    if (sdiEl) {
+      const sStr = String(liveSlot.sdi != null ? liveSlot.sdi : 0).padStart(2, "0");
+      const is0 = isCurAct && curFld === "SDI" && curPos === 0;
+      const is1 = isCurAct && curFld === "SDI" && curPos === 1;
+      sdiEl.innerHTML = `<span class="dme-cursor-bit ${is0 ? "cursor-active-bit" : ""}" data-field="SDI" data-pos="0">${sStr.charAt(0)}</span><span class="dme-cursor-bit ${is1 ? "cursor-active-bit" : ""}" data-field="SDI" data-pos="1">${sStr.charAt(1)}</span>`;
+    }
+
+    const padEl = container.querySelector("#std-lru-tx-pad-cell");
+    if (padEl) {
+      const pStr = formatLruPad(pid, liveSlot.pad);
+      if (pStr === "---") {
+        padEl.innerHTML = `<span class="dme-cursor-bit">---</span>`;
+      } else {
+        let pHtml = "";
+        for (let i = 0; i < pStr.length; i++) {
+          const isAct = isCurAct && curFld === "PAD" && curPos === i;
+          pHtml += `<span class="dme-cursor-bit ${isAct ? "cursor-active-bit" : ""}" data-field="PAD" data-pos="${i}">${pStr.charAt(i)}</span>`;
+        }
+        padEl.innerHTML = pHtml;
+      }
+    }
+
+    const ssmEl = container.querySelector("#std-lru-tx-ssm-cell");
+    if (ssmEl) {
+      const isAct = isCurAct && curFld === "SSM";
+      ssmEl.innerHTML = `<span class="dme-cursor-bit ${isAct ? "cursor-active-bit" : ""}" data-field="SSM" data-pos="0">${liveSlot.ssm}</span>`;
+    }
+
+    const parEl = container.querySelector("#std-lru-tx-par-cell");
+    if (parEl) parEl.textContent = liveSlot.parity;
+
+    const rateEl = container.querySelector("#std-lru-tx-rate-cell");
+    if (rateEl) rateEl.textContent = liveSlot.rate;
+
+    ["DATA", "SDI", "PAD", "SSM"].forEach(f => {
+      const elCell = container.querySelector(`#std-lru-tx-${f.toLowerCase()}-cell`);
+      if (elCell) elCell.classList.toggle("field-active", isCurAct && f === curFld);
+    });
+
+    const btnInc = skGrid.querySelector("#btn-std-inc");
+    const btnDecr = skGrid.querySelector("#btn-std-decr");
+    if (btnInc) btnInc.classList.toggle("active", standardLruState.stepDir === "INC");
+    if (btnDecr) btnDecr.classList.toggle("active", standardLruState.stepDir === "DECR");
+
+    const curR = standardLruState.bitRate || (s && s.bit_rate_kbps) || (isVdr ? 100.0 : 12.5);
+    const rateDisp = skGrid.querySelector("#std-rate-display");
+    if (rateDisp) rateDisp.textContent = `${curR} KBPS`;
+
+    const txLeft = skGrid.querySelector("#btn-std-tx-left");
+    const txRight = skGrid.querySelector("#btn-std-tx-right");
+    if (txLeft) txLeft.classList.toggle("active", txCh === (isVdr ? "C" : "A"));
+    if (txRight) txRight.classList.toggle("active", txCh === (isVdr ? "D" : "B"));
+
+    const rxLeft = skGrid.querySelector("#btn-std-rx-left");
+    const rxRight = skGrid.querySelector("#btn-std-rx-right");
+    if (rxLeft) rxLeft.classList.toggle("active", rxCh === "A");
+    if (rxRight) rxRight.classList.toggle("active", rxCh === "B");
+
+    const pill = toolbar.querySelector(".pill");
+    if (pill) pill.textContent = `BUS TX-${txCh} • RX-${rxCh} • ${curR} KBPS`;
+  };
+
+  const saveStdLruSlot = async (updates) => {
+    const curSlotIdx = standardLruState.activeSlot || 0;
+    const txCh = standardLruState.txBus || "A";
+    const cur = getStdLruSlotData(curSlotIdx, txCh);
+    const merged = {
+      dataVal: updates && updates.dataVal != null ? updates.dataVal : cur.dataVal,
+      sdi: updates && updates.sdi != null ? updates.sdi : cur.sdi,
+      ssm: updates && updates.ssm != null ? updates.ssm : cur.ssm,
+      parity: updates && updates.parity != null ? updates.parity : cur.parity,
+      rate: updates && updates.rate != null ? updates.rate : cur.rate,
+      label: updates && updates.label != null ? updates.label : cur.label,
+      pad: updates && updates.pad != null ? updates.pad : cur.pad,
+      funct: updates && updates.funct != null ? updates.funct : cur.funct,
+    };
+
+    if (!standardLruState.slots) standardLruState.slots = {};
+    standardLruState.slots[curSlotIdx] = merged;
+
+    updateStdLruTxRowDOM();
+
+    try {
+      const res = await api("/api/arinc/tx/slot", {
+        method: "POST",
+        body: JSON.stringify({
+          slot: curSlotIdx,
+          bus: txCh,
+          mode: "lru",
+          profile: pid,
+          label: merged.label,
+          eng_value: merged.dataVal,
+          data: String(merged.dataVal),
+          sdi: merged.sdi,
+          ssm: merged.ssm,
+          odd_parity: merged.parity === "ODD",
+          rate_ms: merged.rate,
+          enabled: true,
+        }),
+      });
+      if (res && snap) snap = res;
+    } catch (e) {
+      console.error("Save standard LRU slot failed:", e);
+    }
+  };
+
+  const stepStdLruActiveField = (cur) => {
+    const dir = (standardLruState.stepDir === "DECR") ? -1 : 1;
+    const curFld = standardLruState.cursorField || "DATA";
+    const pos = standardLruState.cursorPos != null ? standardLruState.cursorPos : 0;
+
+    if (curFld === "DATA") {
+      if (pid === "adf_032") {
+        let stepAmount = 0.5;
+        if (pos === 0) stepAmount = 100.0;
+        else if (pos === 1) stepAmount = 10.0;
+        else if (pos === 2) stepAmount = 1.0;
+        else stepAmount = 0.5;
+        let val = Number(cur.dataVal) || 577.0;
+        val += dir * stepAmount;
+        val = Math.max(190.0, Math.min(1750.0, val));
+        val = Math.round(val * 10) / 10;
+        return { dataVal: val };
+      } else if (pid === "vor" || pid === "vor_579" || pid === "ils") {
+        if (standardLruState.activeSlot === 0) {
+          let stepAmount = 0.05;
+          if (pos === 0) stepAmount = 10.0;
+          else if (pos === 1) stepAmount = 1.0;
+          else if (pos === 2) stepAmount = 0.10;
+          else stepAmount = 0.05;
+          let val = Number(cur.dataVal) || (pid === "ils" ? 110.30 : 108.00);
+          val += dir * stepAmount;
+          val = Math.max(108.00, Math.min(117.95, val));
+          val = Math.round(val * 100) / 100;
+          return { dataVal: val };
+        } else {
+          let stepAmount = 1.0;
+          if (pos === 0) stepAmount = 100.0;
+          else if (pos === 1) stepAmount = 10.0;
+          else if (pos === 2) stepAmount = 1.0;
+          else stepAmount = 0.1;
+          let val = Number(cur.dataVal) || 0.0;
+          val += dir * stepAmount;
+          if (val < 0) val += 360.0;
+          if (val >= 360.0) val -= 360.0;
+          val = Math.round(val * 10) / 10;
+          return { dataVal: val };
+        }
+      } else if (pid === "atc_xpdr") {
+        if (standardLruState.activeSlot === 0) {
+          let sqStr = String(cur.dataVal || "1234").padStart(4, "0").slice(0, 4);
+          const pIdx = Math.max(0, Math.min(3, pos));
+          let curDigit = parseInt(sqStr.charAt(pIdx), 10) || 0;
+          curDigit = (curDigit + dir + 8) % 8;
+          const newSq = sqStr.slice(0, pIdx) + curDigit + sqStr.slice(pIdx + 1);
+          return { dataVal: newSq };
+        } else {
+          let stepAmount = 100;
+          if (pos === 0) stepAmount = 10000;
+          else if (pos === 1) stepAmount = 1000;
+          else if (pos === 2) stepAmount = 100;
+          else if (pos === 3) stepAmount = 10;
+          else stepAmount = 1;
+          let val = Number(cur.dataVal) || 10000;
+          val += dir * stepAmount;
+          val = Math.max(-1000, Math.min(126000, val));
+          return { dataVal: val };
+        }
+      } else if (pid === "radio_alt") {
+        let stepAmount = 1.0;
+        if (pos === 0) stepAmount = 1000.0;
+        else if (pos === 1) stepAmount = 100.0;
+        else if (pos === 2) stepAmount = 10.0;
+        else if (pos === 3) stepAmount = 1.0;
+        else stepAmount = 0.1;
+        let val = Number(cur.dataVal) || 1000.0;
+        val += dir * stepAmount;
+        val = Math.max(-20.0, Math.min(8191.0, val));
+        val = Math.round(val * 10) / 10;
+        return { dataVal: val };
+      } else if (pid === "vhf_comm") {
+        let stepAmount = 0.025;
+        if (pos === 0) stepAmount = 10.0;
+        else if (pos === 1) stepAmount = 1.0;
+        else if (pos === 2) stepAmount = 0.10;
+        else stepAmount = 0.025;
+        let val = Number(cur.dataVal) || 118.000;
+        val += dir * stepAmount;
+        val = Math.max(118.000, Math.min(136.975, val));
+        val = Math.round(val * 1000) / 1000;
+        return { dataVal: val };
+      } else if (pid === "vhf_833") {
+        let stepAmount = 0.008333;
+        if (pos === 0) stepAmount = 10.0;
+        else if (pos === 1) stepAmount = 1.0;
+        else if (pos === 2) stepAmount = 0.10;
+        else stepAmount = 0.008333;
+        let val = Number(cur.dataVal) || 118.000;
+        val += dir * stepAmount;
+        val = Math.max(118.000, Math.min(136.992, val));
+        val = Math.round(val * 1000) / 1000;
+        return { dataVal: val };
+      } else if (pid === "hf_rmp" || pid === "hf_acars" || pid === "hfdu_rmp" || pid === "hfdr_rmp") {
+        let stepAmount = 0.0001;
+        if (pos === 0) stepAmount = 10.0;
+        else if (pos === 1) stepAmount = 1.0;
+        else if (pos === 2) stepAmount = 0.10;
+        else if (pos === 3) stepAmount = 0.01;
+        else if (pos === 4) stepAmount = 0.001;
+        else stepAmount = 0.0001;
+        let val = Number(cur.dataVal) || 10.0000;
+        val += dir * stepAmount;
+        val = Math.max(2.0000, Math.min(29.9999, val));
+        val = Math.round(val * 10000) / 10000;
+        return { dataVal: val };
+      } else if (pid === "vdr_750" || pid === "vdl_mode") {
+        let rawVal = Number.isFinite(Number(cur.dataVal)) ? Number(cur.dataVal) : 0;
+        const bitOffset = Math.max(0, Math.min(23, 23 - pos));
+        rawVal = rawVal ^ (1 << bitOffset);
+        return { dataVal: rawVal };
+      } else {
+        let val = Number(cur.dataVal) || 0;
+        val += dir * 1.0;
+        return { dataVal: val };
+      }
+    } else if (curFld === "SDI") {
+      let sdi = Number(cur.sdi) || 0;
+      if (pos === 0) sdi = sdi ^ 2;
+      else sdi = sdi ^ 1;
+      return { sdi: sdi };
+    } else if (curFld === "PAD") {
+      let padStr = String(cur.pad || "0000000").padStart(7, "0");
+      const pIdx = Math.max(0, Math.min(padStr.length - 1, pos));
+      const curBit = padStr.charAt(pIdx);
+      const newBit = curBit === "1" ? "0" : "1";
+      const newPad = padStr.slice(0, pIdx) + newBit + padStr.slice(pIdx + 1);
+      return { pad: newPad };
+    } else if (curFld === "SSM") {
+      const ssmList = ["NML", "NCD", "FT", "FAIL"];
+      let idx = ssmList.indexOf(cur.ssm);
+      if (idx === -1) idx = 0;
+      const nextSsm = ssmList[(idx + (dir === 1 ? 1 : ssmList.length - 1)) % ssmList.length];
+      return { ssm: nextSsm };
+    }
+    return {};
+  };
+
+  const advanceStdLruCursor = () => {
+    let curFld = standardLruState.cursorField || "DATA";
+    let pos = standardLruState.cursorPos || 0;
+    const { formatted: dStr } = formatLruDataAndUnit(pid, curSlot.dataVal, standardLruState.activeSlot);
+    const pStr = formatLruPad(pid, curSlot.pad);
+
+    if (curFld === "DATA") {
+      if (pos + 1 < dStr.length) {
+        standardLruState.cursorPos = pos + 1;
+      } else {
+        standardLruState.cursorField = "SDI";
+        standardLruState.cursorPos = 0;
+      }
+    } else if (curFld === "SDI") {
+      if (pos < 1) {
+        standardLruState.cursorPos = pos + 1;
+      } else {
+        standardLruState.cursorField = (pStr && pStr !== "---") ? "PAD" : "SSM";
+        standardLruState.cursorPos = 0;
+      }
+    } else if (curFld === "PAD") {
+      if (pos + 1 < pStr.length) {
+        standardLruState.cursorPos = pos + 1;
+      } else {
+        standardLruState.cursorField = "SSM";
+        standardLruState.cursorPos = 0;
+      }
+    } else if (curFld === "SSM") {
+      standardLruState.cursorField = "DATA";
+      standardLruState.cursorPos = 0;
+    } else {
+      standardLruState.cursorField = "DATA";
+      standardLruState.cursorPos = 0;
+    }
+  };
+
+  const toggleTxBus = async (targetBus) => {
+    const curBus = standardLruState.txBus || (isVdr ? "C" : "A");
+    let nextBus = targetBus;
+    if (!nextBus) {
+      if (isVdr) nextBus = curBus === "C" ? "D" : "C";
+      else nextBus = curBus === "A" ? "B" : "A";
+    }
+    standardLruState._customBus = true;
+    standardLruState.txBus = nextBus;
+    updateStdLruTxRowDOM();
+    try {
+      const res = await api("/api/arinc/channel", {
+        method: "POST",
+        body: JSON.stringify({ tx_ch: nextBus }),
+      });
+      if (res && snap) snap = res;
+    } catch (err) {
+      console.error("Failed to switch TX bus", err);
+    }
+  };
+
+  const toggleRxBus = async (targetBus) => {
+    const curBus = standardLruState.rxBus || "A";
+    let nextBus = targetBus;
+    if (!nextBus) nextBus = curBus === "A" ? "B" : "A";
+    standardLruState._customBus = true;
+    standardLruState.rxBus = nextBus;
+    updateStdLruTxRowDOM();
+    try {
+      const res = await api("/api/arinc/channel", {
+        method: "POST",
+        body: JSON.stringify({ rx_ch: nextBus }),
+      });
+      if (res && snap) {
+        snap = res;
+        patchStandardLruRx(res);
+      }
+    } catch (err) {
+      console.error("Failed to switch RX bus", err);
+    }
+  };
+
+  // Header button listeners
   const topBack = toolbar.querySelector("#btn-std-lru-back");
-  if (topBack) topBack.addEventListener("click", () => navTo("avionics_lru"));
+  if (topBack) topBack.onclick = () => navTo("avionics_lru");
 
   const resetBtn = toolbar.querySelector("#btn-std-reset-def");
   if (resetBtn) {
-    resetBtn.addEventListener("click", async () => {
+    resetBtn.onclick = async () => {
       try {
         const snapIn = await api("/api/arinc/profile/apply", {
           method: "POST",
@@ -4495,196 +5052,269 @@ function renderStandardLru(r, s) {
       } catch (e) {
         alert(e.message);
       }
-    });
+    };
   }
 
   const txWordBtn = toolbar.querySelector("#btn-std-tx-word");
   if (txWordBtn) {
-    txWordBtn.addEventListener("click", async () => {
-      await saveStdLruSlot(curSlotIdx, txCh);
+    txWordBtn.onclick = async () => {
+      await saveStdLruSlot();
       txWordBtn.textContent = "Word Transmitted!";
       setTimeout(() => { if (txWordBtn) txWordBtn.textContent = "Transmit Active Word"; }, 1000);
-    });
+    };
   }
 
-  r.appendChild(p);
-
-  // Event bindings
-  // Direct clicks on editable TX cell bits
-  container.querySelectorAll(".dme-cursor-bit[data-field]").forEach(span => {
-    span.addEventListener("click", () => {
-      standardLruState.cursorField = span.getAttribute("data-field");
-      standardLruState.cursorPos = Number(span.getAttribute("data-pos") || 0);
-      renderStandardLru(r, snap);
-    });
+  // Header transmitted words jump links
+  container.querySelectorAll(".lru-word-jump").forEach(wj => {
+    wj.onclick = () => {
+      const s = parseInt(wj.getAttribute("data-slot"), 10) || 0;
+      standardLruState.activeSlot = s;
+      updateStdLruTxRowDOM();
+    };
   });
 
-  // Slot box click
+  // Slot Box click
   const slotBox = container.querySelector("#std-lru-slot-box");
   if (slotBox) {
-    slotBox.addEventListener("click", () => {
-      const totalSlots = (s && s.tx && s.tx[txCh] && s.tx[txCh].length) || (isVdr ? 2 : 10);
-      standardLruState.activeSlot = (curSlotIdx + 1) % totalSlots;
-      renderStandardLru(r, snap);
-    });
+    slotBox.onclick = () => {
+      const totalSlots = (s && s.tx && s.tx[txCh] && s.tx[txCh].length) || (isVdr ? 2 : (wordsList.length || 10));
+      standardLruState.activeSlot = ((standardLruState.activeSlot || 0) + 1) % totalSlots;
+      updateStdLruTxRowDOM();
+    };
+  }
+
+  // Cell clicks on TX row
+  container.querySelector("#std-lru-tx-row").onclick = (e) => {
+    const bitSpan = e.target.closest(".dme-cursor-bit");
+    if (bitSpan && bitSpan.hasAttribute("data-field")) {
+      e.stopPropagation();
+      standardLruState.cursorActive = true;
+      standardLruState.cursorField = bitSpan.getAttribute("data-field");
+      standardLruState.cursorPos = parseInt(bitSpan.getAttribute("data-pos") || "0", 10);
+      updateStdLruTxRowDOM();
+    }
+  };
+
+  const tdTxCh = container.querySelector("#std-lru-td-tx-ch");
+  if (tdTxCh) tdTxCh.onclick = () => toggleTxBus();
+
+  const tdLabel = container.querySelector("#std-lru-td-label");
+  if (tdLabel) {
+    tdLabel.onclick = () => {
+      const live = getStdLruSlotData(standardLruState.activeSlot, standardLruState.txBus);
+      showDmeKeypadModal({
+        title: "SET LABEL (OCTAL)",
+        value: live.label,
+        type: "numeric",
+        hint: "Enter 3-digit octal label (000 to disable slot)",
+        onApply: (v) => {
+          let sVal = String(v).padStart(3, "0").slice(-3);
+          saveStdLruSlot({ label: sVal });
+        },
+      });
+    };
+  }
+
+  const tdData = container.querySelector("#std-lru-td-data");
+  if (tdData) {
+    tdData.ondblclick = () => {
+      const live = getStdLruSlotData(standardLruState.activeSlot, standardLruState.txBus);
+      showDmeKeypadModal({
+        title: "SET DATA VALUE",
+        value: String(live.dataVal),
+        type: "numeric",
+        hint: `Enter data value (${formatLruDataAndUnit(pid, live.dataVal, standardLruState.activeSlot).unit || "value"})`,
+        onApply: (v) => {
+          let num = parseFloat(v);
+          saveStdLruSlot({ dataVal: Number.isFinite(num) ? num : v });
+        },
+      });
+    };
+  }
+
+  const tdSdi = container.querySelector("#std-lru-td-sdi");
+  if (tdSdi) {
+    tdSdi.onclick = (e) => {
+      if (e.target.closest(".dme-cursor-bit")) return;
+      const live = getStdLruSlotData(standardLruState.activeSlot, standardLruState.txBus);
+      saveStdLruSlot({ sdi: (live.sdi + 1) % 4 });
+    };
+  }
+
+  const tdPad = container.querySelector("#std-lru-td-pad");
+  if (tdPad) {
+    tdPad.ondblclick = () => {
+      const live = getStdLruSlotData(standardLruState.activeSlot, standardLruState.txBus);
+      showDmeKeypadModal({
+        title: "SET PAD BITS",
+        value: String(live.pad || "0000"),
+        type: "pad",
+        hint: "Enter binary PAD bits",
+        onApply: (v) => {
+          saveStdLruSlot({ pad: v });
+        },
+      });
+    };
+  }
+
+  const tdSsm = container.querySelector("#std-lru-td-ssm");
+  if (tdSsm) {
+    tdSsm.onclick = () => {
+      const live = getStdLruSlotData(standardLruState.activeSlot, standardLruState.txBus);
+      const ssms = ["NML", "NCD", "FT", "FAIL"];
+      let idx = ssms.indexOf(live.ssm);
+      if (idx === -1) idx = 0;
+      saveStdLruSlot({ ssm: ssms[(idx + 1) % ssms.length] });
+    };
+  }
+
+  const tdPar = container.querySelector("#std-lru-td-par");
+  if (tdPar) {
+    tdPar.onclick = () => {
+      const live = getStdLruSlotData(standardLruState.activeSlot, standardLruState.txBus);
+      saveStdLruSlot({ parity: live.parity === "ODD" ? "EVEN" : "ODD" });
+    };
+  }
+
+  const tdRate = container.querySelector("#std-lru-td-rate");
+  if (tdRate) {
+    tdRate.onclick = () => {
+      const live = getStdLruSlotData(standardLruState.activeSlot, standardLruState.txBus);
+      showDmeKeypadModal({
+        title: "SET TRANSMIT RATE (ms)",
+        value: String(live.rate),
+        type: "numeric",
+        hint: "Enter transmit rate in ms (10 - 5000 ms)",
+        onApply: (v) => {
+          const rNum = Math.max(10, Math.min(5000, parseInt(v, 10) || 150));
+          saveStdLruSlot({ rate: rNum });
+        },
+      });
+    };
   }
 
   // Softkey 1: DISP CURSOR
-  const btnCursor = container.querySelector("#btn-std-cursor");
+  const btnCursor = skGrid.querySelector("#btn-std-cursor");
   if (btnCursor) {
-    btnCursor.addEventListener("click", () => {
-      let curField = standardLruState.cursorField || "DATA";
-      let pos = standardLruState.cursorPos || 0;
-      if (curField === "DATA") {
-        if (pos + 1 < dataStr.length) {
-          standardLruState.cursorPos = pos + 1;
-        } else {
-          standardLruState.cursorField = "SDI";
-          standardLruState.cursorPos = 0;
-        }
-      } else if (curField === "SDI") {
-        if (pos + 1 < 2) {
-          standardLruState.cursorPos = pos + 1;
-        } else {
-          standardLruState.cursorField = "PAD";
-          standardLruState.cursorPos = 0;
-        }
-      } else if (curField === "PAD") {
-        if (pos + 1 < padStr.length) {
-          standardLruState.cursorPos = pos + 1;
-        } else {
-          standardLruState.cursorField = "SSM";
-          standardLruState.cursorPos = 0;
-        }
-      } else if (curField === "SSM") {
-        standardLruState.cursorField = "DATA";
-        standardLruState.cursorPos = 0;
-      }
-      renderStandardLru(r, snap);
-    });
+    btnCursor.onclick = (e) => {
+      e.preventDefault();
+      triggerPress(btnCursor);
+      standardLruState.cursorActive = true;
+      advanceStdLruCursor();
+      updateStdLruTxRowDOM();
+    };
   }
 
   // Softkey 2: DATA STEP
-  const btnStep = container.querySelector("#btn-std-step");
+  const btnStep = skGrid.querySelector("#btn-std-step");
   if (btnStep) {
-    btnStep.addEventListener("click", async () => {
-      const curField = standardLruState.cursorField || "DATA";
-      const pos = standardLruState.cursorPos || 0;
-      const delta = standardLruState.stepDir === "DECR" ? -1 : 1;
-      const sl = getStdLruSlotData(curSlotIdx, txCh);
-
-      if (curField === "DATA") {
-        let val = Number(sl.dataVal);
-        if (Number.isFinite(val)) {
-          val += delta * (pos === 0 ? 10.0 : (pos === 1 ? 1.0 : (pos === 2 ? 0.1 : 0.01)));
-          sl.dataVal = Math.max(0, val);
-        }
-      } else if (curField === "SDI") {
-        sl.sdi = (sl.sdi + delta + 4) % 4;
-      } else if (curField === "PAD") {
-        const chars = (sl.pad || "0000000").split("");
-        if (pos < chars.length) {
-          chars[pos] = chars[pos] === "1" ? "0" : "1";
-          sl.pad = chars.join("");
-        }
-      } else if (curField === "SSM") {
-        const ssms = ["NML", "NCD", "FT", "FAIL"];
-        const sIdx = ssms.indexOf(sl.ssm);
-        sl.ssm = ssms[(sIdx + delta + ssms.length) % ssms.length];
-      }
-
-      standardLruState.slots[curSlotIdx] = sl;
-      await saveStdLruSlot(curSlotIdx, txCh);
-      renderStandardLru(r, snap);
-    });
+    btnStep.onclick = (e) => {
+      e.preventDefault();
+      triggerPress(btnStep);
+      const live = getStdLruSlotData(standardLruState.activeSlot, standardLruState.txBus);
+      const updates = stepStdLruActiveField(live);
+      if (updates) saveStdLruSlot(updates);
+    };
   }
 
   // Softkey 3: INC / DECR
-  const btnInc = container.querySelector("#btn-std-inc");
-  const btnDecr = container.querySelector("#btn-std-decr");
-  if (btnInc && btnDecr) {
-    btnInc.addEventListener("click", () => {
-      standardLruState.stepDir = "INC";
-      btnInc.classList.add("active");
-      btnDecr.classList.remove("active");
-    });
-    btnDecr.addEventListener("click", () => {
-      standardLruState.stepDir = "DECR";
-      btnDecr.classList.add("active");
-      btnInc.classList.remove("active");
-    });
+  const btnDir = skGrid.querySelector("#btn-std-dir");
+  if (btnDir) {
+    btnDir.onclick = (e) => {
+      e.preventDefault();
+      if (e.target && e.target.closest("#btn-std-inc")) {
+        standardLruState.stepDir = "INC";
+      } else if (e.target && e.target.closest("#btn-std-decr")) {
+        standardLruState.stepDir = "DECR";
+      } else {
+        standardLruState.stepDir = standardLruState.stepDir === "INC" ? "DECR" : "INC";
+      }
+      updateStdLruTxRowDOM();
+    };
   }
 
   // Softkey 4: MORE WORDS
-  const btnMore = container.querySelector("#btn-std-more");
+  const btnMore = skGrid.querySelector("#btn-std-more");
   if (btnMore) {
-    btnMore.addEventListener("click", () => {
-      const totalRx = rxLabs.length;
-      if (totalRx > 0) {
-        standardLruState.rxWordIndex = ((standardLruState.rxWordIndex || 0) + 1) % totalRx;
-        renderStandardLru(r, snap);
+    btnMore.onclick = (e) => {
+      e.preventDefault();
+      triggerPress(btnMore);
+      const currentSnap = standardLruState.lastSnap || snap;
+      const rxChLive = standardLruState.rxBus || "A";
+      const rxLabsLive = (currentSnap && currentSnap.rx && currentSnap.rx[rxChLive] && currentSnap.rx[rxChLive].labels) || [];
+      if (rxLabsLive.length <= 1) {
+        const hdrRx = container.querySelector("#std-lru-hdr-rx");
+        if (hdrRx) {
+          const orig = hdrRx.innerHTML;
+          hdrRx.innerHTML = (rxLabsLive.length === 1) ? `CHANNEL ${rxChLive} &mdash; 1/1 RX WORD (${rxLabsLive[0].label || rxLabsLive[0].label_octal}) - NO MORE WORDS` : `CHANNEL ${rxChLive} &mdash; NO RX WORDS RECEIVED`;
+          setTimeout(() => { if (hdrRx) hdrRx.innerHTML = orig; }, 1200);
+        }
+        return;
       }
-    });
+      standardLruState.rxWordIndex = ((standardLruState.rxWordIndex || 0) + 1) % rxLabsLive.length;
+      patchStandardLruRx(currentSnap);
+    };
   }
 
   // Softkey 5: BIT RATE
-  const btnBitrate = container.querySelector("#btn-std-bitrate");
+  const btnBitrate = skGrid.querySelector("#btn-std-bitrate");
   if (btnBitrate) {
-    btnBitrate.addEventListener("click", async () => {
-      standardLruState.bitRate = (curRate === 100.0) ? 12.5 : 100.0;
+    btnBitrate.onclick = async (e) => {
+      e.preventDefault();
+      triggerPress(btnBitrate);
+      const lowSpeedRates = [8.1, 9.4, 11.1, 12.5, 13.9, 15.1, 17.2, 18.5, 20.0];
+      const highSpeedRates = [83.33, 100.0, 125.0];
+      const rates = isHighSpeed ? highSpeedRates : lowSpeedRates;
+      const dir = (standardLruState.stepDir === "DECR") ? -1 : 1;
+      let idx = rates.findIndex(r => Math.abs(r - curRate) < 0.3);
+      if (idx === -1) idx = isHighSpeed ? 1 : 3;
+      const nextRate = rates[(idx + dir + rates.length) % rates.length];
+      standardLruState.bitRate = nextRate;
       standardLruState._customBus = true;
+      updateStdLruTxRowDOM();
       try {
-        await api("/api/arinc/channel/config", {
+        await api("/api/arinc/channel", {
           method: "POST",
-          body: JSON.stringify({ bus: txCh, bit_rate_kbps: standardLruState.bitRate }),
+          body: JSON.stringify({ bus: txCh, bit_rate_kbps: nextRate }),
         });
-      } catch (e) {
-        console.error("Set bitrate failed:", e);
+      } catch (err) {
+        console.error("Set bitrate failed:", err);
       }
-      renderStandardLru(r, snap);
-    });
+    };
   }
 
   // Softkey 6: TX Split Toggle
-  const btnTxCh = container.querySelector("#btn-std-txch");
-  const btnTxLeft = container.querySelector("#btn-std-tx-left");
-  const btnTxRight = container.querySelector("#btn-std-tx-right");
-  const setTxBus = (bus) => {
-    standardLruState._customBus = true;
-    standardLruState.txBus = bus;
-    renderStandardLru(r, snap);
-  };
-  if (btnTxLeft && btnTxRight) {
-    btnTxLeft.addEventListener("click", (e) => { e.stopPropagation(); setTxBus(isVdr ? "C" : "A"); });
-    btnTxRight.addEventListener("click", (e) => { e.stopPropagation(); setTxBus(isVdr ? "D" : "B"); });
-  }
+  const btnTxCh = skGrid.querySelector("#btn-std-txch");
   if (btnTxCh) {
-    btnTxCh.addEventListener("click", () => {
-      if (isVdr) {
-        setTxBus(txCh === "C" ? "D" : "C");
-      } else {
-        setTxBus(txCh === "A" ? "B" : "A");
+    btnTxCh.onclick = (e) => {
+      e.preventDefault();
+      if (e.target && e.target.closest("#btn-std-tx-left")) {
+        toggleTxBus(isVdr ? "C" : "A");
+        return;
       }
-    });
+      if (e.target && e.target.closest("#btn-std-tx-right")) {
+        toggleTxBus(isVdr ? "D" : "B");
+        return;
+      }
+      toggleTxBus();
+    };
   }
 
   // Softkey 7: RX Split Toggle
-  const btnRxCh = container.querySelector("#btn-std-rxch");
-  const btnRxLeft = container.querySelector("#btn-std-rx-left");
-  const btnRxRight = container.querySelector("#btn-std-rx-right");
-  const setRxBus = (bus) => {
-    standardLruState._customBus = true;
-    standardLruState.rxBus = bus;
-    renderStandardLru(r, snap);
-  };
-  if (btnRxLeft && btnRxRight) {
-    btnRxLeft.addEventListener("click", (e) => { e.stopPropagation(); setRxBus("A"); });
-    btnRxRight.addEventListener("click", (e) => { e.stopPropagation(); setRxBus("B"); });
-  }
+  const btnRxCh = skGrid.querySelector("#btn-std-rxch");
   if (btnRxCh) {
-    btnRxCh.addEventListener("click", () => {
-      setRxBus(rxCh === "A" ? "B" : "A");
-    });
+    btnRxCh.onclick = (e) => {
+      e.preventDefault();
+      if (e.target && e.target.closest("#btn-std-rx-left")) {
+        toggleRxBus("A");
+        return;
+      }
+      if (e.target && e.target.closest("#btn-std-rx-right")) {
+        toggleRxBus("B");
+        return;
+      }
+      toggleRxBus();
+    };
   }
 }
 
@@ -4693,31 +5323,65 @@ function patchStandardLruRx(s) {
   standardLruState.lastSnap = s;
   const rxCh = standardLruState.rxBus || "A";
   const rxLabs = (s.rx && s.rx[rxCh] && s.rx[rxCh].labels) || [];
-  const curRx = rxLabs.length > 0 ? rxLabs[Math.min(standardLruState.rxWordIndex || 0, rxLabs.length - 1)] : null;
+  const totalRx = rxLabs.length;
+  let rxIdx = standardLruState.rxWordIndex || 0;
+  if (rxIdx >= totalRx) {
+    rxIdx = totalRx > 0 ? totalRx - 1 : 0;
+    standardLruState.rxWordIndex = rxIdx;
+  }
+  const curRx = totalRx > 0 ? rxLabs[rxIdx] : null;
 
-  const rxCell = document.getElementById("std-lru-rx-data-cell");
-  if (rxCell) {
-    if (curRx && curRx.data) {
-      rxCell.textContent = curRx.data_eng || curRx.data;
-      rxCell.classList.add("has-data");
+  const hdrRx = document.getElementById("std-lru-hdr-rx");
+  if (hdrRx) {
+    const wordsSummary = totalRx > 0
+      ? rxLabs.map(l => (l.funct || l.label || l.label_octal || "").replace(/_/g, " ")).filter(Boolean).slice(0, 4).join(" / ")
+      : "---";
+    const countStr = totalRx > 1 ? `: ${totalRx} (WORD ${rxIdx + 1}/${totalRx})` : (totalRx === 1 ? `: 1 (${curRx.label || curRx.label_octal})` : "");
+    hdrRx.innerHTML = `CHANNEL ${rxCh} &mdash; RECEIVED WORDS${countStr} &nbsp;&nbsp;&nbsp; <span style="font-weight:600;" id="std-lru-rx-words-list">${wordsSummary}</span>`;
+  }
+
+  const rxChEl = document.getElementById("std-lru-rx-ch-cell");
+  if (rxChEl) rxChEl.textContent = `RX-${rxCh}`;
+
+  const rxFunctEl = document.getElementById("std-lru-rx-funct-cell");
+  if (rxFunctEl) rxFunctEl.textContent = curRx ? ((curRx.funct || "").replace(/_/g, " ") || "---") : "---";
+
+  const rxLabelEl = document.getElementById("std-lru-rx-label-cell");
+  if (rxLabelEl) rxLabelEl.textContent = curRx ? (curRx.label || curRx.label_octal || "---") : "---";
+
+  const rxDataEl = document.getElementById("std-lru-rx-data-cell");
+  if (rxDataEl) {
+    if (curRx && (curRx.data != null || curRx.data_eng != null)) {
+      rxDataEl.textContent = curRx.data_eng || curRx.data;
+      rxDataEl.classList.add("has-data");
     } else {
-      rxCell.textContent = "WAITING...";
-      rxCell.classList.remove("has-data");
+      rxDataEl.textContent = "WAITING...";
+      rxDataEl.classList.remove("has-data");
     }
   }
 
-  const rxListEl = document.getElementById("std-lru-rx-words-list");
-  if (rxListEl) {
-    rxListEl.textContent = rxLabs.length > 0
-      ? rxLabs.map(l => l.funct || l.label || l.label_octal).filter(Boolean).slice(0, 4).join(" / ")
-      : "---";
-  }
+  const rxSdiEl = document.getElementById("std-lru-rx-sdi-cell");
+  if (rxSdiEl) rxSdiEl.textContent = curRx ? (curRx.sdi != null ? String(curRx.sdi).padStart(2, "0") : "00") : "--";
+
+  const rxPadEl = document.getElementById("std-lru-rx-pad-cell");
+  if (rxPadEl) rxPadEl.textContent = curRx ? (curRx.pads || "-------") : "-------";
+
+  const rxSsmEl = document.getElementById("std-lru-rx-ssm-cell");
+  if (rxSsmEl) rxSsmEl.textContent = curRx ? (curRx.ssm || "--") : "--";
+
+  const rxParEl = document.getElementById("std-lru-rx-par-cell");
+  if (rxParEl) rxParEl.textContent = curRx ? (curRx.par || curRx.parity || "--") : "--";
+
+  const rxRateEl = document.getElementById("std-lru-rx-rate-cell");
+  if (rxRateEl) rxRateEl.textContent = curRx ? (curRx.rate_ms || 100) : "--";
 }
 
 // ============================================================================
 // 4. renderHfScreen & patchHfRx (Dedicated Dual-Word HF Comm)
 // ============================================================================
 function renderHfScreen(r, s) {
+  r.innerHTML = "";
+
   const p = el("div", "panel");
   p.style.maxWidth = "1060px";
   p.style.margin = "0 auto";
@@ -4740,7 +5404,7 @@ function renderHfScreen(r, s) {
       <p class="muted" style="margin:0; font-size:11.5px; white-space:nowrap;">ARINC 719 High Frequency Communication Transceiver (Dual Word Mode)</p>
     </div>
     <div style="display:flex; gap:8px; align-items:center; flex-wrap:nowrap; flex-shrink:0;">
-      <span class="pill pill-run" style="white-space:nowrap;">BUS TX-${txCh} &bull; RX-${rxCh} &bull; 12.5 KBPS</span>
+      <span class="pill pill-run" id="hf-toolbar-pill" style="white-space:nowrap;">BUS TX-${txCh} &bull; RX-${rxCh} &bull; ${Number(hfScreenState.bitRate).toFixed(1)} KBPS</span>
       <button type="button" class="btn btn-ghost btn-sm" id="btn-hf-reset-def" style="white-space:nowrap;">Reset Defaults</button>
       <button type="button" class="btn btn-outline btn-sm" id="btn-hf-tx-word" style="white-space:nowrap;">Transmit Active Word</button>
       <button type="button" class="btn btn-ghost btn-sm" id="btn-hf-back" style="white-space:nowrap;">&lt; LRU Select</button>
@@ -4762,7 +5426,7 @@ function renderHfScreen(r, s) {
   hdr.style.color = "var(--text)";
   hdr.innerHTML = `
     <div style="display:flex; justify-content:space-between; align-items:center; width:100%;">
-      <div>HF COMM &mdash; CHANNEL ${txCh} TRANSMIT</div>
+      <div id="hf-hdr-tx-label">HF COMM &mdash; CHANNEL ${txCh} TRANSMIT</div>
       <div>CHANNEL ${rxCh} &mdash; RECEIVED WORDS &nbsp;&nbsp;&nbsp; <span style="font-weight:600;" id="hf-rx-words-list">${rxWordsStr}</span></div>
     </div>
   `;
@@ -4778,21 +5442,6 @@ function renderHfScreen(r, s) {
   tbl.style.width = "100%";
   tbl.style.borderCollapse = "collapse";
   tbl.style.fontFamily = "var(--font-mono, monospace)";
-
-  // Format Frequency DATA with cursor: "10.0000 MHZ"
-  const freqStr = Number(hfScreenState.freqMhz).toFixed(4);
-  const parts = freqStr.split(".");
-  const whole = (parts[0] || "10").padStart(2, "0");
-  const dec = (parts[1] || "0000").padEnd(4, "0");
-
-  const is0 = hfScreenState.cursorPos === 0;
-  const is1 = hfScreenState.cursorPos === 1;
-  const is2 = hfScreenState.cursorPos === 2;
-  const is3 = hfScreenState.cursorPos === 3;
-  const is4 = hfScreenState.cursorPos === 4;
-  const is5 = hfScreenState.cursorPos === 5;
-
-  const dataHtml = `<span class="dme-cursor-bit ${is0 ? "cursor-active-bit" : ""}" data-pos="0">${whole.charAt(0)}</span><span class="dme-cursor-bit ${is1 ? "cursor-active-bit" : ""}" data-pos="1">${whole.charAt(1)}</span>.<span class="dme-cursor-bit ${is2 ? "cursor-active-bit" : ""}" data-pos="2">${dec.charAt(0)}</span><span class="dme-cursor-bit ${is3 ? "cursor-active-bit" : ""}" data-pos="3">${dec.charAt(1)}</span><span class="dme-cursor-bit ${is4 ? "cursor-active-bit" : ""}" data-pos="4">${dec.charAt(2)}</span><span class="dme-cursor-bit ${is5 ? "cursor-active-bit" : ""}" data-pos="5">${dec.charAt(3)}</span> MHZ`;
 
   const curRx = rxLabs.length > 0 ? rxLabs[Math.min(hfScreenState.rxWordIndex || 0, rxLabs.length - 1)] : null;
   const rxDataStr = curRx ? (curRx.data || curRx.data_eng || "---") : "WAITING...";
@@ -4815,16 +5464,16 @@ function renderHfScreen(r, s) {
     </thead>
     <tbody>
       <tr class="tx-row" id="hf-tx-row">
-        <td><span class="dme-cell-edit dynapro-cell-edit" id="hf-tx-ch-cell">TX-${txCh}</span></td>
+        <td><span class="dme-cell-edit dynapro-cell-edit" id="hf-tx-ch-cell" style="cursor:pointer;" title="Click to toggle TX bus">TX-${txCh}</span></td>
         <td><span class="dme-cell-edit dynapro-cell-edit" id="hf-tx-funct-cell">HF COMM</span></td>
-        <td><span class="dme-cell-readonly dynapro-cell-readonly" id="hf-tx-label-cell" title="Locked">037</span></td>
-        <td><span class="dme-cell-edit dynapro-cell-edit field-active" id="hf-tx-data-cell">${dataHtml}</span></td>
-        <td><span class="dme-cell-edit dynapro-cell-edit" id="hf-tx-sb-cell" style="cursor:pointer;">${hfScreenState.sb}</span></td>
-        <td><span class="dme-cell-edit dynapro-cell-edit" id="hf-tx-mod-cell" style="cursor:pointer;">${hfScreenState.mod}</span></td>
-        <td><span class="dme-cell-edit dynapro-cell-edit" id="hf-tx-cw-cell" style="cursor:pointer;">${hfScreenState.cw ? "ON" : "OFF"}</span></td>
-        <td><span class="dme-cell-edit dynapro-cell-edit" id="hf-tx-ssm-cell" style="cursor:pointer;">${hfScreenState.ssm}</span></td>
-        <td><span class="dme-cell-edit dynapro-cell-edit" id="hf-tx-par-cell">${hfScreenState.par}</span></td>
-        <td><span class="dme-cell-edit dynapro-cell-edit" id="hf-tx-rate-cell">${hfScreenState.rateMs}</span></td>
+        <td><span class="dme-cell-readonly dynapro-cell-readonly" id="hf-tx-label-cell" title="Locked Label 037">037</span></td>
+        <td><span class="dme-cell-edit dynapro-cell-edit field-active" id="hf-tx-data-cell" style="cursor:pointer;" title="Click digit to place cursor, or click box to type frequency"></span></td>
+        <td><span class="dme-cell-edit dynapro-cell-edit" id="hf-tx-sb-cell" style="cursor:pointer;" title="Click to toggle USB / LSB">${hfScreenState.sb}</span></td>
+        <td><span class="dme-cell-edit dynapro-cell-edit" id="hf-tx-mod-cell" style="cursor:pointer;" title="Click to toggle AM / SSB">${hfScreenState.mod}</span></td>
+        <td><span class="dme-cell-edit dynapro-cell-edit" id="hf-tx-cw-cell" style="cursor:pointer;" title="Click to toggle CW ON / OFF">${hfScreenState.cw ? "ON" : "OFF"}</span></td>
+        <td><span class="dme-cell-edit dynapro-cell-edit" id="hf-tx-ssm-cell" style="cursor:pointer;" title="Click to cycle SSM">${hfScreenState.ssm}</span></td>
+        <td><span class="dme-cell-edit dynapro-cell-edit" id="hf-tx-par-cell" style="cursor:pointer;" title="Click to toggle ODD / EVEN">${hfScreenState.par || "ODD"}</span></td>
+        <td><span class="dme-cell-edit dynapro-cell-edit" id="hf-tx-rate-cell" style="cursor:pointer;" title="Click to set repeat rate">${hfScreenState.rateMs || 200}</span></td>
       </tr>
       <tr class="rx-row" id="hf-rx-row">
         <td><span class="dme-cell-readonly dynapro-cell-readonly" id="hf-rx-ch-cell">RX-${rxCh}</span></td>
@@ -4845,7 +5494,6 @@ function renderHfScreen(r, s) {
 
   // Softkeys (EXACTLY 6 FULL-WIDTH COLUMNS, NO dummy 4th column, NO MORE WORDS)
   const skGrid = el("div", "dme-softkeys-row dynapro-softkeys-row hf-softkeys-row");
-
   skGrid.innerHTML = `
     <!-- 1: DISP CURSOR -->
     <div class="std-sk-col"><div class="std-sk-top-label">&nbsp;</div><button type="button" class="dme-softkey-btn dynapro-softkey-btn dme-softkey-single" id="btn-hf-cursor"><div class="dme-softkey-label">DISP<br>CURSOR</div></button></div>
@@ -4854,7 +5502,7 @@ function renderHfScreen(r, s) {
     <!-- 3: INC / DECR Split Toggle -->
     <div class="std-sk-col"><div class="std-sk-top-label">&nbsp;</div><button type="button" class="dme-softkey-btn dynapro-softkey-btn dme-softkey-split" id="btn-hf-dir"><div class="dme-softkey-half dynapro-softkey-half ${stepDir === "INC" ? "active" : ""}" id="btn-hf-inc">INC.</div><div class="dme-softkey-divider dynapro-softkey-divider"></div><div class="dme-softkey-half dynapro-softkey-half ${stepDir === "DECR" ? "active" : ""}" id="btn-hf-decr">DECR</div></button></div>
     <!-- 4: BIT RATE -->
-    <div class="std-sk-col"><div class="std-sk-top-label" id="hf-rate-display">${hfScreenState.bitRate.toFixed(1)} KBPS</div><button type="button" class="dme-softkey-btn dynapro-softkey-btn dme-softkey-single" id="btn-hf-bitrate"><div class="dme-softkey-label">BIT<br>RATE</div></button></div>
+    <div class="std-sk-col"><div class="std-sk-top-label" id="hf-rate-display">${Number(hfScreenState.bitRate).toFixed(1)} KBPS</div><button type="button" class="dme-softkey-btn dynapro-softkey-btn dme-softkey-single" id="btn-hf-bitrate"><div class="dme-softkey-label">BIT<br>RATE</div></button></div>
     <!-- 5: TX-A / TX-B Split Toggle -->
     <div class="std-sk-col">
       <div class="std-sk-top-label">&nbsp;</div>
@@ -4875,6 +5523,117 @@ function renderHfScreen(r, s) {
     </div>
   `;
   container.appendChild(skGrid);
+  r.appendChild(p);
+
+  const triggerPress = (btn) => {
+    if (!btn) return;
+    btn.classList.add("momentary-press");
+    setTimeout(() => btn.classList.remove("momentary-press"), 150);
+  };
+
+  // In-place DOM update helper
+  const updateHfTxRowDOM = () => {
+    const liveTx = hfScreenState.txBus || "A";
+    const liveRx = hfScreenState.rxBus || "B";
+    const liveDir = hfScreenState.stepDir || "INC";
+
+    const chEl = container.querySelector("#hf-tx-ch-cell");
+    if (chEl) chEl.textContent = `TX-${liveTx}`;
+
+    const dataEl = container.querySelector("#hf-tx-data-cell");
+    if (dataEl) {
+      const freqStr = Number(hfScreenState.freqMhz).toFixed(4);
+      const parts = freqStr.split(".");
+      const whole = (parts[0] || "10").padStart(2, "0");
+      const dec = (parts[1] || "0000").padEnd(4, "0");
+
+      const is0 = hfScreenState.cursorPos === 0;
+      const is1 = hfScreenState.cursorPos === 1;
+      const is2 = hfScreenState.cursorPos === 2;
+      const is3 = hfScreenState.cursorPos === 3;
+      const is4 = hfScreenState.cursorPos === 4;
+      const is5 = hfScreenState.cursorPos === 5;
+
+      dataEl.innerHTML = `<span class="dme-cursor-bit ${is0 ? "cursor-active-bit" : ""}" data-pos="0">${whole.charAt(0)}</span><span class="dme-cursor-bit ${is1 ? "cursor-active-bit" : ""}" data-pos="1">${whole.charAt(1)}</span>.<span class="dme-cursor-bit ${is2 ? "cursor-active-bit" : ""}" data-pos="2">${dec.charAt(0)}</span><span class="dme-cursor-bit ${is3 ? "cursor-active-bit" : ""}" data-pos="3">${dec.charAt(1)}</span><span class="dme-cursor-bit ${is4 ? "cursor-active-bit" : ""}" data-pos="4">${dec.charAt(2)}</span><span class="dme-cursor-bit ${is5 ? "cursor-active-bit" : ""}" data-pos="5">${dec.charAt(3)}</span> MHZ`;
+
+      dataEl.querySelectorAll(".dme-cursor-bit[data-pos]").forEach((span) => {
+        span.addEventListener("click", (e) => {
+          e.stopPropagation();
+          hfScreenState.cursorPos = Number(span.getAttribute("data-pos") || 0);
+          updateHfTxRowDOM();
+        });
+      });
+    }
+
+    const sbEl = container.querySelector("#hf-tx-sb-cell");
+    if (sbEl) sbEl.textContent = hfScreenState.sb;
+
+    const modEl = container.querySelector("#hf-tx-mod-cell");
+    if (modEl) modEl.textContent = hfScreenState.mod;
+
+    const cwEl = container.querySelector("#hf-tx-cw-cell");
+    if (cwEl) cwEl.textContent = hfScreenState.cw ? "ON" : "OFF";
+
+    const ssmEl = container.querySelector("#hf-tx-ssm-cell");
+    if (ssmEl) ssmEl.textContent = hfScreenState.ssm;
+
+    const parEl = container.querySelector("#hf-tx-par-cell");
+    if (parEl) parEl.textContent = hfScreenState.par || "ODD";
+
+    const rateEl = container.querySelector("#hf-tx-rate-cell");
+    if (rateEl) rateEl.textContent = hfScreenState.rateMs || 200;
+
+    const pillEl = toolbar.querySelector("#hf-toolbar-pill");
+    if (pillEl) pillEl.innerHTML = `BUS TX-${liveTx} &bull; RX-${liveRx} &bull; ${Number(hfScreenState.bitRate).toFixed(1)} KBPS`;
+
+    const hdrTxEl = container.querySelector("#hf-hdr-tx-label");
+    if (hdrTxEl) hdrTxEl.innerHTML = `HF COMM &mdash; CHANNEL ${liveTx} TRANSMIT`;
+
+    const rateDisp = container.querySelector("#hf-rate-display");
+    if (rateDisp) rateDisp.textContent = `${Number(hfScreenState.bitRate).toFixed(1)} KBPS`;
+
+    const btnInc = container.querySelector("#btn-hf-inc");
+    const btnDecr = container.querySelector("#btn-hf-decr");
+    if (btnInc && btnDecr) {
+      if (liveDir === "INC") {
+        btnInc.classList.add("active");
+        btnDecr.classList.remove("active");
+      } else {
+        btnDecr.classList.add("active");
+        btnInc.classList.remove("active");
+      }
+    }
+
+    const txL = container.querySelector("#btn-hf-tx-left");
+    const txR = container.querySelector("#btn-hf-tx-right");
+    if (txL && txR) {
+      if (liveTx === "A") {
+        txL.classList.add("active");
+        txR.classList.remove("active");
+      } else {
+        txR.classList.add("active");
+        txL.classList.remove("active");
+      }
+    }
+
+    const rxL = container.querySelector("#btn-hf-rx-left");
+    const rxR = container.querySelector("#btn-hf-rx-right");
+    if (rxL && rxR) {
+      if (liveRx === "A") {
+        rxL.classList.add("active");
+        rxR.classList.remove("active");
+      } else {
+        rxR.classList.add("active");
+        rxL.classList.remove("active");
+      }
+    }
+
+    const rxChCell = container.querySelector("#hf-rx-ch-cell");
+    if (rxChCell) rxChCell.textContent = `RX-${liveRx}`;
+  };
+
+  // Initial draw of TX data bits
+  updateHfTxRowDOM();
 
   const topBack = toolbar.querySelector("#btn-hf-back");
   if (topBack) topBack.addEventListener("click", () => navTo("avionics_lru"));
@@ -4885,13 +5644,13 @@ function renderHfScreen(r, s) {
       await api("/api/arinc/hf/config", {
         method: "POST",
         body: JSON.stringify({
-          bus: txCh,
+          bus: hfScreenState.txBus || "A",
           freq_mhz: hfScreenState.freqMhz,
           sb: hfScreenState.sb,
           mod: hfScreenState.mod,
           cw: hfScreenState.cw,
           ssm: hfScreenState.ssm,
-          rate_ms: hfScreenState.rateMs,
+          rate_ms: hfScreenState.rateMs || 200,
         }),
       });
     } catch (e) {
@@ -4907,9 +5666,11 @@ function renderHfScreen(r, s) {
       hfScreenState.mod = "AM";
       hfScreenState.cw = false;
       hfScreenState.ssm = "NML";
+      hfScreenState.par = "ODD";
       hfScreenState.rateMs = 200;
+      hfScreenState.cursorPos = 2;
+      updateHfTxRowDOM();
       await saveHfConfig();
-      renderHfScreen(r, snap);
     });
   }
 
@@ -4922,55 +5683,100 @@ function renderHfScreen(r, s) {
     });
   }
 
-  r.appendChild(p);
-
-  // Event handlers
-  // Direct clicks on frequency bits
-  container.querySelectorAll(".dme-cursor-bit[data-pos]").forEach(span => {
-    span.addEventListener("click", () => {
-      hfScreenState.cursorPos = Number(span.getAttribute("data-pos") || 0);
-      renderHfScreen(r, snap);
+  // Cell clicks
+  const chCell = container.querySelector("#hf-tx-ch-cell");
+  if (chCell) {
+    chCell.addEventListener("click", async () => {
+      hfScreenState.txBus = (hfScreenState.txBus === "A") ? "B" : "A";
+      updateHfTxRowDOM();
+      await saveHfConfig();
     });
-  });
+  }
 
-  // SB toggle
+  const dataCell = container.querySelector("#hf-tx-data-cell");
+  if (dataCell) {
+    dataCell.addEventListener("click", (e) => {
+      if (e.target && e.target.classList.contains("dme-cursor-bit")) return;
+      showDmeKeypadModal({
+        title: "SET HF TRANSMIT FREQUENCY (MHZ)",
+        value: Number(hfScreenState.freqMhz).toFixed(4),
+        type: "numeric",
+        hint: "Valid range: 2.0000 to 29.9999 MHz",
+        onApply: async (val) => {
+          const num = parseFloat(val);
+          if (!isNaN(num) && num >= 2.0 && num <= 29.9999) {
+            hfScreenState.freqMhz = Number(num.toFixed(4));
+            updateHfTxRowDOM();
+            await saveHfConfig();
+          }
+        },
+      });
+    });
+  }
+
   const sbCell = container.querySelector("#hf-tx-sb-cell");
   if (sbCell) {
     sbCell.addEventListener("click", async () => {
       hfScreenState.sb = hfScreenState.sb === "USB" ? "LSB" : "USB";
+      updateHfTxRowDOM();
       await saveHfConfig();
-      renderHfScreen(r, snap);
     });
   }
 
-  // MOD toggle
   const modCell = container.querySelector("#hf-tx-mod-cell");
   if (modCell) {
     modCell.addEventListener("click", async () => {
       hfScreenState.mod = hfScreenState.mod === "AM" ? "SSB" : "AM";
+      updateHfTxRowDOM();
       await saveHfConfig();
-      renderHfScreen(r, snap);
     });
   }
 
-  // CW toggle
   const cwCell = container.querySelector("#hf-tx-cw-cell");
   if (cwCell) {
     cwCell.addEventListener("click", async () => {
       hfScreenState.cw = !hfScreenState.cw;
+      updateHfTxRowDOM();
       await saveHfConfig();
-      renderHfScreen(r, snap);
     });
   }
 
-  // SSM cycle
   const ssmCell = container.querySelector("#hf-tx-ssm-cell");
   if (ssmCell) {
     ssmCell.addEventListener("click", async () => {
       const ssms = ["NML", "NCD", "FT", "FAIL"];
       hfScreenState.ssm = ssms[(ssms.indexOf(hfScreenState.ssm) + 1) % ssms.length];
+      updateHfTxRowDOM();
       await saveHfConfig();
-      renderHfScreen(r, snap);
+    });
+  }
+
+  const parCell = container.querySelector("#hf-tx-par-cell");
+  if (parCell) {
+    parCell.addEventListener("click", async () => {
+      hfScreenState.par = (hfScreenState.par === "ODD") ? "EVEN" : "ODD";
+      updateHfTxRowDOM();
+      await saveHfConfig();
+    });
+  }
+
+  const rateCell = container.querySelector("#hf-tx-rate-cell");
+  if (rateCell) {
+    rateCell.addEventListener("click", () => {
+      showDmeKeypadModal({
+        title: "SET TRANSMIT REPEAT RATE (MS)",
+        value: String(hfScreenState.rateMs || 200),
+        type: "numeric",
+        hint: "Default: 200 ms (Valid: 10..5000 ms)",
+        onApply: async (val) => {
+          const num = parseInt(val, 10);
+          if (!isNaN(num) && num >= 10 && num <= 5000) {
+            hfScreenState.rateMs = num;
+            updateHfTxRowDOM();
+            await saveHfConfig();
+          }
+        },
+      });
     });
   }
 
@@ -4978,8 +5784,9 @@ function renderHfScreen(r, s) {
   const btnCursor = container.querySelector("#btn-hf-cursor");
   if (btnCursor) {
     btnCursor.addEventListener("click", () => {
+      triggerPress(btnCursor);
       hfScreenState.cursorPos = ((hfScreenState.cursorPos || 0) + 1) % 6;
-      renderHfScreen(r, snap);
+      updateHfTxRowDOM();
     });
   }
 
@@ -4987,6 +5794,7 @@ function renderHfScreen(r, s) {
   const btnStep = container.querySelector("#btn-hf-step");
   if (btnStep) {
     btnStep.addEventListener("click", async () => {
+      triggerPress(btnStep);
       const pos = hfScreenState.cursorPos || 0;
       const delta = hfScreenState.stepDir === "DECR" ? -1 : 1;
       let multiplier = 0.0001;
@@ -5000,24 +5808,34 @@ function renderHfScreen(r, s) {
       let newFreq = Number(hfScreenState.freqMhz) + (delta * multiplier);
       newFreq = Math.max(2.0, Math.min(29.9999, newFreq));
       hfScreenState.freqMhz = Number(newFreq.toFixed(4));
+      updateHfTxRowDOM();
       await saveHfConfig();
-      renderHfScreen(r, snap);
     });
   }
 
   // Softkey 3: INC / DECR
+  const btnDir = container.querySelector("#btn-hf-dir");
   const btnInc = container.querySelector("#btn-hf-inc");
   const btnDecr = container.querySelector("#btn-hf-decr");
   if (btnInc && btnDecr) {
-    btnInc.addEventListener("click", () => {
+    btnInc.addEventListener("click", (e) => {
+      e.stopPropagation();
+      triggerPress(btnDir);
       hfScreenState.stepDir = "INC";
-      btnInc.classList.add("active");
-      btnDecr.classList.remove("active");
+      updateHfTxRowDOM();
     });
-    btnDecr.addEventListener("click", () => {
+    btnDecr.addEventListener("click", (e) => {
+      e.stopPropagation();
+      triggerPress(btnDir);
       hfScreenState.stepDir = "DECR";
-      btnDecr.classList.add("active");
-      btnInc.classList.remove("active");
+      updateHfTxRowDOM();
+    });
+  }
+  if (btnDir) {
+    btnDir.addEventListener("click", () => {
+      triggerPress(btnDir);
+      hfScreenState.stepDir = (hfScreenState.stepDir === "INC") ? "DECR" : "INC";
+      updateHfTxRowDOM();
     });
   }
 
@@ -5025,8 +5843,9 @@ function renderHfScreen(r, s) {
   const btnBitrate = container.querySelector("#btn-hf-bitrate");
   if (btnBitrate) {
     btnBitrate.addEventListener("click", () => {
-      hfScreenState.bitRate = hfScreenState.bitRate === 100.0 ? 12.5 : 100.0;
-      renderHfScreen(r, snap);
+      triggerPress(btnBitrate);
+      hfScreenState.bitRate = (hfScreenState.bitRate === 100.0) ? 12.5 : 100.0;
+      updateHfTxRowDOM();
     });
   }
 
@@ -5034,9 +5853,11 @@ function renderHfScreen(r, s) {
   const btnTxCh = container.querySelector("#btn-hf-txch");
   const btnTxLeft = container.querySelector("#btn-hf-tx-left");
   const btnTxRight = container.querySelector("#btn-hf-tx-right");
-  const setHfTxBus = (bus) => {
+  const setHfTxBus = async (bus) => {
+    triggerPress(btnTxCh);
     hfScreenState.txBus = bus;
-    renderHfScreen(r, snap);
+    updateHfTxRowDOM();
+    await saveHfConfig();
   };
   if (btnTxLeft && btnTxRight) {
     btnTxLeft.addEventListener("click", (e) => { e.stopPropagation(); setHfTxBus("A"); });
@@ -5053,8 +5874,10 @@ function renderHfScreen(r, s) {
   const btnRxLeft = container.querySelector("#btn-hf-rx-left");
   const btnRxRight = container.querySelector("#btn-hf-rx-right");
   const setHfRxBus = (bus) => {
+    triggerPress(btnRxCh);
     hfScreenState.rxBus = bus;
-    renderHfScreen(r, snap);
+    updateHfTxRowDOM();
+    patchHfRx(snap);
   };
   if (btnRxLeft && btnRxRight) {
     btnRxLeft.addEventListener("click", (e) => { e.stopPropagation(); setHfRxBus("A"); });
@@ -5225,13 +6048,51 @@ function renderVhfAlign(r, s) {
     const csBtn = container.querySelector("#btn-vhf-checksum");
     if (csBtn) {
       csBtn.addEventListener("click", async () => {
-        csBtn.innerHTML = "RECALCULATING...<br>ROM<br>CHECKSUM";
+        if (vhfChecksumTimer) clearInterval(vhfChecksumTimer);
+        vhfChecksumCountdown = 10;
+        csBtn.innerHTML = `RECALCULATING...<br>(10s)`;
+        const banner = document.getElementById("vhf-live-echo-banner");
+        if (banner) {
+          banner.className = "vhf-echo-banner ok";
+          banner.style.background = "#0284c7";
+          banner.style.color = "#ffffff";
+          banner.textContent = "EXECUTING CHECKSUM COMMAND; WAIT 10 SECONDS";
+        }
         try {
           const res = await api("/api/arinc/vhf-align/checksum", { method: "POST" });
           if (snap) snap.vhf_align = res;
         } catch (e) {
-          alert(e.message);
+          console.error("Checksum error:", e);
         }
+        vhfChecksumTimer = setInterval(() => {
+          vhfChecksumCountdown--;
+          const btn = document.getElementById("btn-vhf-checksum");
+          const bnr = document.getElementById("vhf-live-echo-banner");
+          if (vhfChecksumCountdown > 0) {
+            if (btn) btn.innerHTML = `RECALCULATING...<br>(${vhfChecksumCountdown}s)`;
+            if (bnr) {
+              bnr.className = "vhf-echo-banner ok";
+              bnr.style.background = "#0284c7";
+              bnr.style.color = "#ffffff";
+              bnr.textContent = `EXECUTING CHECKSUM COMMAND; WAIT ${vhfChecksumCountdown} SECONDS`;
+            }
+          } else {
+            clearInterval(vhfChecksumTimer);
+            vhfChecksumTimer = null;
+            if (btn) btn.innerHTML = `CHECKSUM<br>COMPLETE!<br>(10s)`;
+            if (bnr) {
+              bnr.style.background = "";
+              bnr.style.color = "";
+              const echoOk = snap && snap.vhf_align && snap.vhf_align.echo_ok;
+              bnr.className = echoOk ? "vhf-echo-banner ok" : "vhf-echo-banner error";
+              bnr.textContent = echoOk ? "VHF900 429 ECHO OK" : "ERROR: VHF900 DID NOT ECHO 429 COMMAND";
+            }
+            setTimeout(() => {
+              const b = document.getElementById("btn-vhf-checksum");
+              if (b) b.innerHTML = `RECALCULATE<br>ROM<br>CHECKSUM`;
+            }, 3000);
+          }
+        }, 1000);
       });
     }
 
@@ -5409,25 +6270,25 @@ function renderVhfAlign(r, s) {
         <div class="vhf-align-title" style="margin-bottom:1.75rem; text-align:center; font-weight:700; font-size:15px; letter-spacing:1px;">VHF900 ALIGNMENT MODE FAILURE MESSAGES</div>
         <div class="vhf-failure-line" style="display:flex; margin:14px 0; font-family:var(--mono); font-size:14px;">
           <div class="fl-key" style="width:230px; font-weight:600; color:var(--text-2);">LABEL 350 DATA</div>
-          <div class="fl-val" style="font-weight:700; color:var(--text);">= &nbsp; ${faults.label_350_raw && faults.label_350_raw !== "00000000" ? faults.label_350_raw : ""}</div>
+          <div class="fl-val" id="vhf-fl-350" style="font-weight:700; color:var(--text);">= &nbsp; ${faults.label_350_raw && faults.label_350_raw !== "00000000" ? faults.label_350_raw : ""}</div>
         </div>
         <div style="margin:16px 0;"></div>
         <div class="vhf-failure-line" style="display:flex; margin:10px 0; font-family:var(--mono); font-size:14px;">
           <div class="fl-key" style="width:230px; font-weight:600; color:var(--text-2);">FAULT CODE &nbsp;&nbsp;&nbsp; 1</div>
-          <div class="fl-val" style="font-weight:700; color:var(--text);">= &nbsp; ${faults.code1 && faults.code1 !== "NONE" ? faults.code1 : ""}</div>
+          <div class="fl-val" id="vhf-fl-code1" style="font-weight:700; color:var(--text);">= &nbsp; ${faults.code1 && faults.code1 !== "NONE" ? faults.code1 : ""}</div>
         </div>
         <div class="vhf-failure-line" style="display:flex; margin:10px 0; font-family:var(--mono); font-size:14px;">
           <div class="fl-key" style="width:230px; font-weight:600; color:var(--text-2);">FAULT MESSAGE &nbsp; 1</div>
-          <div class="fl-val" style="font-weight:700; color:var(--text);">= &nbsp; ${faults.msg1 && faults.msg1 !== "NO FAULT DETECTED" ? faults.msg1 : ""}</div>
+          <div class="fl-val" id="vhf-fl-msg1" style="font-weight:700; color:var(--text);">= &nbsp; ${faults.msg1 && faults.msg1 !== "NO FAULT DETECTED" ? faults.msg1 : ""}</div>
         </div>
         <div style="margin:20px 0;"></div>
         <div class="vhf-failure-line" style="display:flex; margin:10px 0; font-family:var(--mono); font-size:14px;">
           <div class="fl-key" style="width:230px; font-weight:600; color:var(--text-2);">FAULT CODE &nbsp;&nbsp;&nbsp; 2</div>
-          <div class="fl-val" style="font-weight:700; color:var(--text);">= &nbsp; ${faults.code2 && faults.code2 !== "NONE" ? faults.code2 : ""}</div>
+          <div class="fl-val" id="vhf-fl-code2" style="font-weight:700; color:var(--text);">= &nbsp; ${faults.code2 && faults.code2 !== "NONE" ? faults.code2 : ""}</div>
         </div>
         <div class="vhf-failure-line" style="display:flex; margin:10px 0; font-family:var(--mono); font-size:14px;">
           <div class="fl-key" style="width:230px; font-weight:600; color:var(--text-2);">FAULT MESSAGE &nbsp; 2</div>
-          <div class="fl-val" style="font-weight:700; color:var(--text);">= &nbsp; ${faults.msg2 && faults.msg2 !== "NO FAULT DETECTED" ? faults.msg2 : ""}</div>
+          <div class="fl-val" id="vhf-fl-msg2" style="font-weight:700; color:var(--text);">= &nbsp; ${faults.msg2 && faults.msg2 !== "NO FAULT DETECTED" ? faults.msg2 : ""}</div>
         </div>
         <div style="margin:28px 0 10px 0;">
           ${renderBannerHtml()}
@@ -5445,6 +6306,10 @@ function renderVhfAlign(r, s) {
     container.querySelector("#btn-menu-ret").addEventListener("click", () => {
       vhfAlignState.page = "menu";
       vhfAlignState.currentScreen = "menu";
+      api("/api/arinc/vhf-align/config", {
+        method: "POST",
+        body: JSON.stringify({ current_screen: "menu" }),
+      }).catch((e) => console.error(e));
       renderVhfAlign(r, snap);
     });
     return;
@@ -5491,58 +6356,98 @@ function renderFreqCursorRow(freqStr, pos) {
 }
 
 function attachVhfScreenHandlers(container, r, mode) {
+  // Variable selection
   container.querySelectorAll(".vhf-var-btn").forEach((btn) => {
     btn.addEventListener("click", () => {
-      vhfAlignState.activeVarId = Number(btn.getAttribute("data-var-id"));
-      renderVhfAlign(r, snap);
+      const varId = Number(btn.getAttribute("data-var-id"));
+      vhfAlignState.activeVarId = varId;
+      container.querySelectorAll(".vhf-var-btn").forEach((b) => {
+        b.classList.toggle("active-var", Number(b.getAttribute("data-var-id")) === varId);
+      });
+      // Update displayed value in-place
+      const vState = (snap && snap.vhf_align) || {};
+      const varsList = (mode === "tfm" ? vState.tfm_vars : vState.cal_vars) || [];
+      const vObj = varsList.find((v) => v.id === varId) || {};
+      const val = intToHex(vObj.ram != null ? vObj.ram : (vObj.rom != null ? vObj.rom : 0x00));
+      const nh = container.querySelector("#nibble-high");
+      const nl = container.querySelector("#nibble-low");
+      if (nh) nh.textContent = val.charAt(0);
+      if (nl) nl.textContent = val.charAt(1);
+      api("/api/arinc/vhf-align/config", {
+        method: "POST",
+        body: JSON.stringify({ active_var_id: varId }),
+      }).catch((e) => console.error("Active var error:", e));
     });
   });
 
+  // CRSR toggle between high nibble (0) and low nibble (1)
   const btnCrsr = container.querySelector("#btn-val-crsr");
   if (btnCrsr) {
     btnCrsr.addEventListener("click", () => {
-      vhfAlignState.valNibble = vhfAlignState.valNibble === 0 ? 1 : 0;
-      renderVhfAlign(r, snap);
+      vhfAlignState.valNibble = (vhfAlignState.valNibble === 0) ? 1 : 0;
+      const nh = container.querySelector("#nibble-high");
+      const nl = container.querySelector("#nibble-low");
+      const crsrRow = container.querySelector(".vhf-cursor-row");
+      if (nh) nh.classList.toggle("active-nibble", vhfAlignState.valNibble === 0);
+      if (nl) nl.classList.toggle("active-nibble", vhfAlignState.valNibble === 1);
+      if (crsrRow) crsrRow.innerHTML = (vhfAlignState.valNibble === 0) ? "↑&nbsp;&nbsp;" : "&nbsp;&nbsp;↑";
+      api("/api/arinc/vhf-align/config", {
+        method: "POST",
+        body: JSON.stringify({ val_nibble: vhfAlignState.valNibble }),
+      }).catch((e) => console.error("Nibble error:", e));
     });
   }
+
+  // DECR / INCR active nibble
+  const stepNibble = async (delta) => {
+    const nh = container.querySelector("#nibble-high");
+    const nl = container.querySelector("#nibble-low");
+    let high = parseInt(nh ? nh.textContent : "0", 16) || 0;
+    let low = parseInt(nl ? nl.textContent : "0", 16) || 0;
+    if (vhfAlignState.valNibble === 0) {
+      high = (high + delta + 16) % 16;
+      if (nh) nh.textContent = high.toString(16).toUpperCase();
+    } else {
+      low = (low + delta + 16) % 16;
+      if (nl) nl.textContent = low.toString(16).toUpperCase();
+    }
+    try {
+      const res = await api("/api/arinc/vhf-align/step", {
+        method: "POST",
+        body: JSON.stringify({ field: "val", delta }),
+      });
+      if (snap) snap.vhf_align = res;
+    } catch (e) {
+      console.error("Step val error:", e);
+    }
+  };
 
   const btnValDecr = container.querySelector("#btn-val-decr");
-  if (btnValDecr) {
-    btnValDecr.addEventListener("click", async () => {
-      try {
-        const res = await api("/api/arinc/vhf-align/step", {
-          method: "POST",
-          body: JSON.stringify({ field: "val", delta: -1 }),
-        });
-        if (snap) snap.vhf_align = res;
-        renderVhfAlign(r, snap);
-      } catch (e) {
-        alert(e.message);
-      }
-    });
-  }
+  if (btnValDecr) btnValDecr.addEventListener("click", () => stepNibble(-1));
 
   const btnValIncr = container.querySelector("#btn-val-incr");
-  if (btnValIncr) {
-    btnValIncr.addEventListener("click", async () => {
-      try {
-        const res = await api("/api/arinc/vhf-align/step", {
-          method: "POST",
-          body: JSON.stringify({ field: "val", delta: 1 }),
-        });
-        if (snap) snap.vhf_align = res;
-        renderVhfAlign(r, snap);
-      } catch (e) {
-        alert(e.message);
-      }
-    });
-  }
+  if (btnValIncr) btnValIncr.addEventListener("click", () => stepNibble(1));
+
+  // Frequency Cursor (LEFT / RIGHT)
+  const updateFreqCursorDOM = () => {
+    const freqBox = container.querySelector(".vhf-freq-box");
+    const crsrBox = container.querySelector(".vhf-sub-panel:last-child .vhf-cursor-row");
+    const vState = (snap && snap.vhf_align) || {};
+    const freqStr = Number(vState.freq_mhz || 118.000).toFixed(3);
+    const pos = vhfAlignState.freqPos || 2;
+    if (freqBox) freqBox.innerHTML = renderFreqWithCursor(freqStr, pos);
+    if (crsrBox) crsrBox.innerHTML = renderFreqCursorRow(freqStr, pos);
+  };
 
   const btnFreqLeft = container.querySelector("#btn-freq-left");
   if (btnFreqLeft) {
     btnFreqLeft.addEventListener("click", () => {
       vhfAlignState.freqPos = Math.max(0, (vhfAlignState.freqPos || 2) - 1);
-      renderVhfAlign(r, snap);
+      updateFreqCursorDOM();
+      api("/api/arinc/vhf-align/config", {
+        method: "POST",
+        body: JSON.stringify({ freq_pos: vhfAlignState.freqPos }),
+      }).catch((e) => console.error("Freq pos error:", e));
     });
   }
 
@@ -5550,65 +6455,35 @@ function attachVhfScreenHandlers(container, r, mode) {
   if (btnFreqRight) {
     btnFreqRight.addEventListener("click", () => {
       vhfAlignState.freqPos = Math.min(5, (vhfAlignState.freqPos || 2) + 1);
-      renderVhfAlign(r, snap);
+      updateFreqCursorDOM();
+      api("/api/arinc/vhf-align/config", {
+        method: "POST",
+        body: JSON.stringify({ freq_pos: vhfAlignState.freqPos }),
+      }).catch((e) => console.error("Freq pos error:", e));
     });
   }
+
+  // Frequency Stepping (DECREASE / INCREASE)
+  const stepFrequency = async (delta) => {
+    try {
+      const res = await api("/api/arinc/vhf-align/step", {
+        method: "POST",
+        body: JSON.stringify({ field: "freq", delta }),
+      });
+      if (snap) snap.vhf_align = res;
+      updateFreqCursorDOM();
+    } catch (e) {
+      console.error("Step freq error:", e);
+    }
+  };
 
   const btnFreqDecr = container.querySelector("#btn-freq-decr");
-  if (btnFreqDecr) {
-    btnFreqDecr.addEventListener("click", async () => {
-      try {
-        const res = await api("/api/arinc/vhf-align/step", {
-          method: "POST",
-          body: JSON.stringify({ field: "freq", delta: -1 }),
-        });
-        if (snap) snap.vhf_align = res;
-        renderVhfAlign(r, snap);
-      } catch (e) {
-        alert(e.message);
-      }
-    });
-  }
+  if (btnFreqDecr) btnFreqDecr.addEventListener("click", () => stepFrequency(-1));
 
   const btnFreqIncr = container.querySelector("#btn-freq-incr");
-  if (btnFreqIncr) {
-    btnFreqIncr.addEventListener("click", async () => {
-      try {
-        const res = await api("/api/arinc/vhf-align/step", {
-          method: "POST",
-          body: JSON.stringify({ field: "freq", delta: 1 }),
-        });
-        if (snap) snap.vhf_align = res;
-        renderVhfAlign(r, snap);
-      } catch (e) {
-        alert(e.message);
-      }
-    });
-  }
+  if (btnFreqIncr) btnFreqIncr.addEventListener("click", () => stepFrequency(1));
 
-  const btnNextPage = container.querySelector("#btn-next-page");
-  if (btnNextPage) {
-    btnNextPage.addEventListener("click", () => {
-      if (mode === "tfm") {
-        vhfAlignState.tfmPage = (vhfAlignState.tfmPage % 4) + 1;
-        vhfAlignState.activeVarId = (vhfAlignState.tfmPage - 1) * 10 + 1;
-      } else {
-        vhfAlignState.calPage = (vhfAlignState.calPage % 4) + 1;
-        vhfAlignState.activeVarId = (vhfAlignState.calPage - 1) * 10 + 1;
-      }
-      renderVhfAlign(r, snap);
-    });
-  }
-
-  const btnMenuRet = container.querySelector("#btn-menu-ret");
-  if (btnMenuRet) {
-    btnMenuRet.addEventListener("click", () => {
-      vhfAlignState.page = "menu";
-      vhfAlignState.currentScreen = "menu";
-      renderVhfAlign(r, snap);
-    });
-  }
-
+  // WRITE TO ROM (2-Step)
   const btnWriteRom = container.querySelector("#btn-write-rom");
   if (btnWriteRom) {
     btnWriteRom.addEventListener("click", async () => {
@@ -5617,7 +6492,7 @@ function attachVhfScreenHandlers(container, r, mode) {
           method: "POST",
           body: JSON.stringify({ action: "WRITE_ROM" }),
         });
-        if (snap) snap.vhf_align = res;
+        if (snap) snap.vhf_align = res.state || res;
         if (res.status === "CONFIRM_REQUIRED") {
           btnWriteRom.classList.add("confirm-flash");
           btnWriteRom.textContent = "CONFIRM?";
@@ -5627,15 +6502,18 @@ function attachVhfScreenHandlers(container, r, mode) {
           }, 3000);
         } else {
           btnWriteRom.classList.remove("confirm-flash");
-          btnWriteRom.textContent = "WRITE TO ROM";
-          renderVhfAlign(r, snap);
+          btnWriteRom.textContent = "WRITTEN!";
+          setTimeout(() => {
+            btnWriteRom.textContent = "WRITE TO ROM";
+          }, 1500);
         }
       } catch (e) {
-        alert(e.message);
+        console.error("Write ROM error:", e);
       }
     });
   }
 
+  // WRITE BLK TO ROM (2-Step)
   const btnWriteBlk = container.querySelector("#btn-write-blk");
   if (btnWriteBlk) {
     btnWriteBlk.addEventListener("click", async () => {
@@ -5644,7 +6522,7 @@ function attachVhfScreenHandlers(container, r, mode) {
           method: "POST",
           body: JSON.stringify({ action: "WRITE_BLK" }),
         });
-        if (snap) snap.vhf_align = res;
+        if (snap) snap.vhf_align = res.state || res;
         if (res.status === "CONFIRM_REQUIRED") {
           btnWriteBlk.classList.add("confirm-flash");
           btnWriteBlk.textContent = "CONFIRM?";
@@ -5654,29 +6532,70 @@ function attachVhfScreenHandlers(container, r, mode) {
           }, 3000);
         } else {
           btnWriteBlk.classList.remove("confirm-flash");
-          btnWriteBlk.textContent = "WRITE BLK TO ROM";
-          renderVhfAlign(r, snap);
+          btnWriteBlk.textContent = "BLOCK WRITTEN!";
+          setTimeout(() => {
+            btnWriteBlk.textContent = "WRITE BLK TO ROM";
+          }, 1500);
         }
       } catch (e) {
-        alert(e.message);
+        console.error("Write BLK error:", e);
       }
     });
   }
 
+  // NEXT PAGE (Cycles 1..4)
+  const btnNextPage = container.querySelector("#btn-next-page");
+  if (btnNextPage) {
+    btnNextPage.addEventListener("click", () => {
+      if (mode === "tfm") {
+        vhfAlignState.tfmPage = (vhfAlignState.tfmPage % 4) + 1;
+        vhfAlignState.activeVarId = (vhfAlignState.tfmPage - 1) * 10 + 1;
+        api("/api/arinc/vhf-align/config", {
+          method: "POST",
+          body: JSON.stringify({ tfm_page: vhfAlignState.tfmPage }),
+        }).catch((e) => console.error(e));
+      } else {
+        vhfAlignState.calPage = (vhfAlignState.calPage % 4) + 1;
+        vhfAlignState.activeVarId = (vhfAlignState.calPage - 1) * 10 + 1;
+        api("/api/arinc/vhf-align/config", {
+          method: "POST",
+          body: JSON.stringify({ cal_page: vhfAlignState.calPage }),
+        }).catch((e) => console.error(e));
+      }
+      renderVhfAlign(r, snap);
+    });
+  }
+
+  // VHF900 MENU Return
+  const btnMenuRet = container.querySelector("#btn-menu-ret");
+  if (btnMenuRet) {
+    btnMenuRet.addEventListener("click", () => {
+      vhfAlignState.page = "menu";
+      vhfAlignState.currentScreen = "menu";
+      api("/api/arinc/vhf-align/config", {
+        method: "POST",
+        body: JSON.stringify({ current_screen: "menu" }),
+      }).catch((e) => console.error(e));
+      renderVhfAlign(r, snap);
+    });
+  }
+
+  // TX INH / TX PHS Toggles
   const btnTxInh = container.querySelector("#btn-tx-inh");
   if (btnTxInh) {
     btnTxInh.addEventListener("click", async () => {
       const vState = (snap && snap.vhf_align) || {};
       const nextVal = !vState.tx_inh;
+      if (vState) vState.tx_inh = nextVal;
+      btnTxInh.innerHTML = `TX INH<br>${nextVal ? "ON" : "OFF"}`;
       try {
         const res = await api("/api/arinc/vhf-align/config", {
           method: "POST",
           body: JSON.stringify({ tx_inh: nextVal }),
         });
         if (snap) snap.vhf_align = res;
-        renderVhfAlign(r, snap);
       } catch (e) {
-        alert(e.message);
+        console.error("TX INH error:", e);
       }
     });
   }
@@ -5686,15 +6605,16 @@ function attachVhfScreenHandlers(container, r, mode) {
     btnTxPhs.addEventListener("click", async () => {
       const vState = (snap && snap.vhf_align) || {};
       const nextVal = !vState.tx_phs;
+      if (vState) vState.tx_phs = nextVal;
+      btnTxPhs.innerHTML = `TX PHS<br>${nextVal ? "ON" : "OFF"}`;
       try {
         const res = await api("/api/arinc/vhf-align/config", {
           method: "POST",
           body: JSON.stringify({ tx_phs: nextVal }),
         });
         if (snap) snap.vhf_align = res;
-        renderVhfAlign(r, snap);
       } catch (e) {
-        alert(e.message);
+        console.error("TX PHS error:", e);
       }
     });
   }
@@ -5704,14 +6624,21 @@ function patchVhfAlignRx(s) {
   if (!s || !s.vhf_align) return;
   const vState = s.vhf_align;
 
-  const banner = document.getElementById("vhf-live-echo-banner");
-  if (banner) {
-    if (vState.echo_ok) {
-      banner.className = "vhf-echo-banner ok";
-      banner.textContent = "VHF900 429 ECHO OK";
-    } else {
-      banner.className = "vhf-echo-banner error";
-      banner.textContent = "ERROR: VHF900 DID NOT ECHO 429 COMMAND";
+  // Don't overwrite if checksum countdown is currently active
+  if (!vhfChecksumTimer) {
+    const banner = document.getElementById("vhf-live-echo-banner");
+    if (banner) {
+      if (vState.echo_ok) {
+        banner.className = "vhf-echo-banner ok";
+        banner.style.background = "";
+        banner.style.color = "";
+        banner.textContent = "VHF900 429 ECHO OK";
+      } else {
+        banner.className = "vhf-echo-banner error";
+        banner.style.background = "";
+        banner.style.color = "";
+        banner.textContent = "ERROR: VHF900 DID NOT ECHO 429 COMMAND";
+      }
     }
   }
 
@@ -5726,10 +6653,34 @@ function patchVhfAlignRx(s) {
   }
 
   const csBtn = document.getElementById("btn-vhf-checksum");
-  if (csBtn && vState.checksum_status === "RUNNING") {
-    csBtn.innerHTML = `RECALCULATING...<br>(${Math.ceil(vState.checksum_remaining || 0)}s)`;
-  } else if (csBtn && vState.checksum_status === "DONE") {
-    csBtn.innerHTML = "CHECKSUM<br>COMPLETE!<br>(10s)";
+  if (csBtn && !vhfChecksumTimer) {
+    if (vState.checksum_status === "RUNNING") {
+      csBtn.innerHTML = `RECALCULATING...<br>(${Math.ceil(vState.checksum_remaining || 0)}s)`;
+    } else if (vState.checksum_status === "DONE") {
+      csBtn.innerHTML = "CHECKSUM<br>COMPLETE!<br>(10s)";
+    }
+  }
+
+  // Failure messages screen live update
+  const f350 = document.getElementById("vhf-fl-350");
+  if (f350 && vState.faults) {
+    f350.textContent = (vState.faults.label_350_raw && vState.faults.label_350_raw !== "00000000") ? `=   ${vState.faults.label_350_raw}` : "=   ";
+  }
+  const fc1 = document.getElementById("vhf-fl-code1");
+  if (fc1 && vState.faults) {
+    fc1.textContent = (vState.faults.code1 && vState.faults.code1 !== "NONE") ? `=   ${vState.faults.code1}` : "=   ";
+  }
+  const fm1 = document.getElementById("vhf-fl-msg1");
+  if (fm1 && vState.faults) {
+    fm1.textContent = (vState.faults.msg1 && vState.faults.msg1 !== "NO FAULT DETECTED") ? `=   ${vState.faults.msg1}` : "=   ";
+  }
+  const fc2 = document.getElementById("vhf-fl-code2");
+  if (fc2 && vState.faults) {
+    fc2.textContent = (vState.faults.code2 && vState.faults.code2 !== "NONE") ? `=   ${vState.faults.code2}` : "=   ";
+  }
+  const fm2 = document.getElementById("vhf-fl-msg2");
+  if (fm2 && vState.faults) {
+    fm2.textContent = (vState.faults.msg2 && vState.faults.msg2 !== "NO FAULT DETECTED") ? `=   ${vState.faults.msg2}` : "=   ";
   }
 }
 
@@ -6392,124 +7343,6 @@ async function ensureProfiles(force) {
     rxWordIndex: 0,
     slots: {},
   };
-
-  function showDmeKeypadModal({ title, value, type, hint, onApply }) {
-    const existing = document.getElementById("dynapro-modal-root");
-    if (existing) existing.remove();
-
-    const overlay = el("div", "dme-modal-overlay dynapro-modal-overlay");
-    overlay.id = "dynapro-modal-root";
-    const box = el("div", "dme-modal-box dynapro-modal-box");
-    box.innerHTML = `
-      <div class="dme-modal-title dynapro-modal-title">${title}</div>
-      <input type="text" class="dme-modal-input dynapro-modal-input" id="dynapro-modal-input" value="${value || ""}" autofocus />
-      ${hint ? `<div style="font-size:12px; margin-bottom:10px; color:var(--text-2); text-align:center;">${hint}</div>` : ""}
-      <div id="dynapro-modal-extra"></div>
-      <div class="dme-keypad-grid dynapro-keypad-grid" id="dynapro-modal-keypad"></div>
-      <div class="dme-modal-actions dynapro-modal-actions">
-        <button type="button" class="btn btn-ghost" id="dynapro-modal-cancel">Cancel</button>
-        <button type="button" class="btn" id="dynapro-modal-apply">Apply</button>
-      </div>
-    `;
-    overlay.appendChild(box);
-    document.body.appendChild(overlay);
-
-    const input = box.querySelector("#dynapro-modal-input");
-    const kp = box.querySelector("#dynapro-modal-keypad");
-    const extra = box.querySelector("#dynapro-modal-extra");
-
-    const close = () => overlay.remove();
-    box.querySelector("#dynapro-modal-cancel").onclick = close;
-    box.querySelector("#dynapro-modal-apply").onclick = () => {
-      const val = input.value;
-      close();
-      if (onApply) onApply(val);
-    };
-
-    input.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") {
-        e.preventDefault();
-        box.querySelector("#dynapro-modal-apply").click();
-      } else if (e.key === "Escape") {
-        close();
-      }
-    });
-
-    if (type === "pad") {
-      extra.innerHTML = `
-        <div style="font-size:11px; margin-bottom:8px; color:var(--text-2); text-align:center;">
-          Bit 6: IDENT | Bit 5: DISP | Bits 4-3: NAV | Bits 2-0: MODE
-        </div>
-        <div style="display:flex; justify-content:center; gap:6px; margin-bottom:12px;" id="pad-bits-row"></div>
-      `;
-      const row = extra.querySelector("#pad-bits-row");
-      const renderBits = () => {
-        row.innerHTML = "";
-        let padStr = (input.value || "0100001").padEnd(7, "0").slice(0, 7);
-        for (let i = 6; i >= 0; i--) {
-          const bitVal = padStr[6 - i] || "0";
-          const b = el("button", `dme-kp-btn dynapro-kp-btn ${bitVal === "1" ? "active" : ""}`);
-          b.type = "button";
-          b.style.minWidth = "38px";
-          b.style.background = bitVal === "1" ? "var(--accent)" : "var(--surface)";
-          b.style.color = bitVal === "1" ? "#ffffff" : "var(--text)";
-          b.innerHTML = `<span style="font-size:9px; display:block; opacity:0.8;">b${i}</span><strong>${bitVal}</strong>`;
-          b.onclick = () => {
-            const arr = padStr.split("");
-            arr[6 - i] = bitVal === "1" ? "0" : "1";
-            padStr = arr.join("");
-            input.value = padStr;
-            renderBits();
-          };
-          row.appendChild(b);
-        }
-      };
-      renderBits();
-      input.addEventListener("input", renderBits);
-
-      kp.innerHTML = `
-        <button type="button" class="dme-kp-btn dynapro-kp-btn" data-act="0">0</button>
-        <button type="button" class="dme-kp-btn dynapro-kp-btn" data-act="1">1</button>
-        <button type="button" class="dme-kp-btn dynapro-kp-btn" data-act="bs">&larr;</button>
-        <button type="button" class="dme-kp-btn dynapro-kp-btn" data-act="def">DEFAULT</button>
-      `;
-      kp.querySelectorAll("[data-act]").forEach((btn) => {
-        btn.onclick = () => {
-          const a = btn.dataset.act;
-          if (a === "bs") input.value = input.value.slice(0, -1);
-          else if (a === "def") input.value = "0100001";
-          else input.value = (input.value + a).slice(0, 7);
-          renderBits();
-        };
-      });
-    } else {
-      const keys = [
-        "1", "2", "3", "+0.05",
-        "4", "5", "6", "-0.05",
-        "7", "8", "9", "+1.00",
-        ".", "0", "CLR", "-1.00"
-      ];
-      keys.forEach((k) => {
-        const btn = el("button", "dme-kp-btn dynapro-kp-btn");
-        btn.type = "button";
-        btn.textContent = k;
-        btn.onclick = () => {
-          if (k === "CLR") input.value = "";
-          else if (k.startsWith("+") || k.startsWith("-")) {
-            const cur = parseFloat(input.value) || 0;
-            const delta = parseFloat(k);
-            input.value = (cur + delta).toFixed(2);
-          } else {
-            input.value += k;
-          }
-        };
-        kp.appendChild(btn);
-      });
-    }
-
-    input.focus();
-    input.select();
-  }
 
   async function applyDmeSlotHelper(params) {
     if (params) {
