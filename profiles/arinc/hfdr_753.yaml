@@ -1,10 +1,11 @@
-# ARINC 753 HFDR — same dual 037
 id: hfdr_753
 name: HFDR
 funct: HFDR
 arinc_characteristic: "753"
 mode: standard
 bus: A
+tx_ch: A
+rx_ch: B
 high_speed: false
 notes: Dual-word 037 HF frequency 10.0000 MHz (HFDR).
 labels:

@@ -229,6 +229,42 @@ class ArincMmrIncBody(BaseModel):
     enabled: bool = False
 
 
+class VhfAlignConfigBody(BaseModel):
+    freq_mhz: Optional[float] = None
+    ssm: Optional[str] = None
+    sdi: Optional[str] = None
+    tx_inh: Optional[bool] = None
+    tx_phs: Optional[bool] = None
+    current_screen: Optional[str] = None
+    tfm_page: Optional[int] = None
+    cal_page: Optional[int] = None
+    active_var_id: Optional[int] = None
+    cursor_field: Optional[str] = None
+    val_nibble: Optional[int] = None
+    freq_pos: Optional[int] = None
+
+
+class VhfAlignWriteBody(BaseModel):
+    action: str = "WRITE_ROM"
+
+
+class VhfAlignStepBody(BaseModel):
+    field: str = "freq"
+    delta: int = 1
+
+
+class HfDualWordConfigBody(BaseModel):
+    bus: str = "A"
+    tx_bus: str | None = None
+    rx_bus: str | None = None
+    freq_mhz: float = 10.0
+    sb: str = "LSB"
+    mod: str = "AM"
+    cw: bool = False
+    ssm: str = "NML"
+    rate_ms: int = 75
+
+
 def create_app(
     *,
     simulation: bool | None = None,
@@ -760,6 +796,45 @@ def create_app(
     @app.post("/api/arinc/mmr/inc-time")
     def api_arinc_mmr_inc(body: ArincMmrIncBody, _sid: str = Depends(require_session)):
         return get_arinc().set_mmr_inc_time(body.enabled)
+
+    @app.get("/api/arinc/vhf-align/state")
+    def api_arinc_vhf_align_state(_sid: str = Depends(require_session)):
+        return get_arinc().get_vhf_align_state()
+
+    @app.post("/api/arinc/vhf-align/config")
+    def api_arinc_vhf_align_config(body: VhfAlignConfigBody, _sid: str = Depends(require_session)):
+        data = {k: v for k, v in body.model_dump().items() if v is not None}
+        return get_arinc().config_vhf_align(**data)
+
+    @app.post("/api/arinc/vhf-align/checksum")
+    def api_arinc_vhf_align_checksum(_sid: str = Depends(require_session)):
+        return get_arinc().start_vhf_checksum()
+
+    @app.post("/api/arinc/vhf-align/write-var")
+    def api_arinc_vhf_align_write_var(body: VhfAlignWriteBody, _sid: str = Depends(require_session)):
+        return get_arinc().write_vhf_var(body.action)
+
+    @app.post("/api/arinc/vhf-align/step")
+    def api_arinc_vhf_align_step(body: VhfAlignStepBody, _sid: str = Depends(require_session)):
+        if body.field == "freq":
+            return get_arinc().step_vhf_freq(body.delta)
+        return get_arinc().step_vhf_val(body.delta)
+
+    @app.post("/api/arinc/hf/config")
+    def api_arinc_hf_config(body: HfDualWordConfigBody, _sid: str = Depends(require_session)):
+        arinc = get_arinc()
+        tx_ch = body.tx_bus or body.bus
+        if body.rx_bus:
+            arinc.set_active_channels(tx_ch=tx_ch, rx_ch=body.rx_bus)
+        return arinc.configure_hf_dual_word(
+            bus=tx_ch,
+            freq_mhz=body.freq_mhz,
+            sb=body.sb,
+            mod=body.mod,
+            cw=body.cw,
+            ssm=body.ssm,
+            rate_ms=body.rate_ms,
+        )
 
     @app.websocket("/ws")
     async def ws_feed(websocket: WebSocket):

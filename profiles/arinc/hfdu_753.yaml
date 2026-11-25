@@ -1,10 +1,11 @@
-# ARINC 753 HFDU — same dual 037 as 719 HF
 id: hfdu_753
 name: HFDU
 funct: HFDU
 arinc_characteristic: "753"
 mode: standard
 bus: A
+tx_ch: A
+rx_ch: B
 high_speed: false
 notes: Dual-word 037 HF frequency 10.0000 MHz (HFDU).
 labels:

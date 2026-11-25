@@ -5,6 +5,8 @@ funct: VDR
 arinc_characteristic: "750"
 mode: standard
 bus: C
+tx_ch: C
+rx_ch: A
 high_speed: true
 notes: High-speed VDR SAL 172 and DSCR DAT1 270 on channel C.
 labels:

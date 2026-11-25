@@ -7,24 +7,27 @@ bus: A
 tx_ch: A
 rx_ch: B
 high_speed: false
-notes: Dual-word 037 HF frequency 10.0000 MHz. Label field locked. SB/MOD/CW on bits
-  11/10.
+notes: Dual-word 037 HF frequency 10.0000 MHz. Label field locked. SB/MOD/CW on bits 11/10.
 labels:
-- label: '037'
-  funct: HF_FREQ1
-  direction: tx
-  sdi: 0
-  ssm: NML
-  parity: ODD
-  rate_ms: 200
-  encoding: hf_pair
-  units: MHZ
-  word_index: 1
-  iso5_chars: 3
-  eng:
-    name: HF_FREQ
+  - label: '037'
+    funct: HF_FREQ1
+    direction: tx
+    sdi: 0
+    ssm: NML
+    parity: ODD
+    rate_ms: 75
+    encoding: hf_pair
     units: MHZ
-    min: 2.0
-    max: 30.0
-    step: 0.0001
-    default: 10.0
+    word_index: 1
+    eng: { name: freq_mhz, units: MHZ, min: 2.0, max: 30.0, step: 0.0001, default: 10.0 }
+  - label: '037'
+    funct: HF_FREQ2
+    direction: tx
+    sdi: 1
+    ssm: NML
+    parity: ODD
+    rate_ms: 125
+    encoding: hf_pair
+    units: MHZ
+    word_index: 2
+    eng: { name: freq_mhz, units: MHZ, min: 0.0, max: 1.0, step: 0.0001, default: 0.0 }
