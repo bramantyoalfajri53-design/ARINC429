@@ -116,6 +116,7 @@ def test_vhf900_align_manager_variables():
     """Verify VHF-900 40 TFM and 40 CAL variables and stepping."""
     mgr = Vhf900AlignManager()
     assert len(TFM_VARIABLES) == 40
+    assert TFM_VARIABLES[4]["name"] == "SIMP THRESH"
     assert len(CAL_VARIABLES) == 40
 
     st = mgr.get_state()

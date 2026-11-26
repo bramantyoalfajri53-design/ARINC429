@@ -23,7 +23,7 @@ TFM_VARIABLES = [
     {"id": 2, "page": 1, "col": 0, "num": 2, "name": "RCV PRESEL 2", "ram": 0x48, "rom": 0x48},
     {"id": 3, "page": 1, "col": 0, "num": 3, "name": "RCV PRESEL 3", "ram": 0x50, "rom": 0x50},
     {"id": 4, "page": 1, "col": 0, "num": 4, "name": "RCV PRESEL 4", "ram": 0x58, "rom": 0x58},
-    {"id": 5, "page": 1, "col": 0, "num": 5, "name": "SIMUL THRESH", "ram": 0x2A, "rom": 0x2A},
+    {"id": 5, "page": 1, "col": 0, "num": 5, "name": "SIMP THRESH", "ram": 0x2A, "rom": 0x2A},
     {"id": 6, "page": 1, "col": 1, "num": 13, "name": "25K SQ LO", "ram": 0x1E, "rom": 0x1E},
     {"id": 7, "page": 1, "col": 1, "num": 14, "name": "25K SQ UP", "ram": 0x32, "rom": 0x32},
     {"id": 8, "page": 1, "col": 1, "num": 15, "name": "AGC SQLCH LO", "ram": 0x18, "rom": 0x18},

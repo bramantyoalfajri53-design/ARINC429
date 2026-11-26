@@ -6213,7 +6213,10 @@ function renderVhfAlign(r, s) {
     const freqPos = vhfAlignState.freqPos || 2;
 
     container.innerHTML = `
-      <div class="vhf-align-title" style="margin-bottom:0.75rem;">TFM VARIABLES PAGE ${page}/4</div>
+      <div class="vhf-screen-header">
+        <div class="vhf-header-left">TFM VARIABLES &nbsp; PAGE &nbsp; ${page}/4</div>
+        <div class="vhf-header-right">CURRENT RAM VALUE</div>
+      </div>
       <div class="vhf-vars-layout">
         <div class="vhf-vars-cols">
           <div style="display:flex; flex-direction:column; gap:6px;">
@@ -6225,12 +6228,11 @@ function renderVhfAlign(r, s) {
         </div>
         <div class="vhf-ctrl-panel">
           <div class="vhf-sub-panel">
-            <div class="vhf-sub-title">CURRENT RAM VALUE</div>
             <div class="vhf-val-display-row">
               <div class="vhf-hex-box">
                 <span class="vhf-hex-nibble ${vhfAlignState.valNibble === 0 ? "active-nibble" : ""}" id="nibble-high">${highNibble}</span><span class="vhf-hex-nibble ${vhfAlignState.valNibble === 1 ? "active-nibble" : ""}" id="nibble-low">${lowNibble}</span>
               </div>
-              <div class="vhf-cursor-row">${vhfAlignState.valNibble === 0 ? "↑&nbsp;&nbsp;" : "&nbsp;&nbsp;↑"}</div>
+              <div class="vhf-cursor-row" id="vhf-hex-cursor-row">${vhfAlignState.valNibble === 0 ? "↑&nbsp;&nbsp;" : "&nbsp;&nbsp;↑"}</div>
             </div>
             <div class="vhf-btn-group">
               <button type="button" class="vhf-sub-btn" id="btn-val-decr">DECR</button>
@@ -6238,32 +6240,30 @@ function renderVhfAlign(r, s) {
               <button type="button" class="vhf-sub-btn" id="btn-val-incr">INCR</button>
             </div>
             <div class="vhf-btn-group" style="margin-top:8px;">
-              <button type="button" class="vhf-sub-btn" id="btn-write-rom" style="min-width:90px;">WRITE TO ROM</button>
-              <button type="button" class="vhf-sub-btn" id="btn-write-blk" style="min-width:110px;">WRITE BLK TO ROM</button>
+              <button type="button" class="vhf-sub-btn" id="btn-write-rom" style="min-width:95px;">WRITE TO ROM</button>
+              <button type="button" class="vhf-sub-btn" id="btn-write-blk" style="min-width:115px;">WRITE BLK TO ROM</button>
             </div>
           </div>
           <div class="vhf-sub-panel">
             <div class="vhf-sub-title">CURRENT LRU FREQUENCY</div>
             <div class="vhf-val-display-row">
               <div class="vhf-freq-box">${renderFreqWithCursor(freqStr, freqPos)}</div>
-              <div class="vhf-cursor-row" style="letter-spacing:3px; padding:0 14px;">${renderFreqCursorRow(freqStr, freqPos)}</div>
+              <div class="vhf-cursor-row" id="vhf-freq-cursor-row" style="letter-spacing:3px; padding:0 14px;">${renderFreqCursorRow(freqStr, freqPos)}</div>
             </div>
             <div class="vhf-btn-group">
               <button type="button" class="vhf-sub-btn" id="btn-freq-left">LEFT</button>
               <button type="button" class="vhf-sub-btn" id="btn-freq-right">RIGHT</button>
             </div>
-            <div class="vhf-btn-group" style="margin-top:6px;">
-              <button type="button" class="vhf-sub-btn" id="btn-freq-decr">DECREASE</button>
-              <button type="button" class="vhf-sub-btn" id="btn-freq-incr">INCREASE</button>
-            </div>
           </div>
         </div>
       </div>
-      <div class="vhf-softkeys-bar">
-        <button type="button" class="vhf-menu-btn" id="btn-next-page">NEXT<br>PAGE</button>
-        <button type="button" class="vhf-menu-btn" id="btn-menu-ret">VHF900<br>MENU</button>
-        <button type="button" class="vhf-menu-btn" id="btn-tx-inh">TX INH<br>${vState.tx_inh ? "ON" : "OFF"}</button>
-        <button type="button" class="vhf-menu-btn" id="btn-tx-phs">TX PHS<br>${vState.tx_phs ? "ON" : "OFF"}</button>
+      <div class="vhf-softkeys-bar-6">
+        <button type="button" class="vhf-action-btn" id="btn-next-page">NEXT<br>PAGE</button>
+        <button type="button" class="vhf-action-btn" id="btn-menu-ret">VHF900<br>MENU</button>
+        <button type="button" class="vhf-action-btn" id="btn-tx-inh">TX INH<br>${vState.tx_inh ? "ON" : "OFF"}</button>
+        <button type="button" class="vhf-action-btn" id="btn-tx-phs">TX PHS<br>${vState.tx_phs ? "ON" : "OFF"}</button>
+        <button type="button" class="vhf-action-btn" id="btn-freq-decr">DECREASE</button>
+        <button type="button" class="vhf-action-btn" id="btn-freq-incr">INCREASE</button>
       </div>
       ${renderBannerHtml()}
     `;
@@ -6295,7 +6295,10 @@ function renderVhfAlign(r, s) {
     const freqPos = vhfAlignState.freqPos || 2;
 
     container.innerHTML = `
-      <div class="vhf-align-title" style="margin-bottom:0.75rem;">CALIBRATION VARIABLES PAGE ${page}/4</div>
+      <div class="vhf-screen-header">
+        <div class="vhf-header-left">CALIBRATION VARIABLES &nbsp; PAGE &nbsp; ${page}/4</div>
+        <div class="vhf-header-right">CURRENT ROM VALUE</div>
+      </div>
       <div class="vhf-vars-layout">
         <div class="vhf-vars-cols">
           <div style="flex:1; display:flex; flex-direction:column; gap:6px;">
@@ -6307,12 +6310,11 @@ function renderVhfAlign(r, s) {
         </div>
         <div class="vhf-ctrl-panel">
           <div class="vhf-sub-panel">
-            <div class="vhf-sub-title">CURRENT ROM VALUE</div>
             <div class="vhf-val-display-row">
               <div class="vhf-hex-box">
                 <span class="vhf-hex-nibble ${vhfAlignState.valNibble === 0 ? "active-nibble" : ""}" id="nibble-high">${highNibble}</span><span class="vhf-hex-nibble ${vhfAlignState.valNibble === 1 ? "active-nibble" : ""}" id="nibble-low">${lowNibble}</span>
               </div>
-              <div class="vhf-cursor-row">${vhfAlignState.valNibble === 0 ? "↑&nbsp;&nbsp;" : "&nbsp;&nbsp;↑"}</div>
+              <div class="vhf-cursor-row" id="vhf-hex-cursor-row">${vhfAlignState.valNibble === 0 ? "↑&nbsp;&nbsp;" : "&nbsp;&nbsp;↑"}</div>
             </div>
             <div class="vhf-btn-group">
               <button type="button" class="vhf-sub-btn" id="btn-val-decr">DECR</button>
@@ -6320,29 +6322,29 @@ function renderVhfAlign(r, s) {
               <button type="button" class="vhf-sub-btn" id="btn-val-incr">INCR</button>
             </div>
             <div class="vhf-btn-group" style="margin-top:8px;">
-              <button type="button" class="vhf-sub-btn" id="btn-write-rom" style="min-width:110px;">WRITE TO ROM</button>
+              <button type="button" class="vhf-sub-btn" id="btn-write-rom" style="min-width:115px;">WRITE TO ROM</button>
             </div>
           </div>
           <div class="vhf-sub-panel">
             <div class="vhf-sub-title">CURRENT LRU FREQUENCY</div>
             <div class="vhf-val-display-row">
               <div class="vhf-freq-box">${renderFreqWithCursor(freqStr, freqPos)}</div>
-              <div class="vhf-cursor-row" style="letter-spacing:3px; padding:0 14px;">${renderFreqCursorRow(freqStr, freqPos)}</div>
+              <div class="vhf-cursor-row" id="vhf-freq-cursor-row" style="letter-spacing:3px; padding:0 14px;">${renderFreqCursorRow(freqStr, freqPos)}</div>
             </div>
             <div class="vhf-btn-group">
               <button type="button" class="vhf-sub-btn" id="btn-freq-left">LEFT</button>
               <button type="button" class="vhf-sub-btn" id="btn-freq-right">RIGHT</button>
             </div>
-            <div class="vhf-btn-group" style="margin-top:6px;">
-              <button type="button" class="vhf-sub-btn" id="btn-freq-decr">DECREASE</button>
-              <button type="button" class="vhf-sub-btn" id="btn-freq-incr">INCREASE</button>
-            </div>
           </div>
         </div>
       </div>
-      <div class="vhf-softkeys-bar-2">
-        <button type="button" class="vhf-menu-btn" id="btn-next-page">NEXT<br>PAGE</button>
-        <button type="button" class="vhf-menu-btn" id="btn-menu-ret">VHF900<br>MENU</button>
+      <div class="vhf-softkeys-bar-6">
+        <button type="button" class="vhf-action-btn" id="btn-next-page">NEXT<br>PAGE</button>
+        <button type="button" class="vhf-action-btn" id="btn-menu-ret">VHF900<br>MENU</button>
+        <div class="vhf-softkey-spacer"></div>
+        <div class="vhf-softkey-spacer"></div>
+        <button type="button" class="vhf-action-btn" id="btn-freq-decr">DECREASE</button>
+        <button type="button" class="vhf-action-btn" id="btn-freq-incr">INCREASE</button>
       </div>
       ${renderBannerHtml()}
     `;
@@ -6361,36 +6363,43 @@ function renderVhfAlign(r, s) {
   if (currentScreen === "faults" || currentScreen === "fail") {
     const faults = vState.faults || {};
     container.innerHTML = `
-      <div class="vhf-failure-panel" style="max-width:720px; margin:1.5rem auto; border:2px solid var(--border-strong); border-radius:var(--radius); padding:28px 36px; background:var(--surface);">
-        <div class="vhf-align-title" style="margin-bottom:1.75rem; text-align:center; font-weight:700; font-size:15px; letter-spacing:1px;">VHF900 ALIGNMENT MODE FAILURE MESSAGES</div>
-        <div class="vhf-failure-line" style="display:flex; margin:14px 0; font-family:var(--mono); font-size:14px;">
-          <div class="fl-key" style="width:230px; font-weight:600; color:var(--text-2);">LABEL 350 DATA</div>
-          <div class="fl-val" id="vhf-fl-350" style="font-weight:700; color:var(--text);">= &nbsp; ${faults.label_350_raw && faults.label_350_raw !== "00000000" ? faults.label_350_raw : ""}</div>
+      <div class="vhf-failure-screen-frame">
+        <div class="vhf-failure-title">VHF900 ALIGNMENT MODE FAILURE MESSAGES</div>
+        <div class="vhf-failure-table">
+          <div class="vhf-failure-row">
+            <div class="vfl-label">LABEL 350 DATA</div>
+            <div class="vfl-eq">=</div>
+            <div class="vfl-val" id="vhf-fl-350">${faults.label_350_raw && faults.label_350_raw !== "00000000" ? faults.label_350_raw : ""}</div>
+          </div>
+          <div class="vhf-failure-row-gap"></div>
+          <div class="vhf-failure-row">
+            <div class="vfl-label">FAULT CODE &nbsp;&nbsp;&nbsp; 1</div>
+            <div class="vfl-eq">=</div>
+            <div class="vfl-val" id="vhf-fl-code1">${faults.code1 && faults.code1 !== "NONE" ? faults.code1 : ""}</div>
+          </div>
+          <div class="vhf-failure-row">
+            <div class="vfl-label">FAULT MESSAGE &nbsp; 1</div>
+            <div class="vfl-eq">=</div>
+            <div class="vfl-val" id="vhf-fl-msg1">${faults.msg1 && faults.msg1 !== "NO FAULT DETECTED" ? faults.msg1 : ""}</div>
+          </div>
+          <div class="vhf-failure-row-gap"></div>
+          <div class="vhf-failure-row">
+            <div class="vfl-label">FAULT CODE &nbsp;&nbsp;&nbsp; 2</div>
+            <div class="vfl-eq">=</div>
+            <div class="vfl-val" id="vhf-fl-code2">${faults.code2 && faults.code2 !== "NONE" ? faults.code2 : ""}</div>
+          </div>
+          <div class="vhf-failure-row">
+            <div class="vfl-label">FAULT MESSAGE &nbsp; 2</div>
+            <div class="vfl-eq">=</div>
+            <div class="vfl-val" id="vhf-fl-msg2">${faults.msg2 && faults.msg2 !== "NO FAULT DETECTED" ? faults.msg2 : ""}</div>
+          </div>
         </div>
-        <div style="margin:16px 0;"></div>
-        <div class="vhf-failure-line" style="display:flex; margin:10px 0; font-family:var(--mono); font-size:14px;">
-          <div class="fl-key" style="width:230px; font-weight:600; color:var(--text-2);">FAULT CODE &nbsp;&nbsp;&nbsp; 1</div>
-          <div class="fl-val" id="vhf-fl-code1" style="font-weight:700; color:var(--text);">= &nbsp; ${faults.code1 && faults.code1 !== "NONE" ? faults.code1 : ""}</div>
-        </div>
-        <div class="vhf-failure-line" style="display:flex; margin:10px 0; font-family:var(--mono); font-size:14px;">
-          <div class="fl-key" style="width:230px; font-weight:600; color:var(--text-2);">FAULT MESSAGE &nbsp; 1</div>
-          <div class="fl-val" id="vhf-fl-msg1" style="font-weight:700; color:var(--text);">= &nbsp; ${faults.msg1 && faults.msg1 !== "NO FAULT DETECTED" ? faults.msg1 : ""}</div>
-        </div>
-        <div style="margin:20px 0;"></div>
-        <div class="vhf-failure-line" style="display:flex; margin:10px 0; font-family:var(--mono); font-size:14px;">
-          <div class="fl-key" style="width:230px; font-weight:600; color:var(--text-2);">FAULT CODE &nbsp;&nbsp;&nbsp; 2</div>
-          <div class="fl-val" id="vhf-fl-code2" style="font-weight:700; color:var(--text);">= &nbsp; ${faults.code2 && faults.code2 !== "NONE" ? faults.code2 : ""}</div>
-        </div>
-        <div class="vhf-failure-line" style="display:flex; margin:10px 0; font-family:var(--mono); font-size:14px;">
-          <div class="fl-key" style="width:230px; font-weight:600; color:var(--text-2);">FAULT MESSAGE &nbsp; 2</div>
-          <div class="fl-val" id="vhf-fl-msg2" style="font-weight:700; color:var(--text);">= &nbsp; ${faults.msg2 && faults.msg2 !== "NO FAULT DETECTED" ? faults.msg2 : ""}</div>
-        </div>
-        <div style="margin:28px 0 10px 0;">
+        <div style="margin-top:24px;">
           ${renderBannerHtml()}
         </div>
       </div>
       <div style="display:flex; justify-content:center; margin-top:1.25rem;">
-        <button type="button" class="vhf-menu-btn" id="btn-menu-ret" style="width:160px; height:50px;">VHF900<br>MENU</button>
+        <button type="button" class="vhf-menu-btn" id="btn-menu-ret" style="width:180px; height:50px;">VHF900<br>MENU</button>
       </div>
     `;
 
@@ -6482,7 +6491,7 @@ function attachVhfScreenHandlers(container, r, mode) {
       vhfAlignState.valNibble = (vhfAlignState.valNibble === 0) ? 1 : 0;
       const nh = container.querySelector("#nibble-high");
       const nl = container.querySelector("#nibble-low");
-      const crsrRow = container.querySelector(".vhf-cursor-row");
+      const crsrRow = container.querySelector("#vhf-hex-cursor-row") || container.querySelector(".vhf-cursor-row");
       if (nh) nh.classList.toggle("active-nibble", vhfAlignState.valNibble === 0);
       if (nl) nl.classList.toggle("active-nibble", vhfAlignState.valNibble === 1);
       if (crsrRow) crsrRow.innerHTML = (vhfAlignState.valNibble === 0) ? "↑&nbsp;&nbsp;" : "&nbsp;&nbsp;↑";
@@ -6506,6 +6515,14 @@ function attachVhfScreenHandlers(container, r, mode) {
       low = (low + delta + 16) % 16;
       if (nl) nl.textContent = low.toString(16).toUpperCase();
     }
+    const vState = (snap && snap.vhf_align) || {};
+    const varsList = (mode === "tfm" ? vState.tfm_vars : vState.cal_vars) || [];
+    const vObj = varsList.find((v) => v.id === vhfAlignState.activeVarId);
+    if (vObj) {
+      const fullVal = (high << 4) | low;
+      if (mode === "tfm") vObj.ram = fullVal;
+      else vObj.rom = fullVal;
+    }
     try {
       const res = await api("/api/arinc/vhf-align/step", {
         method: "POST",
@@ -6526,7 +6543,7 @@ function attachVhfScreenHandlers(container, r, mode) {
   // Frequency Cursor (LEFT / RIGHT)
   const updateFreqCursorDOM = () => {
     const freqBox = container.querySelector(".vhf-freq-box");
-    const crsrBox = container.querySelector(".vhf-sub-panel:last-child .vhf-cursor-row");
+    const crsrBox = container.querySelector("#vhf-freq-cursor-row") || container.querySelector(".vhf-sub-panel:last-child .vhf-cursor-row");
     const vState = (snap && snap.vhf_align) || {};
     const freqStr = Number(vState.freq_mhz || 118.000).toFixed(3);
     const pos = vhfAlignState.freqPos || 2;
@@ -6560,6 +6577,15 @@ function attachVhfScreenHandlers(container, r, mode) {
 
   // Frequency Stepping (DECREASE / INCREASE)
   const stepFrequency = async (delta) => {
+    const vState = (snap && snap.vhf_align) || {};
+    const pos = vhfAlignState.freqPos || 2;
+    const steps = [100.0, 10.0, 1.0, 0.1, 0.01, 0.005];
+    const stepVal = steps[pos] !== undefined ? steps[pos] : 0.025;
+    let curFreq = Number(vState.freq_mhz || 118.000);
+    curFreq = Math.max(118.000, Math.min(136.975, curFreq + (delta * stepVal)));
+    vState.freq_mhz = Math.round(curFreq * 1000) / 1000;
+    updateFreqCursorDOM();
+
     try {
       const res = await api("/api/arinc/vhf-align/step", {
         method: "POST",
@@ -6759,23 +6785,23 @@ function patchVhfAlignRx(s) {
   // Failure messages screen live update
   const f350 = document.getElementById("vhf-fl-350");
   if (f350 && vState.faults) {
-    f350.textContent = (vState.faults.label_350_raw && vState.faults.label_350_raw !== "00000000") ? `=   ${vState.faults.label_350_raw}` : "=   ";
+    f350.textContent = (vState.faults.label_350_raw && vState.faults.label_350_raw !== "00000000") ? vState.faults.label_350_raw : "";
   }
   const fc1 = document.getElementById("vhf-fl-code1");
   if (fc1 && vState.faults) {
-    fc1.textContent = (vState.faults.code1 && vState.faults.code1 !== "NONE") ? `=   ${vState.faults.code1}` : "=   ";
+    fc1.textContent = (vState.faults.code1 && vState.faults.code1 !== "NONE") ? vState.faults.code1 : "";
   }
   const fm1 = document.getElementById("vhf-fl-msg1");
   if (fm1 && vState.faults) {
-    fm1.textContent = (vState.faults.msg1 && vState.faults.msg1 !== "NO FAULT DETECTED") ? `=   ${vState.faults.msg1}` : "=   ";
+    fm1.textContent = (vState.faults.msg1 && vState.faults.msg1 !== "NO FAULT DETECTED") ? vState.faults.msg1 : "";
   }
   const fc2 = document.getElementById("vhf-fl-code2");
   if (fc2 && vState.faults) {
-    fc2.textContent = (vState.faults.code2 && vState.faults.code2 !== "NONE") ? `=   ${vState.faults.code2}` : "=   ";
+    fc2.textContent = (vState.faults.code2 && vState.faults.code2 !== "NONE") ? vState.faults.code2 : "";
   }
   const fm2 = document.getElementById("vhf-fl-msg2");
   if (fm2 && vState.faults) {
-    fm2.textContent = (vState.faults.msg2 && vState.faults.msg2 !== "NO FAULT DETECTED") ? `=   ${vState.faults.msg2}` : "=   ";
+    fm2.textContent = (vState.faults.msg2 && vState.faults.msg2 !== "NO FAULT DETECTED") ? vState.faults.msg2 : "";
   }
 }
 

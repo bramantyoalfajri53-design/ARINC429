@@ -2514,6 +2514,29 @@ tr.slot-off td { color: var(--muted); }
   margin-bottom: 1rem;
 }
 
+.vhf-screen-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-family: var(--mono);
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 0.75rem;
+  padding: 0 4px;
+}
+
+.vhf-header-left {
+  letter-spacing: 0.5px;
+}
+
+.vhf-header-right {
+  letter-spacing: 0.5px;
+  color: var(--text);
+  width: 42%;
+  text-align: center;
+}
+
 .vhf-menu-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -2529,7 +2552,7 @@ tr.slot-off td { color: var(--muted); }
   font-size: 0.88rem;
   font-weight: 700;
   padding: 10px 8px;
-  min-height: 54px;
+  min-height: 60px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2586,7 +2609,7 @@ tr.slot-off td { color: var(--muted); }
   display: grid;
   grid-template-columns: 2.2fr 1.8fr;
   gap: 16px;
-  margin-bottom: 1.25rem;
+  margin-bottom: 0.85rem;
 }
 
 .vhf-vars-cols {
@@ -2630,14 +2653,14 @@ tr.slot-off td { color: var(--muted); }
 .vhf-ctrl-panel {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 12px;
 }
 
 .vhf-sub-panel {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  padding: 12px 14px;
+  padding: 10px 14px;
   text-align: center;
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03);
 }
@@ -2655,18 +2678,18 @@ tr.slot-off td { color: var(--muted); }
   display: flex;
   flex-direction: column;
   align-items: center;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
 }
 
 .vhf-hex-box,
 .vhf-freq-box {
   display: inline-flex;
   font-family: var(--mono);
-  font-size: 1.4rem;
+  font-size: 1.35rem;
   font-weight: 800;
   color: var(--text);
   background: var(--surface-2);
-  padding: 4px 14px;
+  padding: 3px 14px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border-strong);
   letter-spacing: 3px;
@@ -2682,7 +2705,7 @@ tr.slot-off td { color: var(--muted); }
   display: flex;
   justify-content: center;
   font-family: var(--mono);
-  font-size: 1.4rem;
+  font-size: 1.35rem;
   color: var(--accent);
   margin-top: 1px;
   line-height: 1;
@@ -2730,48 +2753,107 @@ tr.slot-off td { color: var(--muted); }
   box-shadow: 0 0 6px rgba(245, 158, 11, 0.3);
 }
 
-.vhf-softkeys-bar {
+.vhf-softkeys-bar-6 {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(6, 1fr);
   gap: 10px;
   margin-top: 0.75rem;
 }
 
-.vhf-softkeys-bar-2 {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 10px;
-  margin-top: 0.75rem;
-}
-
-/* VHF Failure Messages Screen (Photo 4) */
-.vhf-failure-panel {
-  border: 1px solid var(--border-strong);
+.vhf-action-btn {
   background: var(--surface);
-  border-radius: var(--radius);
-  padding: 18px 24px;
-  margin: 0.75rem auto;
+  border: 1px solid var(--border-strong);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 0.82rem;
+  font-weight: 700;
+  padding: 8px 6px;
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  transition: all 0.15s ease;
+  user-select: none;
+  line-height: 1.2;
+}
+
+.vhf-action-btn:hover {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+  transform: translateY(-1px);
   box-shadow: var(--shadow);
 }
 
-.vhf-failure-line {
+.vhf-action-btn:active {
+  background: var(--accent);
+  color: #ffffff;
+}
+
+.vhf-softkey-spacer {
+  visibility: hidden;
+}
+
+/* VHF Failure Messages Screen (Photo 1) */
+.vhf-failure-screen-frame {
+  border: 2px solid var(--border-strong);
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 22px 32px;
+  margin: 0.75rem auto;
+  max-width: 740px;
+  box-shadow: var(--shadow);
+}
+
+.vhf-failure-title {
+  text-align: center;
+  font-family: var(--mono);
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: var(--text);
+  margin-bottom: 1.5rem;
+}
+
+.vhf-failure-table {
   font-family: var(--mono);
   font-size: 0.95rem;
+  margin: 0 auto;
+  max-width: 580px;
+}
+
+.vhf-failure-row {
+  display: flex;
+  align-items: center;
+  margin: 8px 0;
+}
+
+.vfl-label {
+  width: 230px;
+  flex-shrink: 0;
   font-weight: 700;
   color: var(--text-2);
-  letter-spacing: 0.5px;
-  margin: 12px 0;
-  display: flex;
 }
 
-.vhf-failure-line .fl-key {
-  width: 240px;
+.vfl-eq {
+  width: 32px;
   flex-shrink: 0;
-  color: var(--muted);
+  font-weight: 700;
+  color: var(--text);
+  text-align: center;
 }
 
-.vhf-failure-line .fl-val {
+.vfl-val {
+  font-weight: 800;
   color: var(--text);
+}
+
+.vhf-failure-row-gap {
+  height: 14px;
 }
 
 /* Dedicated 6-Softkeys Row for HF Mode */
