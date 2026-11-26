@@ -207,3 +207,99 @@ def test_cfds_rest_api_endpoints(client: TestClient):
     # 7. Clear RX
     r = client.post("/api/arinc/cfds/clear", json={"mode": "menu"})
     assert r.status_code == 200
+
+
+def test_cfds_dme_authentic_menu_navigation_simulation():
+    """Verify authentic 709 DME CFDS menu simulation tree and interactive key navigation."""
+    mgr = CfdsProtocolManager(simulation_mode=True)
+    mgr.select_lru("009")  # 709 DME
+
+    # 1. Entering Menu Mode ABD0018 immediately loads DME main menu via Label 356
+    res = mgr.set_slide("menu_0018")
+    assert res["current_slide"] == "menu_0018"
+    assert res["mcdu_has_data"] is True
+    assert "DME-0" in res["mcdu_lines"][0]
+    assert "<LAST LEG REPORT" in res["mcdu_lines"][2]
+    assert "<PREVIOUS LEGS REPORT" in res["mcdu_lines"][4]
+    assert "<LRU IDENTIFICATION" in res["mcdu_lines"][6]
+    assert "<TEST" in res["mcdu_lines"][8]
+    assert "<SHOP DATA" in res["mcdu_lines"][10]
+    assert "<RETURN" in res["mcdu_lines"][12]
+
+    # 2. Press 1 / 1L -> navigates to LAST LEG REPORT
+    res1 = mgr.send_key_command("1")
+    assert res1["dme_current_screen"] == "last_leg"
+    assert "LAST LEG REPORT" in res1["mcdu_lines"][1]
+    assert "34-51-33" in res1["mcdu_lines"][6]
+
+    # 3. Press 6 -> returns to main menu
+    res_ret = mgr.send_key_command("6")
+    assert res_ret["dme_current_screen"] == "main"
+    assert "<LAST LEG REPORT" in res_ret["mcdu_lines"][2]
+
+    # 4. Press NXT -> navigates to menu_2
+    res_nxt = mgr.send_key_command("NXT")
+    assert res_nxt["dme_current_screen"] == "menu_2"
+    assert "MENU 2" in res_nxt["mcdu_lines"][1]
+    assert "<FORMAT NON-VOLATILE" in res_nxt["mcdu_lines"][4]
+    assert "<ERASE NON-VOLATILE" in res_nxt["mcdu_lines"][6]
+
+    # 5. In menu_2, press 2 -> navigates to format_nvm
+    res_fmt = mgr.send_key_command("2")
+    assert res_fmt["dme_current_screen"] == "format_nvm"
+    assert "NVM FORMATTED OK" in res_fmt["mcdu_lines"][6]
+
+    # 6. Press 6 -> returns to menu_2
+    res_m2 = mgr.send_key_command("6")
+    assert res_m2["dme_current_screen"] == "menu_2"
+
+    # 7. Press PRV or MENU -> returns to main menu
+    res_main2 = mgr.send_key_command("MENU")
+    assert res_main2["dme_current_screen"] == "main"
+
+    # 8. Press 5 -> navigates to shop_data
+    res_shop = mgr.send_key_command("5")
+    assert res_shop["dme_current_screen"] == "shop_data"
+    assert "SHOP DATA" in res_shop["mcdu_lines"][1]
+    assert "<SPECIAL FUNCTIONS" in res_shop["mcdu_lines"][10]
+
+    # 9. In shop_data, press 5 -> navigates to special_func_agc
+    res_agc = mgr.send_key_command("5")
+    assert res_agc["dme_current_screen"] == "special_func_agc"
+    assert "CURRENT VALUE AGC: A0" in res_agc["mcdu_lines"][2]
+
+    # 10. Change AGC gain: press 3 -> Full Gain FF
+    res_ff = mgr.send_key_command("3")
+    assert "CURRENT VALUE AGC: FF" in res_ff["mcdu_lines"][2]
+
+
+def test_cfds_hardware_mode_pure_dynamic_rx():
+    """Verify hardware mode (simulation_mode=False) does not generate simulated pages;
+
+    relies 100% on physical Label 356 packets arriving from RX bus.
+    """
+    mgr = CfdsProtocolManager(simulation_mode=False)
+    mgr.select_lru("009")
+
+    # In hardware mode, entering menu does not auto-populate simulated data
+    res = mgr.set_slide("menu_0018")
+    assert res["mcdu_has_data"] is False
+    assert all(line.strip() == "" for line in res["mcdu_lines"])
+
+    # Transmitting a key sends Label 227 without changing MCDU screen
+    res_key = mgr.send_key_command("1")
+    assert res_key["last_tx_command"]["key"] == "1"
+    assert res_key["mcdu_has_data"] is False
+
+    # Once physical Label 356 arrives on bus, mcdu_has_data becomes True
+    c1, c2, c3 = "B", "I", "T"
+    b1, b2, b3 = ord(c1) & 0x7F, ord(c2) & 0x7F, ord(c3) & 0x7F
+    data_19 = b1 | (b2 << 7) | ((b3 & 0x1F) << 14)
+    ssm_val = (b3 >> 5) & 0x03
+    lbl356_word = parse_label("356") | (data_19 << 10) | (ssm_val << 29)
+
+    mgr.ingest_rx_word(lbl356_word, "356")
+    res_rx = mgr.get_state()
+    assert res_rx["mcdu_has_data"] is True
+    assert "BIT" in res_rx["mcdu_lines"][0]
+

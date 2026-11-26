@@ -4,11 +4,13 @@ Implements:
 1. CFDS LRU Table for 19 avionics LRUs + MANUAL ENTRY.
 2. Complete 10-slide state model (Menu, Desired Mode, Edit TX, Operation Hub, Channels,
    Normal Mode ABD0018/0048, Menu Mode ABD0018, Interactive Mode ABD0048, Discrete Mode ABD0048).
-3. Dynamic ARINC 429 Label 356 (ISO #5) packet assembler & MCDU 14x24 character grid.
-4. Dynamic Label 350/355/356 Discrete Fault decoder (11 failure fields).
-5. Label 227 BITE command word encoder & key handler.
-6. 17 Aircraft Configuration Word toggles (Label 170 / 301-303).
-7. Thread-safe runtime state management.
+3. Authentic 709 DME menu tree simulation (14 screens x 14 rows x 24 chars) driven via
+   ARINC 429 Label 356 (ISO #5) encoder & decoder pipeline.
+4. Dynamic ARINC 429 Label 356 packet assembler & MCDU 14x24 character grid.
+5. Dynamic Label 350/355/356 Discrete Fault decoder (11 failure fields).
+6. Label 227 BITE command word encoder & key handler.
+7. 17 Aircraft Configuration Word toggles (Label 170 / 301-303).
+8. Thread-safe runtime state management.
 """
 
 from __future__ import annotations
@@ -84,6 +86,234 @@ DEFAULT_DISCRETE_FIELDS = {
     "suspect3_side": "",
 }
 
+# Authentic 709 DME CFDS Screens (14 rows x 24 chars) restored from Git history (641e1d7)
+DME_709_MENU_SCREENS: dict[str, list[str]] = {
+    "main": [
+        "         DME-0          ",
+        "                        ",
+        "<LAST LEG REPORT        ",
+        "                        ",
+        "<PREVIOUS LEGS REPORT   ",
+        "                        ",
+        "<LRU IDENTIFICATION     ",
+        "                        ",
+        "<TEST                   ",
+        "                        ",
+        "<SHOP DATA              ",
+        "                        ",
+        "<RETURN                 ",
+        "                 NEXT > ",
+    ],
+    "menu_2": [
+        "         DME-0          ",
+        "         MENU 2         ",
+        "                        ",
+        "                        ",
+        "<FORMAT NON-VOLATILE    ",
+        "                        ",
+        "<ERASE NON-VOLATILE     ",
+        "                        ",
+        "                        ",
+        "                        ",
+        "                        ",
+        "                        ",
+        "<RETURN                 ",
+        "<PREV                   ",
+    ],
+    "format_nvm": [
+        "         DME-0          ",
+        "         MENU 2         ",
+        "                        ",
+        "                        ",
+        "  0000 BYTES BAD        ",
+        "                        ",
+        "  NVM FORMATTED OK      ",
+        "                        ",
+        "                        ",
+        "                        ",
+        "                        ",
+        "                        ",
+        "<RETURN                 ",
+        "                        ",
+    ],
+    "erase_nvm": [
+        "         DME-0          ",
+        "         MENU 2         ",
+        "                        ",
+        "                        ",
+        "  0000 BYTES BAD        ",
+        "                        ",
+        "  NVM ERASED OK         ",
+        "                        ",
+        "                        ",
+        "                        ",
+        "                        ",
+        "                        ",
+        "<RETURN                 ",
+        "                        ",
+    ],
+    "last_leg": [
+        "         DME-0          ",
+        "    LAST LEG REPORT     ",
+        "      DATE: JAN01       ",
+        "------------------------",
+        "    GMT     ATA         ",
+        "    DME-0 TRANSCEIVER(2)",
+        "3   0000    34-51-33    ",
+        "                        ",
+        "                        ",
+        "                        ",
+        "                        ",
+        "                        ",
+        "<RETURN                 ",
+        "                        ",
+    ],
+    "prev_legs": [
+        "         DME-0          ",
+        "  PREVIOUS LEGS REPORT  ",
+        "------------------------",
+        "  LEG DATE    GMT   ATA ",
+        "  DME-0 TRANSCEIVER     ",
+        "-01 JAN00   0000  34-51-33",
+        "  DME-0 TRANSCEIVER (2) ",
+        "-02 JAN00   0000  34-51-33",
+        "                        ",
+        "                        ",
+        "                        ",
+        "                        ",
+        "<RETURN                 ",
+        "                        ",
+    ],
+    "lru_id": [
+        "         DME-0          ",
+        "   LRU IDENTIFICATION   ",
+        "------------------------",
+        "TRANSCEIVER P/N:        ",
+        "  822-0329-001          ",
+        "SERIAL NUMBER: 1204     ",
+        "MODIFICATION DOT: 1-4   ",
+        "EQUIPMENT: COL-DME-709  ",
+        "                        ",
+        "                        ",
+        "                        ",
+        "                        ",
+        "<RETURN                 ",
+        "                        ",
+    ],
+    "test": [
+        "         DME-0          ",
+        "          TEST          ",
+        "------------------------",
+        "DME-0 NO DATA FROM      ",
+        "        CONTROL SOURCE  ",
+        "ATA:  34-51-23          ",
+        "                        ",
+        "BITE TEST COMPLETE:     ",
+        "  SYSTEM NORMAL         ",
+        "                        ",
+        "                        ",
+        "                        ",
+        "<RETURN                 ",
+        "                        ",
+    ],
+    "shop_data": [
+        "         DME-0          ",
+        "       SHOP DATA        ",
+        "                        ",
+        "                        ",
+        "<ENTER SHOP VISIT       ",
+        "                        ",
+        "<DISPLAY FAULT DATA     ",
+        "                        ",
+        "<SOFTWARE ID            ",
+        "                        ",
+        "<SPECIAL FUNCTIONS      ",
+        "                        ",
+        "<RETURN                 ",
+        "                        ",
+    ],
+    "shop_visit": [
+        "         DME-0          ",
+        "    ENTER SHOP VISIT    ",
+        "------------------------",
+        "SHOP CODE: N12345       ",
+        "DATE: 11/18/26          ",
+        "STATION: GMF-AEROASIA   ",
+        "                        ",
+        "VISIT RECORD STORED OK  ",
+        "                        ",
+        "                        ",
+        "                        ",
+        "                        ",
+        "<RETURN                 ",
+        "                        ",
+    ],
+    "fault_data": [
+        "         DME-0          ",
+        "   DISPLAY FAULT DATA   ",
+        "------------------------",
+        "NO FAULT DATA RECORDED  ",
+        "                        ",
+        "NVM LOG COUNTER: 000    ",
+        "INTERNAL BUS CHECKSUM:  ",
+        "  PASS                  ",
+        "                        ",
+        "                        ",
+        "                        ",
+        "                        ",
+        "<RETURN                 ",
+        "                        ",
+    ],
+    "software_id": [
+        "         DME-0          ",
+        "      SOFTWARE ID       ",
+        "------------------------",
+        "SOFTWARE P/N:           ",
+        "  COL-DME-709-01        ",
+        "CRC CHECKSUM: 0x9B42    ",
+        "RELEASE: REV 02.1       ",
+        "                        ",
+        "                        ",
+        "                        ",
+        "                        ",
+        "                        ",
+        "<RETURN                 ",
+        "                        ",
+    ],
+    "special_func_agc": [
+        "         DME-0          ",
+        "    SPECIAL FUNC-AGC    ",
+        " CURRENT VALUE AGC: {AGC} ",
+        "                        ",
+        "                        ",
+        "                        ",
+        "<FULL GAIN FF           ",
+        "                        ",
+        "<MID GAIN A0            ",
+        "                        ",
+        "<MIN GAIN 00            ",
+        "                        ",
+        "<RETURN                 ",
+        "                        ",
+    ],
+    "bus_in_test": [
+        "         DME-0          ",
+        "      BUS IN TEST       ",
+        "------------------------",
+        "ARINC 429 BUS RX-A:     ",
+        "  12.5 KBPS OK          ",
+        "ARINC 429 BUS RX-B:     ",
+        "  STANDBY               ",
+        "PARITY ERRORS: 000      ",
+        "BUS TIMING: 100% OK     ",
+        "                        ",
+        "                        ",
+        "                        ",
+        "<RETURN                 ",
+        "                        ",
+    ],
+}
+
 
 def decode_iso5_ascii(raw_word: int) -> str:
     """Decode up to 3 7-bit ASCII characters from ARINC 429 word (bits 11..31)."""
@@ -108,6 +338,117 @@ def decode_iso5_hex(data_hex: str) -> str:
         return "".join(chr(code) for code in (b1, b2, b3) if 32 <= code <= 126)
     except Exception:
         return ""
+
+
+def encode_chars_to_label356(c1: str, c2: str, c3: str) -> int:
+    """Encode 3 ASCII characters into 32-bit ARINC 429 Label 356 word."""
+    b1 = ord(c1) & 0x7F
+    b2 = ord(c2) & 0x7F
+    b3 = ord(c3) & 0x7F
+    # Bits 11..17: Char 1, Bits 18..24: Char 2, Bits 25..29: low 5 bits of Char 3
+    data_19 = b1 | (b2 << 7) | ((b3 & 0x1F) << 14)
+    # SSM Bits 30..31: high 2 bits of Char 3
+    ssm_val = (b3 >> 5) & 0x03
+    return encode_raw_word(
+        label="356",
+        data=data_19,
+        sdi=0,
+        ssm=ssm_val,
+        odd_parity=True,
+    )
+
+
+def encode_screen_to_label356_words(lines: list[str], agc_val: str = "A0") -> list[int]:
+    """Encode 14 lines x 24 chars MCDU page into 112 Label 356 words."""
+    words: list[int] = []
+    for line in lines[:14]:
+        rendered = line.replace("{AGC}", str(agc_val)[:2]).ljust(24)[:24]
+        for col in range(0, 24, 3):
+            w = encode_chars_to_label356(rendered[col], rendered[col + 1], rendered[col + 2])
+            words.append(w)
+    while len(words) < 112:
+        words.append(encode_chars_to_label356(" ", " ", " "))
+    return words
+
+
+def handle_dme_key_navigation(
+    current_screen: str, key: str, agc_val: str
+) -> tuple[str, str, str | None]:
+    """State transition handler for authentic 709 DME menu simulation.
+
+    Returns (next_screen, updated_agc_val, action_signal).
+    action_signal is 'exit' when returning to Slide 4 Op Mode Hub.
+    """
+    k = str(key).strip().upper()
+    cur = str(current_screen).lower()
+
+    # Universal MENU key returns to main menu
+    if k == "MENU":
+        return "main", agc_val, None
+
+    if cur == "main":
+        if k in ("1", "1L", "A"):
+            return "last_leg", agc_val, None
+        elif k in ("2", "2L", "B"):
+            return "prev_legs", agc_val, None
+        elif k in ("3", "3L", "C"):
+            return "lru_id", agc_val, None
+        elif k in ("4", "4L", "D"):
+            return "test", agc_val, None
+        elif k in ("5", "5L", "E"):
+            return "shop_data", agc_val, None
+        elif k in ("6", "6L", "F", "CLR"):
+            return "main", agc_val, "exit"
+        elif k == "NXT":
+            return "menu_2", agc_val, None
+
+    elif cur == "menu_2":
+        if k in ("2", "2L", "B"):
+            return "format_nvm", agc_val, None
+        elif k in ("3", "3L", "C"):
+            return "erase_nvm", agc_val, None
+        elif k in ("6", "6L", "F", "PRV", "NXT", "CLR"):
+            return "main", agc_val, None
+
+    elif cur in ("format_nvm", "erase_nvm"):
+        if k in ("6", "6L", "F", "PRV", "CLR"):
+            return "menu_2", agc_val, None
+
+    elif cur in ("last_leg", "prev_legs", "lru_id", "test"):
+        if k in ("6", "6L", "F", "PRV", "CLR"):
+            return "main", agc_val, None
+
+    elif cur == "shop_data":
+        if k in ("2", "2L", "B"):
+            return "shop_visit", agc_val, None
+        elif k in ("3", "3L", "C"):
+            return "fault_data", agc_val, None
+        elif k in ("4", "4L", "D"):
+            return "software_id", agc_val, None
+        elif k in ("5", "5L", "E"):
+            return "special_func_agc", agc_val, None
+        elif k in ("6", "6L", "F", "PRV", "CLR"):
+            return "main", agc_val, None
+
+    elif cur in ("shop_visit", "fault_data", "software_id"):
+        if k in ("6", "6L", "F", "PRV", "CLR"):
+            return "shop_data", agc_val, None
+
+    elif cur == "special_func_agc":
+        if k in ("3", "3L", "C"):
+            return "special_func_agc", "FF", None
+        elif k in ("4", "4L", "D"):
+            return "special_func_agc", "A0", None
+        elif k in ("5", "5L", "E"):
+            return "special_func_agc", "00", None
+        elif k in ("6", "6L", "F", "PRV", "CLR"):
+            return "shop_data", agc_val, None
+
+    elif cur == "bus_in_test":
+        if k in ("6", "6L", "F", "PRV", "CLR"):
+            return "special_func_agc", agc_val, None
+
+    return cur, agc_val, None
 
 
 def encode_label227_word(
@@ -153,9 +494,10 @@ def encode_label227_word(
 class CfdsProtocolManager:
     """Thread-safe manager for all CFDS operating modes and live telemetry."""
 
-    def __init__(self) -> None:
+    def __init__(self, simulation_mode: bool = True) -> None:
         self._lock = threading.RLock()
         self.active = False
+        self.simulation_mode = simulation_mode
         self.current_slide = "menu"  # menu (1), desired_mode (2), edit_tx (3), op_mode_hub (4), channels (5), ...
         self.selected_lru = dict(CFDS_LRU_TABLE[2])  # Default 709 DME (code: 009)
 
@@ -191,7 +533,10 @@ class CfdsProtocolManager:
 
         # Slide 7 & 9: MCDU Screen (14 lines x 24 chars)
         self.mcdu_lines: list[str] = ["" for _ in range(14)]
+        self.mcdu_has_data: bool = False
         self.mcdu_status: str = "AWAITING LRU RESPONSE (LABEL 356)"
+        self.dme_current_screen: str = "main"
+        self.dme_agc_val: str = "A0"
         self.interactive_progress: int = 0
         self.interactive_status: str = "READY"
 
@@ -210,6 +555,7 @@ class CfdsProtocolManager:
 
             return {
                 "active": self.active,
+                "simulation_mode": self.simulation_mode,
                 "current_slide": self.current_slide,
                 "selected_lru": dict(self.selected_lru),
                 "lru_table": list(CFDS_LRU_TABLE),
@@ -220,7 +566,9 @@ class CfdsProtocolManager:
                 "channel_config": dict(self.channel_config),
                 "normal_messages": list(self.normal_messages),
                 "mcdu_lines": formatted_mcdu,
+                "mcdu_has_data": self.mcdu_has_data,
                 "mcdu_status": self.mcdu_status,
+                "dme_current_screen": self.dme_current_screen,
                 "interactive_progress": self.interactive_progress,
                 "interactive_status": self.interactive_status,
                 "discrete_has_data": self.discrete_has_data,
@@ -251,13 +599,49 @@ class CfdsProtocolManager:
             if self.selected_lru["code"] == "050":
                 self.channel_config["xmtr_select"] = "C"
                 self.channel_config["rcvr_select"] = "A"
+
+            # Reset runtime RX buffers for newly selected LRU
+            self.mcdu_has_data = False
+            self.mcdu_lines = ["" for _ in range(14)]
+            self.dme_current_screen = "main"
+            self.dme_agc_val = "A0"
+            self.normal_messages.clear()
+            self.discrete_has_data = False
+            self.discrete_fields = dict(DEFAULT_DISCRETE_FIELDS)
             return self.get_state()
 
     def set_slide(self, slide: str) -> dict[str, Any]:
         """Switch current slide/view (menu, desired_mode, edit_tx, op_mode_hub, channels, ...)."""
         with self._lock:
-            self.current_slide = str(slide).lower()
+            s = str(slide).lower()
+            self.current_slide = s
+            # In simulation mode: entering Menu or Interactive mode on 709 DME auto-injects authentic menu
+            if s in ("menu_0018", "interactive_0048"):
+                if self.simulation_mode and self.selected_lru.get("code") == "009":
+                    self.load_dme_screen(self.dme_current_screen or "main")
             return self.get_state()
+
+    def load_dme_screen(self, screen_id: str) -> None:
+        """Load authentic 709 DME menu screen through ARINC 429 Label 356 encoder/decoder pipeline."""
+        s_id = str(screen_id).lower()
+        template = DME_709_MENU_SCREENS.get(s_id, DME_709_MENU_SCREENS["main"])
+        rendered_lines = [
+            line.replace("{AGC}", self.dme_agc_val).ljust(24)[:24]
+            for line in template
+        ]
+        # Encode through ARINC 429 Label 356 pipeline
+        words = encode_screen_to_label356_words(rendered_lines, self.dme_agc_val)
+        # Decode each row back through decode_iso5_ascii to guarantee 100% protocol fidelity
+        decoded_lines: list[str] = []
+        for row in range(14):
+            row_words = words[row * 8 : (row + 1) * 8]
+            row_str = "".join(decode_iso5_ascii(w) for w in row_words)
+            decoded_lines.append(row_str.ljust(24)[:24])
+
+        self.mcdu_lines = decoded_lines
+        self.mcdu_has_data = True
+        self.dme_current_screen = s_id
+        self.mcdu_status = f"DME MENU: {s_id.upper()} (LABEL 356)"
 
     def update_tx_params(self, params: dict[str, Any], config: dict[str, bool] | None = None) -> dict[str, Any]:
         """Update CFDS TX data parameters and 17 configuration toggles (Slide 3)."""
@@ -277,6 +661,36 @@ class CfdsProtocolManager:
             val = str(phase).strip().upper()
             if val in ("GROUND", "AIR"):
                 self.flight_phase_mode = val
+                if self.simulation_mode and self.selected_lru.get("code") == "009":
+                    ts = datetime.now(timezone.utc).strftime("%H:%M:%S")
+                    msg = f"[{ts}] DME {val}: FLIGHT PHASE SWITCHED TO {val}"
+                    self.normal_messages.append({"text": msg, "chars": val, "ts": ts})
+                    if val == "AIR":
+                        self.discrete_has_data = True
+                        self.discrete_fields["failure_number"] = "1"
+                        self.discrete_fields["failure_type_code"] = "02"
+                        self.discrete_fields["failure_type_string"] = "DME IN-FLIGHT PULSE TIMING WARN"
+                        self.discrete_fields["witness_position"] = "CAPT"
+                        self.discrete_fields["witness_side"] = "LEFT"
+                        self.discrete_fields["suspect1_position"] = "MAIN RACK"
+                        self.discrete_fields["suspect1_side"] = "LEFT"
+                        self.discrete_fields["suspect2_position"] = "SHELF 1"
+                        self.discrete_fields["suspect2_side"] = "RIGHT"
+                        self.discrete_fields["suspect3_position"] = "AFT"
+                        self.discrete_fields["suspect3_side"] = "CENTER"
+                    else:
+                        self.discrete_has_data = True
+                        self.discrete_fields["failure_number"] = "1"
+                        self.discrete_fields["failure_type_code"] = "00"
+                        self.discrete_fields["failure_type_string"] = "DME GROUND SYSTEM PASS"
+                        self.discrete_fields["witness_position"] = "NONE"
+                        self.discrete_fields["witness_side"] = "NONE"
+                        self.discrete_fields["suspect1_position"] = "MAIN RACK"
+                        self.discrete_fields["suspect1_side"] = "LEFT"
+                        self.discrete_fields["suspect2_position"] = ""
+                        self.discrete_fields["suspect2_side"] = ""
+                        self.discrete_fields["suspect3_position"] = ""
+                        self.discrete_fields["suspect3_side"] = ""
             return self.get_state()
 
     def send_key_command(self, key: str, lru_code: str | None = None) -> dict[str, Any]:
@@ -287,7 +701,6 @@ class CfdsProtocolManager:
 
             # Map key identifier to command code
             cmd_code = 0x01
-            # Numeric keys 1..6 -> 1..6
             if k in ("1", "1L"):
                 cmd_code = 1
             elif k in ("2", "2L"):
@@ -313,7 +726,7 @@ class CfdsProtocolManager:
             elif k == "6R":
                 cmd_code = 12
             elif k in ("A", "B", "C", "D", "E", "F"):
-                cmd_code = ord(k)  # 65..70
+                cmd_code = ord(k)
             elif k == "NXT":
                 cmd_code = 0x1E
             elif k == "PRV":
@@ -345,7 +758,21 @@ class CfdsProtocolManager:
                 "time_str": datetime.now(timezone.utc).strftime("%H:%M:%S.%f")[:12],
             }
 
-            self.mcdu_status = f"KEY '{k}' TRANSMITTED (LBL 227: {hex_str})"
+            # In simulation mode for 709 DME: drive screen navigation
+            if self.simulation_mode and eq == "009":
+                nxt_screen, new_agc, action = handle_dme_key_navigation(
+                    self.dme_current_screen, k, self.dme_agc_val
+                )
+                self.dme_agc_val = new_agc
+                if action == "exit":
+                    self.current_slide = "op_mode_hub"
+                    self.mcdu_status = f"EXIT CFDS MENU (KEY '{k}' -> OP MODE HUB)"
+                else:
+                    self.load_dme_screen(nxt_screen)
+                    self.mcdu_status = f"KEY '{k}' -> {nxt_screen.upper()} (LBL 227: {hex_str})"
+            else:
+                self.mcdu_status = f"KEY '{k}' TRANSMITTED (LBL 227: {hex_str})"
+
             return self.get_state()
 
     def ingest_rx_word(self, raw_word: int, label_octal: str) -> bool:
@@ -355,6 +782,7 @@ class CfdsProtocolManager:
             if label_octal == "356":
                 chars = decode_iso5_ascii(raw_word)
                 if chars:
+                    self.mcdu_has_data = True
                     # Update Normal Mode log
                     ts = datetime.now(timezone.utc).strftime("%H:%M:%S")
                     msg = f"[{ts}] {self.selected_lru['short']} {self.flight_phase_mode}: {chars}"
@@ -390,12 +818,10 @@ class CfdsProtocolManager:
 
     def _write_mcdu_char(self, char: str) -> None:
         """Write single character to MCDU 14x24 buffer with CR/LF handling."""
-        # Find first non-full line or append
         for idx in range(14):
             if len(self.mcdu_lines[idx]) < 24:
                 self.mcdu_lines[idx] += char
                 return
-        # If all full, scroll up
         self.mcdu_lines.pop(0)
         self.mcdu_lines.append(char)
 
@@ -407,6 +833,7 @@ class CfdsProtocolManager:
                 self.normal_messages.clear()
             if m in ("mcdu", "menu", "interactive", ""):
                 self.mcdu_lines = ["" for _ in range(14)]
+                self.mcdu_has_data = False
                 self.mcdu_status = "WAITING FOR LRU MENU DATA (LABEL 356)..."
             if m in ("discrete", ""):
                 self.discrete_has_data = False
@@ -422,7 +849,6 @@ class CfdsProtocolManager:
 
             if "NORMAL" in m:
                 ts = datetime.now(timezone.utc).strftime("%H:%M:%S")
-                # Realistic BITE maintenance lines per JcAIR T1200B Manual Figure 58
                 lines = [
                     f"[{ts}] {short} GROUND: NORMAL MODE INITIALIZED",
                     f"[{ts}] {short} GROUND: LRU PART NO: {lru['code']}-429-01",
@@ -434,51 +860,56 @@ class CfdsProtocolManager:
                 return self.get_state()
 
             elif "MENU" in m:
-                # 14 rows x 24 chars MCDU menu per Figure 59
-                self.mcdu_lines = [
-                    f"< {short} BITE MENU >".center(24),
-                    "< 1  SYSTEM STATUS      ",
-                    "< 2  CURRENT LEG REPORT ",
-                    "< 3  PREVIOUS LEGS LOG  ",
-                    "< 4  LRU IDENTIFICATION ",
-                    "< 5  GROUND TEST        ",
-                    "< 6  CLASS 3 FAULTS     ",
-                    "                        ",
-                    "                        ",
-                    "                        ",
-                    "                        ",
-                    "                RETURN >",
-                    "------------------------",
-                    "STATUS: SELECT OPTION   ",
-                ]
-                self.mcdu_status = f"MENU LOADED FROM {short} (LABEL 356)"
+                if lru["code"] == "009":
+                    self.load_dme_screen("main")
+                else:
+                    self.mcdu_lines = [
+                        f"< {short} BITE MENU >".center(24),
+                        "< 1  SYSTEM STATUS      ",
+                        "< 2  CURRENT LEG REPORT ",
+                        "< 3  PREVIOUS LEGS LOG  ",
+                        "< 4  LRU IDENTIFICATION ",
+                        "< 5  GROUND TEST        ",
+                        "< 6  CLASS 3 FAULTS     ",
+                        "                        ",
+                        "                        ",
+                        "                        ",
+                        "                        ",
+                        "                RETURN >",
+                        "------------------------",
+                        "STATUS: SELECT OPTION   ",
+                    ]
+                    self.mcdu_has_data = True
+                    self.mcdu_status = f"MENU LOADED FROM {short} (LABEL 356)"
                 return self.get_state()
 
             elif "INTERACTIVE" in m:
-                # Interactive MCDU screen per Figure 61
-                self.mcdu_lines = [
-                    f"< {short} INTERACTIVE >".center(24),
-                    "< 1L SELF TEST START    ",
-                    "     BITE TEST ACTIVE   ",
-                    "< 2L READ MEMORY DUMP   ",
-                    "     EEPROM CHECKSUM OK ",
-                    "< 3L CALIBRATION MODE   ",
-                    "     FREQ SYNTH LOCKED  ",
-                    "------------------------",
-                    "LRU RESPONSE TIME: 42 MS",
-                    "DATA LINK BUS: VALID    ",
-                    "COMMAND 227: ACK OK     ",
-                    "                NEXT >  ",
-                    "------------------------",
-                    "READY FOR NEXT INPUT    ",
-                ]
-                self.interactive_progress = 100
-                self.interactive_status = "TEST COMPLETED OK"
-                self.mcdu_status = f"INTERACTIVE PAGE LOADED ({short})"
+                if lru["code"] == "009":
+                    self.load_dme_screen("main")
+                else:
+                    self.mcdu_lines = [
+                        f"< {short} INTERACTIVE >".center(24),
+                        "< 1L SELF TEST START    ",
+                        "     BITE TEST ACTIVE   ",
+                        "< 2L READ MEMORY DUMP   ",
+                        "     EEPROM CHECKSUM OK ",
+                        "< 3L CALIBRATION MODE   ",
+                        "     FREQ SYNTH LOCKED  ",
+                        "------------------------",
+                        "LRU RESPONSE TIME: 42 MS",
+                        "DATA LINK BUS: VALID    ",
+                        "COMMAND 227: ACK OK     ",
+                        "                NEXT >  ",
+                        "------------------------",
+                        "READY FOR NEXT INPUT    ",
+                    ]
+                    self.mcdu_has_data = True
+                    self.interactive_progress = 100
+                    self.interactive_status = "TEST COMPLETED OK"
+                    self.mcdu_status = f"INTERACTIVE PAGE LOADED ({short})"
                 return self.get_state()
 
             elif "DISCRETE" in m:
-                # 11 fields populated per Slide 10
                 self.discrete_has_data = True
                 self.discrete_fields = {
                     "failure_number": "1",

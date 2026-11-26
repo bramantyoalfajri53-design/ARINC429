@@ -329,7 +329,7 @@ class ArincSession:
         self.mmr_menu: str | None = None
         self.mmr_inc_time: bool = False
         self.vhf900: Vhf900AlignManager = Vhf900AlignManager()
-        self.cfds: CfdsProtocolManager = CfdsProtocolManager()
+        self.cfds: CfdsProtocolManager = CfdsProtocolManager(simulation_mode=self.simulation_mode)
         self._filter_hist: dict[tuple[str, str], list[tuple[float, float]]] = {}
         self._last_rx_ts: dict[tuple[str, str], float] = {}
 
@@ -2197,10 +2197,12 @@ class ArincSession:
 
     def get_cfds_state(self) -> dict[str, Any]:
         with self._lock:
+            self.cfds.simulation_mode = self.simulation_mode or bool(self._sim_override)
             return self.cfds.get_state(rx_bus=self.rx_ch or "A")
 
     def select_cfds_lru(self, code: str, name: str | None = None, short: str | None = None) -> dict[str, Any]:
         with self._lock:
+            self.cfds.simulation_mode = self.simulation_mode or bool(self._sim_override)
             res = self.cfds.select_lru(code, name, short)
             if self.cfds.selected_lru.get("code") == "050":
                 self.channel["C"].high_speed = True
@@ -2211,6 +2213,7 @@ class ArincSession:
 
     def set_cfds_slide(self, slide: str) -> dict[str, Any]:
         with self._lock:
+            self.cfds.simulation_mode = self.simulation_mode or bool(self._sim_override)
             return self.cfds.set_slide(slide)
 
     def update_cfds_tx_params(self, params: dict[str, Any], config: dict[str, bool] | None = None) -> dict[str, Any]:
@@ -2219,10 +2222,12 @@ class ArincSession:
 
     def set_cfds_flight_phase(self, phase: str) -> dict[str, Any]:
         with self._lock:
+            self.cfds.simulation_mode = self.simulation_mode or bool(self._sim_override)
             return self.cfds.set_flight_phase(phase)
 
     def send_cfds_key(self, key: str, lru_code: str | None = None) -> dict[str, Any]:
         with self._lock:
+            self.cfds.simulation_mode = self.simulation_mode or bool(self._sim_override)
             return self.cfds.send_key_command(key, lru_code)
 
     def set_cfds_channels(self, **kwargs: Any) -> dict[str, Any]:
@@ -2238,6 +2243,7 @@ class ArincSession:
 
     def simulate_cfds_scenario(self, mode: str, lru_code: str | None = None) -> dict[str, Any]:
         with self._lock:
+            self.cfds.simulation_mode = self.simulation_mode or bool(self._sim_override)
             return self.cfds.simulate_test_scenario(mode, lru_code)
 
     # --- snapshot + run control -----------------------------------------
