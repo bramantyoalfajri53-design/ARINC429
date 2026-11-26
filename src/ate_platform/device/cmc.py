@@ -25,9 +25,11 @@ from datetime import datetime, timezone
 from typing import Any
 
 from ate_platform.device.arinc_encode import (
+    DATA_MASK19,
     encode_raw_word,
     get_data19,
     get_ssm_bits,
+    put_data19,
     word_parity_odd,
 )
 
@@ -326,6 +328,23 @@ def _sdi_to_str(sdi: Any) -> str:
     return "ALL" if val == 0 else str(val)
 
 
+def _encode_cmc_word(
+    label: str,
+    data19: int,
+    *,
+    sdi: int = 0,
+    ssm: int = 3,
+    odd_parity: bool = True,
+) -> int:
+    """Encode ARINC 429 word preserving bits 9-10 SDI and exact bits 11-29 data19 on real Ballard & sim."""
+    base = encode_raw_word(label, 0, sdi=int(sdi) & 0x3, ssm=int(ssm) & 0x3, odd_parity=True)
+    word = put_data19(base, int(data19) & DATA_MASK19)
+    low31 = word & 0x7FFFFFFF
+    ones = bin(low31).count("1")
+    want_par = ((ones & 1) == 0) if odd_parity else ((ones & 1) == 1)
+    return (low31 | ((1 if want_par else 0) << 31)) & 0xFFFFFFFF
+
+
 def encode_cmc_label227(
     *,
     label: str = "227",
@@ -348,7 +367,7 @@ def encode_cmc_label227(
     data19 = (pad_val & 0x7) | ((fn_val & 0x7) << 3) | ((eq_val & 0xFFF) << 6)
     sdi_i = _sdi_to_int(sdi)
     odd = str(parity or "ODD").strip().upper() != "EVEN"
-    raw = encode_raw_word(label or "227", data19, sdi=sdi_i, ssm=3, odd_parity=odd)
+    raw = _encode_cmc_word(label or "227", data19, sdi=sdi_i, ssm=3, odd_parity=odd)
     return raw, f"0x{raw:08X}"
 
 
@@ -364,7 +383,7 @@ def encode_cmc_label350(
     for bit_num, val in (bits or {}).items():
         if 11 <= int(bit_num) <= 29 and int(val):
             data19 |= 1 << (int(bit_num) - 11)
-    raw = encode_raw_word("350", data19, sdi=int(sdi) & 0x3, ssm=int(ssm) & 0x3, odd_parity=odd_parity)
+    raw = _encode_cmc_word("350", data19, sdi=int(sdi) & 0x3, ssm=int(ssm) & 0x3, odd_parity=odd_parity)
     return raw, f"0x{raw:08X}"
 
 
@@ -381,7 +400,7 @@ def encode_cmc_transmit_words(
     date_bcd = 0
     for idx, d in enumerate(date_digits):
         date_bcd |= (d & 0xF) << ((idx % 4) * 4)
-    date_raw = encode_raw_word("260", date_bcd & 0x7FFFF, sdi=0, ssm=0, odd_parity=True)
+    date_raw = _encode_cmc_word("260", date_bcd & 0x7FFFF, sdi=0, ssm=0, odd_parity=True)
     words.append({"label": "260", "name": "DATE", "raw": date_raw, "hex": f"0x{date_raw:08X}"})
 
     # Label 125 - TIME (HH:MM.t UTC)
@@ -392,7 +411,7 @@ def encode_cmc_transmit_words(
         + (time_digits[2] * 10 + time_digits[3]) * 10
         + time_digits[4]
     ) & 0x7FFFF
-    time_raw = encode_raw_word("125", time_val, sdi=0, ssm=3, odd_parity=True)
+    time_raw = _encode_cmc_word("125", time_val, sdi=0, ssm=3, odd_parity=True)
     words.append({"label": "125", "name": "TIME", "raw": time_raw, "hex": f"0x{time_raw:08X}"})
 
     # Label 126 - FLIGHT PHASE
@@ -400,7 +419,7 @@ def encode_cmc_transmit_words(
         phase = int(str(tx_params.get("flt_phase", "1")).strip()) & 0xF
     except ValueError:
         phase = 1
-    phase_raw = encode_raw_word("126", phase, sdi=0, ssm=3, odd_parity=True)
+    phase_raw = _encode_cmc_word("126", phase, sdi=0, ssm=3, odd_parity=True)
     words.append({"label": "126", "name": "FLT_PHASE", "raw": phase_raw, "hex": f"0x{phase_raw:08X}"})
 
     # Labels 233-236 - ISO #5 Flight Number, City Pairs, Aircraft ID
@@ -414,7 +433,7 @@ def encode_cmc_transmit_words(
         padded = chunk.ljust(3)[:3]
         c0, c1, c2 = (ord(ch) & 0x3F for ch in padded)
         d19 = c0 | (c1 << 6) | (c2 << 12)
-        raw = encode_raw_word(lbl, d19, sdi=0, ssm=3, odd_parity=True)
+        raw = _encode_cmc_word(lbl, d19, sdi=0, ssm=3, odd_parity=True)
         words.append({"label": lbl, "name": field_name, "raw": raw, "hex": f"0x{raw:08X}"})
 
     # Label 170 - 17-bit Aircraft Configuration Word
@@ -422,7 +441,7 @@ def encode_cmc_transmit_words(
     for idx, key in enumerate(CMC_AIRCRAFT_CONFIG_ORDER):
         if aircraft_config.get(key, False):
             cfg_mask |= 1 << idx
-    cfg_raw = encode_raw_word("170", cfg_mask & 0x7FFFF, sdi=0, ssm=3, odd_parity=True)
+    cfg_raw = _encode_cmc_word("170", cfg_mask & 0x7FFFF, sdi=0, ssm=3, odd_parity=True)
     words.append({"label": "170", "name": "AIRCRAFT_CONFIG", "raw": cfg_raw, "hex": f"0x{cfg_raw:08X}"})
 
     return words
