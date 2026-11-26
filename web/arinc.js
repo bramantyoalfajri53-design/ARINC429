@@ -1525,6 +1525,77 @@ let cfdsState = {
   simToggleGuardUntil: 0,
 };
 
+// Boeing CMC / Sensor BITE (ARINC 604) 6-Slide State
+const CMC_SLIDE1_LRUS = CFDS_SLIDE1_LRUS;
+
+const CMC_FUNCTION_SWITCHES_6 = [
+  { code: 0, label: "NO REQUEST",  desc: "Idle / Clear" },
+  { code: 1, label: "BITE TEST",   desc: "Self-Test" },
+  { code: 2, label: "SHOP FAULTS", desc: "Shop Fault Log" },
+  { code: 3, label: "FLIGHT",      desc: "New Flight" },
+  { code: 4, label: "LOGOFF",      desc: "End Session" },
+  { code: 5, label: "CONFIG DATA", desc: "LRU Config" },
+];
+
+const CMC_AIRCRAFT_CFG_KEYS = [
+  "DATA_PRINTER", "DATA_LINK", "AIDS", "RMP3", "VHF3", "HF1", "HF2", "ADF2", "MLS1", "MLS2",
+  "WBS1", "RADAR2", "TPIS", "AFT_CRG/HT", "FWD_CRG/HT", "CRG/SMOKE", "WBS2",
+];
+
+let cmcState = {
+  currentSlide: "menu", // "menu", "desired_mode", "edit_tx", "fault_summary", "command_summary", "channels"
+  selectedLru: { code: "007", short: "RALT", name: "707 LRA", desc: "Low Range Radio Altimeter", bus: "A", speed: "12.5k" },
+  timeConstantIdx: 0,
+  txParams: {
+    date: "12/31/86",
+    time: "15:49.5",
+    flt_num: "99999999",
+    city_pairs: "DNVR MKCI",
+    flt_phase: "1",
+    aircraft_id: "N123456",
+  },
+  aircraftConfig: {
+    DATA_PRINTER: false, DATA_LINK: false, AIDS: false, RMP3: false, VHF3: false,
+    HF1: false, HF2: false, ADF2: false, MLS1: false, MLS2: false,
+    WBS1: false, RADAR2: false, TPIS: false, "AFT_CRG/HT": false, "FWD_CRG/HT": false, "CRG/SMOKE": false, WBS2: false,
+  },
+  cmdSummary: {
+    label: "227",
+    eq_id: "000",
+    function_code: 0,
+    function_label: "NO REQUEST",
+    pad: "00",
+    sdi: "ALL",
+    rate_ms: 1000,
+    parity: "ODD",
+  },
+  lastCmdWord: null,
+  channels: {
+    bit_rate_kbps: "12.5",
+    xmtr_select: "TX-A",
+    rcvr_select: "RX-A",
+    tx_enabled: { A: true, B: true, C: true, D: true },
+    display_mode: "ENG",
+  },
+  faultSummary: {
+    has_data: false,
+    raw_word: null,
+    hex_32: "",
+    sdi_str: "ALL (00)",
+    ssm_str: "00",
+    parity: "ODD",
+    formatted: "NO WORDS RECEIVED",
+    bits: Array.from({ length: 19 }, (_, idx) => ({
+      bit: 11 + idx,
+      status: 0,
+      function: idx === 0 ? "LRRA LRU FAULT" : idx === 17 ? "DATA TRANSFER IN PROGRESS" : idx === 18 ? "CMND WORD ACKNOWLEDGE" : "SPARE",
+    })),
+  },
+  faultRxCount: 0,
+  isSimulation: false,
+  simToggleGuardUntil: 0,
+};
+
 // ====================================================================
 // CFDS 10 SLIDES ENGINE (AEROFLEX JcAIR T1200B / ABD0018 & ABD0048)
 // ====================================================================
@@ -2676,834 +2747,826 @@ function patchCfdsRx(s) {
 
 
 // ====================================================================
-// BOEING CMC MODE IMPLEMENTATION (ARINC 604-1 / AEROFLEX T1200B)
+// BOEING CMC / SENSOR BITE 6-SLIDE ENGINE (ARINC 604 / T1200B)
 // ====================================================================
+
+function updateCmcSimToggleBtn(btn, isSim) {
+  if (!btn) return;
+  btn.textContent = isSim ? "SIM: ON" : "SIM: OFF";
+  btn.classList.toggle("active", Boolean(isSim));
+  btn.setAttribute("aria-pressed", isSim ? "true" : "false");
+}
+
+function syncCmcFromResponse(res, s, fromPoll = false) {
+  if (!res) return;
+  if (s) s.cmc = res;
+  if (snap) snap.cmc = res;
+  if (!fromPoll || Date.now() >= (cmcState.simToggleGuardUntil || 0)) {
+    const simFlag = res.simulation_mode !== undefined ? res.simulation_mode : res.is_simulation;
+    if (simFlag !== undefined) cmcState.isSimulation = Boolean(simFlag);
+  }
+  if (res.selected_lru) cmcState.selectedLru = res.selected_lru;
+  if (res.time_constant !== undefined) {
+    const idx = CFDS_TIME_CONSTANTS.indexOf(String(res.time_constant));
+    if (idx >= 0) cmcState.timeConstantIdx = idx;
+  }
+  if (!fromPoll && res.current_slide) cmcState.currentSlide = res.current_slide;
+  if (res.tx_params) cmcState.txParams = { ...cmcState.txParams, ...res.tx_params };
+  if (res.aircraft_config) cmcState.aircraftConfig = { ...cmcState.aircraftConfig, ...res.aircraft_config };
+  if (res.cmd_summary) cmcState.cmdSummary = { ...cmcState.cmdSummary, ...res.cmd_summary };
+  if (res.last_cmd_word !== undefined) cmcState.lastCmdWord = res.last_cmd_word;
+  if (res.channels) cmcState.channels = { ...cmcState.channels, ...res.channels };
+  if (res.fault_summary) cmcState.faultSummary = res.fault_summary;
+  if (res.fault_rx_count !== undefined) cmcState.faultRxCount = res.fault_rx_count;
+}
+
+function openCmcKeypadModal({ title, initialValue = "", maxLength = 6, hexAllowed = true, onApply }) {
+  const modalRoot = document.getElementById("modal-root");
+  if (!modalRoot) return;
+  let buf = String(initialValue || "").toUpperCase();
+  modalRoot.hidden = false;
+  modalRoot.className = "modal-backdrop";
+
+  const keys = hexAllowed
+    ? ["1","2","3","A","4","5","6","B","7","8","9","C","CLR","0","BKSP","D","E","F","OK","CANCEL"]
+    : ["1","2","3","4","5","6","7","8","9","CLR","0","BKSP","OK","CANCEL"];
+
+  const renderModal = () => {
+    modalRoot.innerHTML = `
+      <div class="modal" style="max-width:340px">
+        <div class="modal-head">
+          <strong>${escAttr(title)}</strong>
+          <button type="button" class="btn btn-sm btn-ghost" data-kpd="CANCEL">✕</button>
+        </div>
+        <div style="padding:10px 0">
+          <input type="text" id="cmc-kpd-input" class="category-select mono" style="width:100%;font-size:18px;font-weight:700;text-align:center;letter-spacing:2px" value="${escAttr(buf)}" maxlength="${maxLength}" />
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(${hexAllowed ? 4 : 3},1fr);gap:6px">
+          ${keys.map(k => `<button type="button" class="cfds-kpd-btn ${k === 'OK' ? 'func' : ''}" data-kpd="${k}">${k}</button>`).join("")}
+        </div>
+      </div>
+    `;
+    const inp = modalRoot.querySelector("#cmc-kpd-input");
+    if (inp) {
+      inp.focus();
+      inp.oninput = () => { buf = inp.value.toUpperCase().slice(0, maxLength); };
+      inp.onkeydown = (e) => {
+        if (e.key === "Enter") { e.preventDefault(); commit(); }
+        if (e.key === "Escape") { e.preventDefault(); closeModal(); }
+      };
+    }
+  };
+
+  const closeModal = () => {
+    modalRoot.hidden = true;
+    modalRoot.innerHTML = "";
+  };
+
+  const commit = () => {
+    const val = buf.trim();
+    closeModal();
+    if (onApply) onApply(val);
+  };
+
+  modalRoot.onclick = (e) => {
+    if (e.target === modalRoot) { closeModal(); return; }
+    const btn = e.target.closest("[data-kpd]");
+    if (!btn) return;
+    const k = btn.dataset.kpd;
+    if (k === "CANCEL") { closeModal(); return; }
+    if (k === "OK") { commit(); return; }
+    if (k === "CLR") { buf = ""; }
+    else if (k === "BKSP") { buf = buf.slice(0, -1); }
+    else if (buf.length < maxLength) { buf += k; }
+    const inp = modalRoot.querySelector("#cmc-kpd-input");
+    if (inp) inp.value = buf;
+  };
+
+  renderModal();
+}
+
+function patchCmcRx(s) {
+  const cm = s && s.cmc;
+  if (!cm) return;
+  syncCmcFromResponse(cm, s, true);
+
+  updateCmcSimToggleBtn(document.getElementById("cmc-btn-sim-toggle"), cmcState.isSimulation);
+
+  if (cmcState.currentSlide === "fault_summary") {
+    const fs = cmcState.faultSummary || {};
+    const bits = Array.isArray(fs.bits) ? fs.bits : [];
+    bits.forEach((b) => {
+      const row = document.getElementById(`cmc-bit-row-${b.bit}`);
+      const stEl = document.getElementById(`cmc-bit-status-${b.bit}`);
+      if (stEl) {
+        const nextText = String(b.status ? 1 : 0);
+        if (stEl.textContent !== nextText) stEl.textContent = nextText;
+      }
+      if (row) {
+        const isFault = Boolean(b.status) && b.bit <= 27;
+        const isAck = Boolean(b.status) && b.bit >= 28;
+        row.classList.toggle("fault-active", isFault);
+        row.classList.toggle("ack-active", isAck);
+      }
+    });
+    const sdiEl = document.getElementById("cmc-fs-sdi");
+    if (sdiEl) sdiEl.textContent = fs.sdi_str || "ALL (00)";
+    const ssmEl = document.getElementById("cmc-fs-ssm");
+    if (ssmEl) ssmEl.textContent = fs.ssm_str || "00";
+    const msgEl = document.getElementById("cmc-fs-word-msg");
+    if (msgEl) {
+      msgEl.textContent = fs.has_data ? (fs.formatted || fs.hex_32 || "WORD RECEIVED") : "NO WORDS RECEIVED";
+      msgEl.style.color = fs.has_data ? "var(--teal-primary, #0d9488)" : "#64748b";
+    }
+  }
+
+  if (cmcState.currentSlide === "command_summary") {
+    const lblBox = document.getElementById("cmc-cmd-last-hex");
+    if (lblBox && cmcState.lastCmdWord) {
+      lblBox.textContent = `LBL ${cmcState.cmdSummary.label}: ${cmcState.lastCmdWord.hex_32}`;
+    }
+  }
+}
+
+async function switchCmcSlide(slide, r, s) {
+  cmcState.currentSlide = slide;
+  try {
+    const res = await api("/api/arinc/cmc/slide", {
+      method: "POST",
+      body: JSON.stringify({ slide }),
+    });
+    if (res) syncCmcFromResponse(res, s, false);
+  } catch (e) {
+    console.warn("switchCmcSlide error:", e);
+  }
+  renderCmcHub(r, s);
+}
 
 function renderCmcHub(r, s) {
   r.innerHTML = "";
   const wb = el("div", "cfds-workbench");
   r.appendChild(wb);
 
-  // Status Metric Strip matching CmcModeView.tsx
-  const isTimeConstantApplicable =
-    cmcState.selectedLru.code === "010" ||
-    cmcState.selectedLru.code === "011" ||
-    cmcState.selectedLru.code === "012" ||
-    cmcState.selectedLru.id === "MANUAL ENTRY";
-
-  const activeFaultCount = cmcState.faultBits.filter(b => b.fault && b.bit <= 27).length;
-
-  const meters = el("div", "meters");
-  meters.innerHTML = `
-    <div class="meter">
-      <div class="meter-label">DATA SOURCE</div>
-      <div class="meter-value" style="font-size:16px">
-        <span class="${cmcState.source === 'HARDWARE' ? 'badge-hw' : 'badge-sim'}">${cmcState.source}</span>
-      </div>
-      <div class="meter-unit">${cmcState.source === 'SIMULATION' ? 'Simulated Boeing LRU' : 'Live Ballard Card'}</div>
-    </div>
-
-    <div class="meter">
-      <div class="meter-label">TARGET LRU &amp; EQ CODE</div>
-      <div class="meter-value" style="color:var(--teal-primary, #0d9488);font-size:16px">
-        ${escAttr(cmcState.selectedLru.id)} (${escAttr(cmcState.selectedLru.code)})
-      </div>
-      <div class="meter-unit">${escAttr(cmcState.selectedLru.name)}</div>
-    </div>
-
-    <div class="meter">
-      <div class="meter-label">TIME CONSTANT (FILTER)</div>
-      <div class="meter-value" style="font-size:16px">${escAttr(cmcState.timeConstant)} s</div>
-      <div class="meter-unit">${isTimeConstantApplicable ? 'VOR/ILS/ADF Active' : 'Bypass (OFF)'}</div>
-    </div>
-
-    <div class="meter">
-      <div class="meter-label">FAULT SUMMARY (350/351)</div>
-      <div class="meter-value" style="color:${activeFaultCount > 0 ? 'var(--fault, #ef4444)' : 'var(--ok, #10b981)'};font-size:16px">
-        ${cmcState.hasWordsReceived ? (activeFaultCount > 0 ? `${activeFaultCount} FAULT(S)` : 'ALL NOMINAL (OK)') : 'NO WORDS RECEIVED'}
-      </div>
-      <div class="meter-unit">Bit 29 ACK: ${cmcState.bit29Ack ? 'VALID (ACK)' : 'NAK'}</div>
-    </div>
-
-    <div class="meter">
-      <div class="meter-label">COMMAND WORD (227)</div>
-      <div class="meter-value" style="font-size:15px">${escAttr(cmcState.cmdFunction)}</div>
-      <div class="meter-unit">Rate: ${cmcState.cmdRateMs} ms</div>
-    </div>
-  `;
-  wb.appendChild(meters);
-
-  // LRU Selection Strip
-  const lruStrip = el("div", "channel-row");
-  lruStrip.style.margin = "14px 0";
-  lruStrip.innerHTML = `
-    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
-      <span style="font-weight:700;font-size:13px">TARGET BOEING LRU:</span>
-      <select id="cmc-lru-selector" class="category-select" style="min-width:280px;font-weight:600">
-        ${BOEING_LRU_DATABASE.map(item => `
-          <option value="${escAttr(item.id)}" ${cmcState.selectedLru.id === item.id ? 'selected' : ''}>
-            ${escAttr(item.id)} — ${escAttr(item.name)} (Eq: 0x${escAttr(item.code)})
-          </option>
-        `).join("")}
-      </select>
-
-      ${cmcState.selectedLru.id === 'MANUAL ENTRY' ? `
-        <div style="display:flex;align-items:center;gap:6px">
-          <span style="font-size:12px;color:#64748b">Code:</span>
-          <input type="text" id="cmc-manual-code" maxlength="3" class="category-select" style="width:60px;font-family:monospace" value="${escAttr(cmcState.manualCode)}" />
-          <button type="button" class="btn btn-sm btn-ghost" id="btn-apply-manual-code">Set</button>
-        </div>
-      ` : ''}
-
-      <div style="display:flex;align-items:center;gap:6px">
-        <span style="font-size:12px;color:#64748b">Time Constant:</span>
-        <select id="cmc-tc-selector" class="category-select" ${!isTimeConstantApplicable ? 'disabled' : ''}>
-          ${TIME_CONSTANT_OPTIONS.map(opt => `
-            <option value="${opt}" ${cmcState.timeConstant === opt ? 'selected' : ''}>${opt} s</option>
-          `).join("")}
-        </select>
-      </div>
-    </div>
-
-    <button type="button" class="btn btn-sm btn-ghost" id="btn-cmc-back-main">Mode Select</button>
-  `;
-  wb.appendChild(lruStrip);
-
-  lruStrip.querySelector("#cmc-lru-selector").addEventListener("change", (e) => {
-    const found = BOEING_LRU_DATABASE.find(item => item.id === e.target.value);
-    if (found) {
-      cmcState.selectedLru = found;
-      renderCmcHub(r, s);
-    }
-  });
-
-  const btnManual = lruStrip.querySelector("#btn-apply-manual-code");
-  if (btnManual) {
-    btnManual.addEventListener("click", () => {
-      const code = lruStrip.querySelector("#cmc-manual-code").value.trim().toUpperCase().padStart(3, "0");
-      cmcState.manualCode = code;
-      cmcState.selectedLru.code = code;
-      renderCmcHub(r, s);
-    });
+  if (s && s.cmc) {
+    syncCmcFromResponse(s.cmc, null, false);
   }
 
-  lruStrip.querySelector("#cmc-tc-selector").addEventListener("change", (e) => {
-    cmcState.timeConstant = e.target.value;
-    renderCmcHub(r, s);
-  });
+  const slideTitles = {
+    "menu": "LRU SELECT (SLIDE 1)",
+    "desired_mode": "SELECT DESIRED MODE (SLIDE 2)",
+    "edit_tx": "DATA TRANSMITTED TO LRU (SLIDE 3)",
+    "fault_summary": "DISPLAY FAULT SUMMARY WORD (SLIDE 4)",
+    "command_summary": "COMMAND SUMMARY WORD (SLIDE 5)",
+    "channels": "CONFIGURE CHANNELS A, B, C, D (SLIDE 6)",
+  };
+  const currentSlideName = slideTitles[cmcState.currentSlide] || "BOEING CMC";
 
-  lruStrip.querySelector("#btn-cmc-back-main").addEventListener("click", () => {
-    pushScreen("mode_select");
-  });
+  // 1-line clean Light Console Header (ZERO CONNECTED badge)
+  const topStrip = el("div", "cfds-status-strip");
+  topStrip.innerHTML = `
+    <div style="display:flex;align-items:center;gap:10px;min-width:0;overflow:hidden;white-space:nowrap">
+      <span class="cfds-status-pill hw" style="flex-shrink:0">BOEING CMC / SENSOR BITE</span>
+      <span style="font-weight:700;color:var(--text, #1e293b);flex-shrink:0">${escAttr(currentSlideName)}</span>
+      <span style="color:var(--teal-primary, #0d9488);font-weight:600;overflow:hidden;text-overflow:ellipsis">LRU: ${escAttr(cmcState.selectedLru.name)} (${escAttr(cmcState.selectedLru.short)} - 0x${escAttr(cmcState.selectedLru.code)})</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;white-space:nowrap">
+      <button type="button" class="cfds-sim-toggle-btn ${cmcState.isSimulation ? 'active' : ''}" id="cmc-btn-sim-toggle" aria-pressed="${cmcState.isSimulation ? 'true' : 'false'}">${cmcState.isSimulation ? 'SIM: ON' : 'SIM: OFF'}</button>
+      ${cmcState.currentSlide !== "menu" ? '<button type="button" class="btn btn-sm btn-ghost" id="cmc-btn-top-menu">CMC Menu</button>' : ''}
+      <button type="button" class="btn btn-sm btn-ghost" id="cmc-btn-top-exit">Mode Select</button>
+    </div>
+  `;
+  wb.appendChild(topStrip);
 
-  // 5 Boeing CMC Navigation Tabs matching CMC_5_TABS
-  const tabStrip = el("div", "cmc-tabs");
-  const tabs = [
-    { id: "TRANSMIT_DATA", label: "Edit CMC Transmit Data" },
-    { id: "FAULT_SUMMARY", label: "Display Fault Summary Word(s) (350/351)" },
-    { id: "EDIT_CMD", label: "Edit Command Summary Word (227)" },
-    { id: "SHOP_CONFIG", label: "Shop Faults & Config Data (356)" },
-    { id: "CHANNELS", label: "Configure TX/RX Channels A-D" },
-  ];
+  const btnSimToggle = topStrip.querySelector("#cmc-btn-sim-toggle");
+  if (btnSimToggle) {
+    btnSimToggle.onclick = async () => {
+      const nextState = !cmcState.isSimulation;
+      cmcState.isSimulation = nextState;
+      cmcState.simToggleGuardUntil = Date.now() + 700;
+      updateCmcSimToggleBtn(btnSimToggle, nextState);
+      try {
+        const res = await api("/api/arinc/cmc/sim-mode", {
+          method: "POST",
+          body: JSON.stringify({ enabled: nextState }),
+        });
+        if (res) {
+          cmcState.simToggleGuardUntil = Date.now() + 700;
+          syncCmcFromResponse(res, s, false);
+          updateCmcSimToggleBtn(document.getElementById("cmc-btn-sim-toggle"), cmcState.isSimulation);
+          patchCmcRx({ cmc: res });
+        }
+      } catch (e) {
+        console.warn("CMC sim toggle error:", e);
+      }
+    };
+  }
 
-  tabs.forEach(t => {
-    const btn = el("button", `cmc-tab-btn ${cmcState.activeTab === t.id ? 'active' : ''}`);
-    btn.type = "button";
-    btn.textContent = t.label;
-    btn.addEventListener("click", () => {
-      cmcState.activeTab = t.id;
-      renderCmcHub(r, s);
-    });
-    tabStrip.appendChild(btn);
-  });
-  wb.appendChild(tabStrip);
+  const btnTopMenu = topStrip.querySelector("#cmc-btn-top-menu");
+  if (btnTopMenu) btnTopMenu.onclick = () => switchCmcSlide("menu", r, s);
+  topStrip.querySelector("#cmc-btn-top-exit").onclick = () => pushScreen("mode_select");
 
-  // Tab Content Container
-  const tabContent = el("div", "cmc-tab-content");
-  wb.appendChild(tabContent);
+  const body = el("div", "cfds-slide-container");
+  wb.appendChild(body);
 
-  switch (cmcState.activeTab) {
-    case "TRANSMIT_DATA":
-      renderCmcTransmitDataTab(tabContent, r, s);
+  switch (cmcState.currentSlide) {
+    case "menu":
+      renderCmcSlide1Menu(body, r, s);
       break;
-    case "FAULT_SUMMARY":
-      renderCmcFaultSummaryTab(tabContent, r, s);
+    case "desired_mode":
+      renderCmcSlide2DesiredMode(body, r, s);
       break;
-    case "EDIT_CMD":
-      renderCmcEditCommandTab(tabContent, r, s);
+    case "edit_tx":
+      renderCmcSlide3EditTx(body, r, s);
       break;
-    case "SHOP_CONFIG":
-      renderCmcShopConfigTab(tabContent, r, s);
+    case "fault_summary":
+      renderCmcSlide4FaultSummary(body, r, s);
       break;
-    case "CHANNELS":
-      renderCmcChannelsTab(tabContent, r, s);
+    case "command_summary":
+      renderCmcSlide5CommandSummary(body, r, s);
+      break;
+    case "channels":
+      renderCmcSlide6Channels(body, r, s);
       break;
     default:
-      renderCmcTransmitDataTab(tabContent, r, s);
-      break;
+      renderCmcSlide1Menu(body, r, s);
   }
 }
 
-// CMC Tab 1: TRANSMIT DATA PANEL
-function renderCmcTransmitDataTab(c, r, s) {
-  const p = el("div", "panel");
-  const tx = cmcState.transmitData;
-  p.innerHTML = `
-    <div class="panel-head">
-      <div>
-        <h2 style="font-size:1.15rem;font-weight:700">EDIT CMC TRANSMIT DATA</h2>
-        <p class="muted">Background flight and airframe parameters continuously broadcast to LRUs (D243W201-1)</p>
-      </div>
-      <div style="display:flex;gap:8px">
-        <select id="cmc-tx-channel" class="category-select">
-          <option value="TX-A" ${tx.channel === 'TX-A' ? 'selected' : ''}>Broadcast TX-A</option>
-          <option value="TX-B" ${tx.channel === 'TX-B' ? 'selected' : ''}>Broadcast TX-B</option>
-          <option value="TX-C" ${tx.channel === 'TX-C' ? 'selected' : ''}>Broadcast TX-C</option>
-          <option value="TX-D" ${tx.channel === 'TX-D' ? 'selected' : ''}>Broadcast TX-D</option>
-        </select>
-        <button type="button" class="btn btn-sm primary" id="btn-save-cmc-tx">APPLY &amp; TRANSMIT DATA</button>
-      </div>
+function renderCmcSlide1Menu(container, r, s) {
+  const card = el("div", "cfds-card-box");
+  card.innerHTML = `
+    <div class="cfds-header-title">
+      <h2>BOEING CMC / SENSOR BITE — LRU SELECT</h2>
+      <p>ARINC 604 CENTRAL MAINTENANCE SYSTEM · SELECT TARGET LRU OR MANUAL ENTRY</p>
     </div>
 
-    <!-- 6 Background Parameters Grid -->
-    <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(260px, 1fr));gap:12px;margin:14px 0">
-      <div class="channel-row" style="flex-direction:column;align-items:flex-start;gap:4px">
-        <div style="display:flex;justify-content:space-between;width:100%">
-          <span style="font-weight:600">DATE (Label 260)</span>
-          <span class="pill-category">1000 ms · BCD</span>
+    <div class="cfds-lru-matrix" id="cmc-lru-matrix">
+      ${CMC_SLIDE1_LRUS.map((row, rowIdx) => `
+        <div class="cfds-slide1-row row-${rowIdx + 1}">
+          ${row.map(lru => {
+            const isSel = !lru.isManual
+              ? (cmcState.selectedLru.name === lru.name)
+              : (cmcState.selectedLru.name === "MANUAL ENTRY");
+            return `
+              <button type="button"
+                      class="cfds-lru-btn ${isSel ? 'active' : ''} ${lru.isManual ? 'manual' : ''}"
+                      data-lru-name="${escAttr(lru.name)}"
+                      data-lru-code="${escAttr(lru.code || '')}"
+                      data-is-manual="${lru.isManual ? '1' : '0'}"
+                      title="${escAttr(lru.desc)}">
+                <span class="cfds-btn-title">${escAttr(lru.name)}</span>
+                ${lru.code ? `<span class="cfds-btn-code mono">0x${escAttr(lru.code)}</span>` : '<span class="cfds-btn-sub">KEYPAD</span>'}
+              </button>
+            `;
+          }).join("")}
         </div>
-        <div style="font-size:11px;color:var(--text-muted)">Format: MM/DD/YY</div>
-        <input type="text" id="cmc-tx-date" class="category-select" style="width:100%;font-family:monospace" value="${escAttr(tx.date)}" />
-      </div>
-
-      <div class="channel-row" style="flex-direction:column;align-items:flex-start;gap:4px">
-        <div style="display:flex;justify-content:space-between;width:100%">
-          <span style="font-weight:600">GMT TIME (Label 125)</span>
-          <span class="pill-category">1000 ms · BCD</span>
-        </div>
-        <div style="font-size:11px;color:var(--text-muted)">Format: HH:MM.M GMT</div>
-        <input type="text" id="cmc-tx-time" class="category-select" style="width:100%;font-family:monospace" value="${escAttr(tx.time)}" />
-      </div>
-
-      <div class="channel-row" style="flex-direction:column;align-items:flex-start;gap:4px">
-        <div style="display:flex;justify-content:space-between;width:100%">
-          <span style="font-weight:600">FLT_NUM (Labels 233–236)</span>
-          <span class="pill-category">1000 ms · ISO #5</span>
-        </div>
-        <div style="font-size:11px;color:var(--text-muted)">6-char Flight Identifier</div>
-        <input type="text" id="cmc-tx-fltnum" maxlength="6" class="category-select" style="width:100%;font-family:monospace" value="${escAttr(tx.flt_num)}" />
-      </div>
-
-      <div class="channel-row" style="flex-direction:column;align-items:flex-start;gap:4px">
-        <div style="display:flex;justify-content:space-between;width:100%">
-          <span style="font-weight:600">CITY_PAIRS (Labels 301–304)</span>
-          <span class="pill-category">3000 ms · FROM/TO</span>
-        </div>
-        <div style="font-size:11px;color:var(--text-muted)">ICAO Orig / Dest Airport</div>
-        <input type="text" id="cmc-tx-citypairs" class="category-select" style="width:100%;font-family:monospace" value="${escAttr(tx.city_pairs)}" />
-      </div>
-
-      <div class="channel-row" style="flex-direction:column;align-items:flex-start;gap:4px">
-        <div style="display:flex;justify-content:space-between;width:100%">
-          <span style="font-weight:600">FLT_PHASE (Label 126)</span>
-          <span class="pill-category">1000 ms · BNR Bits 11–14</span>
-        </div>
-        <div style="font-size:11px;color:var(--text-muted)">Flight Phase 1 to 10</div>
-        <select id="cmc-tx-fltphase" class="category-select" style="width:100%">
-          <option value="1" ${tx.flt_phase === 1 ? 'selected' : ''}>1: Pre-Flight</option>
-          <option value="2" ${tx.flt_phase === 2 ? 'selected' : ''}>2: Taxi Out</option>
-          <option value="3" ${tx.flt_phase === 3 ? 'selected' : ''}>3: Takeoff</option>
-          <option value="4" ${tx.flt_phase === 4 ? 'selected' : ''}>4: Climb</option>
-          <option value="5" ${tx.flt_phase === 5 ? 'selected' : ''}>5: Cruise</option>
-          <option value="6" ${tx.flt_phase === 6 ? 'selected' : ''}>6: Descent</option>
-          <option value="7" ${tx.flt_phase === 7 ? 'selected' : ''}>7: Approach</option>
-          <option value="8" ${tx.flt_phase === 8 ? 'selected' : ''}>8: Landing</option>
-          <option value="9" ${tx.flt_phase === 9 ? 'selected' : ''}>9: Taxi In</option>
-          <option value="10" ${tx.flt_phase === 10 ? 'selected' : ''}>10: Post-Flight</option>
-        </select>
-      </div>
-
-      <div class="channel-row" style="flex-direction:column;align-items:flex-start;gap:4px">
-        <div style="display:flex;justify-content:space-between;width:100%">
-          <span style="font-weight:600">AIRCRAFT_ID (Labels 301–304)</span>
-          <span class="pill-category">4000 ms · Tail Number</span>
-        </div>
-        <div style="font-size:11px;color:var(--text-muted)">7-char Aircraft Tail Number</div>
-        <input type="text" id="cmc-tx-aircraftid" maxlength="7" class="category-select" style="width:100%;font-family:monospace" value="${escAttr(tx.aircraft_id)}" />
-      </div>
+      `).join("")}
     </div>
 
-    <!-- Aircraft Configuration Word 155 (17 switches) -->
-    <div style="margin-top:20px">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-        <div>
-          <h3 style="font-size:14px;font-weight:700;margin:0">AIRCRAFT CONFIGURATION WORD (LABEL 155)</h3>
-          <p class="muted" style="margin:2px 0 0">Broadcast rate: 1000 ms · 17 Discrete switches encoded sequentially from Bit 11 to Bit 27</p>
-        </div>
-        <div style="display:flex;gap:6px">
-          <button type="button" class="btn btn-sm btn-ghost" id="btn-sw-all-on">ALL ON (1)</button>
-          <button type="button" class="btn btn-sm btn-ghost" id="btn-sw-all-off">ALL OFF (0)</button>
-        </div>
-      </div>
-
-      <div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(170px, 1fr));gap:8px" id="cmc-label155-grid">
-        ${CMC_LABEL155_SWITCHES.map(sw => {
-          const isOn = Boolean(tx.config_word_bits[sw.key]);
-          return `
-            <button type="button" class="channel-row" data-key="${sw.key}" style="cursor:pointer;${isOn ? 'background:var(--teal-bg, #f0fdfa);border-color:var(--teal-primary, #0d9488)' : ''}">
-              <div>
-                <div style="font-size:10.5px;color:var(--text-muted)">BIT ${sw.bit}</div>
-                <div style="font-weight:700;font-size:12px;color:${isOn ? 'var(--teal-primary, #0d9488)' : 'inherit'}">${sw.label}</div>
-              </div>
-              <span class="pill ${isOn ? 'ok' : ''}">${isOn ? 'ON (1)' : 'OFF (0)'}</span>
-            </button>
-          `;
-        }).join("")}
+    <div class="cfds-slide1-footer">
+      <button type="button" class="btn btn-sm btn-ghost" id="cmc-s1-back">← Mode Select</button>
+      <div style="display:flex;align-items:center;gap:12px">
+        <button type="button" class="cfds-time-const-btn" id="cmc-btn-time-const">
+          <span class="tc-title">TIME CONSTANT : <strong class="mono">${escAttr(CFDS_TIME_CONSTANTS[cmcState.timeConstantIdx] || 'OFF')}</strong> s</span>
+          <span class="tc-sub">TAP TO CYCLE FILTER</span>
+        </button>
       </div>
     </div>
   `;
-  c.appendChild(p);
+  container.appendChild(card);
 
-  p.querySelectorAll("#cmc-label155-grid button[data-key]").forEach(btn => {
-    btn.addEventListener("click", () => {
-      const key = btn.getAttribute("data-key");
-      tx.config_word_bits[key] = !tx.config_word_bits[key];
+  card.querySelector("#cmc-lru-matrix").addEventListener("click", async (e) => {
+    const btn = e.target.closest(".cfds-lru-btn");
+    if (!btn) return;
+    const isManual = btn.dataset.isManual === "1";
+    const name = btn.dataset.lruName;
+
+    const selectTarget = async (manualCode = null) => {
+      const tc = CFDS_TIME_CONSTANTS[cmcState.timeConstantIdx] || "OFF";
+      cmcState.currentSlide = "desired_mode";
+      try {
+        const res = await api("/api/arinc/cmc/select-lru", {
+          method: "POST",
+          body: JSON.stringify({
+            lru: name,
+            manual_code: manualCode,
+            time_constant: tc,
+            advance_to_mode: true,
+          }),
+        });
+        if (res) syncCmcFromResponse(res, s, false);
+      } catch (err) {
+        console.warn("CMC select-lru error:", err);
+      }
       renderCmcHub(r, s);
-    });
-  });
+    };
 
-  p.querySelector("#btn-sw-all-on").addEventListener("click", () => {
-    CMC_LABEL155_SWITCHES.forEach(sw => tx.config_word_bits[sw.key] = true);
-    renderCmcHub(r, s);
-  });
-
-  p.querySelector("#btn-sw-all-off").addEventListener("click", () => {
-    CMC_LABEL155_SWITCHES.forEach(sw => tx.config_word_bits[sw.key] = false);
-    renderCmcHub(r, s);
-  });
-
-  p.querySelector("#btn-save-cmc-tx").addEventListener("click", async () => {
-    tx.date = p.querySelector("#cmc-tx-date").value;
-    tx.time = p.querySelector("#cmc-tx-time").value;
-    tx.flt_num = p.querySelector("#cmc-tx-fltnum").value;
-    tx.city_pairs = p.querySelector("#cmc-tx-citypairs").value;
-    tx.flt_phase = parseInt(p.querySelector("#cmc-tx-fltphase").value, 10);
-    tx.aircraft_id = p.querySelector("#cmc-tx-aircraftid").value;
-    tx.channel = p.querySelector("#cmc-tx-channel").value;
-
-    try {
-      await api("/api/cmc/transmit-data", {
-        method: "POST",
-        body: JSON.stringify(tx),
+    if (isManual) {
+      openCmcKeypadModal({
+        title: "MANUAL EQUIPMENT CODE (HEX/OCT)",
+        initialValue: cmcState.selectedLru.code || "000",
+        maxLength: 3,
+        hexAllowed: true,
+        onApply: (val) => selectTarget(val || "000"),
       });
-      alert("CMC Transmit data and Label 155 aircraft configuration successfully broadcast.");
-    } catch (err) {
-      alert("Transmit error: " + err.message);
+    } else {
+      await selectTarget(null);
     }
   });
+
+  card.querySelector("#cmc-s1-back").onclick = () => pushScreen("mode_select");
+  card.querySelector("#cmc-btn-time-const").onclick = async () => {
+    cmcState.timeConstantIdx = (cmcState.timeConstantIdx + 1) % CFDS_TIME_CONSTANTS.length;
+    const tc = CFDS_TIME_CONSTANTS[cmcState.timeConstantIdx];
+    try {
+      const res = await api("/api/arinc/cmc/tx-data", {
+        method: "POST",
+        body: JSON.stringify({ time_constant: tc }),
+      });
+      if (res) syncCmcFromResponse(res, s, false);
+    } catch (err) {
+      console.warn("CMC time constant error:", err);
+    }
+    renderCmcHub(r, s);
+  };
 }
 
-// CMC Tab 2: FAULT SUMMARY PANEL (Labels 350 / 351)
-function renderCmcFaultSummaryTab(c, r, s) {
-  const p = el("div", "panel");
-  const is350 = cmcState.faultPage === "350";
-  const activeWordHex = is350 ? "0x80000000" : "0x80000001";
-  const activeFaultCount = cmcState.faultBits.filter(b => b.fault && b.bit <= 27).length;
-
-  p.innerHTML = `
-    <!-- Warning Banner if NO WORDS RECEIVED -->
-    ${!cmcState.hasWordsReceived ? `
-      <div class="alert-error" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
-        <span>⚠️ WARNING: NO WORDS RECEIVED (Label ${cmcState.faultPage} Bus Inactive)</span>
-        <button type="button" class="btn btn-sm" id="btn-restore-bus">RESTORE BUS RECEPTION</button>
-      </div>
-    ` : ''}
-
-    <div class="panel-head">
-      <div>
-        <h2 style="font-size:1.15rem;font-weight:700">DISPLAY FAULT SUMMARY WORD (LABEL ${cmcState.faultPage})</h2>
-        <p class="muted">Interrogating ${escAttr(cmcState.selectedLru.id)} (Eq Code: 0x${escAttr(cmcState.selectedLru.code)}) · Boeing D243W201-1</p>
-      </div>
-      <div style="display:flex;gap:8px;align-items:center">
-        <button type="button" class="btn btn-sm ${cmcState.hasWordsReceived ? 'ok' : 'fault'}" id="btn-toggle-bus-recv">
-          BUS: ${cmcState.hasWordsReceived ? 'RECEIVING' : 'NO WORDS'}
-        </button>
-        <button type="button" class="btn btn-sm primary" id="btn-switch-fault-page">
-          PAGE: WORD #${is350 ? '1 (350)' : '2 (351)'} ⇄ #${is350 ? '2 (351)' : '1 (350)'}
-        </button>
-      </div>
+function renderCmcSlide2DesiredMode(container, r, s) {
+  const card = el("div", "cfds-card-box");
+  card.innerHTML = `
+    <div class="cfds-header-title" style="text-align:center">
+      <h2>BOEING CMC/SENSOR BITE — SELECT DESIRED MODE</h2>
+      <p>ARINC 604 MAINTENANCE INTERFACE · TARGET: ${escAttr(cmcState.selectedLru.name)} (${escAttr(cmcState.selectedLru.short)})</p>
     </div>
 
-    <!-- Header Indicators Strip -->
-    <div class="meters" style="margin:14px 0">
-      <div class="meter">
-        <div class="meter-label">Active Word</div>
-        <div class="meter-value" style="color:var(--teal-primary, #0d9488);font-size:17px">LABEL ${cmcState.faultPage}</div>
-        <div class="meter-unit"><code>${activeWordHex}</code></div>
-      </div>
-
-      <div class="meter">
-        <div class="meter-label">SDI (Bit 9–10)</div>
-        <div class="meter-value" style="font-size:17px">ALL (00)</div>
-        <div class="meter-unit">Binary: <code>00</code> (00=ALL, 01=L, 10=R, 11=C)</div>
-      </div>
-
-      <div class="meter">
-        <div class="meter-label">SSM (Bit 30–31)</div>
-        <div class="meter-value" style="color:var(--ok, #10b981);font-size:16px">NORMAL OPERATION (00)</div>
-        <div class="meter-unit">Binary: <code>00</code></div>
-      </div>
-
-      <div class="meter">
-        <div class="meter-label">Bit 28: BITE INHIBIT</div>
-        <div class="meter-value" style="color:${cmcState.bit28Inhibit ? 'var(--fault, #ef4444)' : 'var(--ok, #10b981)'};font-size:16px">
-          ${cmcState.bit28Inhibit ? 'INHIBIT (1)' : 'ENABLE (0)'}
-        </div>
-        <div class="meter-unit">Consistent all LRUs</div>
-      </div>
-
-      <div class="meter">
-        <div class="meter-label">Bit 29: COMMAND ACK</div>
-        <div class="meter-value" style="color:${cmcState.bit29Ack ? 'var(--ok, #10b981)' : 'var(--fault, #ef4444)'};font-size:16px">
-          ${cmcState.bit29Ack ? 'ACK (1)' : 'NAK (0)'}
-        </div>
-        <div class="meter-unit">Consistent all LRUs</div>
-      </div>
+    <div class="cmc-desired-modes-grid" id="cmc-desired-grid">
+      <button type="button" class="cfds-mode-hero-btn" data-slide="edit_tx">
+        <span class="hero-title">EDIT CMC TRANSMIT WORDS</span>
+        <span class="hero-sub">Date, Time, Flight ID, Phase &amp; 17-bit A/C Config</span>
+      </button>
+      <button type="button" class="cfds-mode-hero-btn primary-hero" data-slide="fault_summary">
+        <span class="hero-title">DISPLAY FAULT SUMMARY</span>
+        <span class="hero-sub">ARINC 429 Label 350 Bits 11–29, SDI &amp; SSM</span>
+      </button>
+      <button type="button" class="cfds-mode-hero-btn" data-slide="command_summary">
+        <span class="hero-title">EDIT COMMAND SUMMARY WORD</span>
+        <span class="hero-sub">Label 227 EQ ID, Function Switches (0–5), Rate</span>
+      </button>
+      <button type="button" class="cfds-mode-hero-btn" data-slide="channels">
+        <span class="hero-title">CONFIGURE CHANNELS A, B, C, D</span>
+        <span class="hero-sub">Bit Rate (12.5k / 100k), TX/RX, Display Mode</span>
+      </button>
     </div>
 
-    <!-- Complete Fault Bits Matrix (Bits 11-29) -->
-    <div style="margin-top:16px">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-        <div class="channel-col-title">
-          COMPLETE FAULT BITS MATRIX (BIT 11 TO BIT 29) · ${activeFaultCount} FAULT(S) ACTIVE
-        </div>
-        <div style="font-size:11px;color:#64748b">Click any row toggle to simulate LRU hardware fault condition</div>
-      </div>
+    <div class="cfds-eq-code-footer" style="justify-content:center;gap:12px">
+      <span class="mono" style="font-weight:700;color:var(--muted,#64748b)">LRU EQUIPMENT CODE :</span>
+      <strong class="mono" style="font-size:15px;color:var(--teal-primary,#0d9488)">${escAttr(cmcState.selectedLru.code)}</strong>
+      <span class="muted">(${escAttr(cmcState.selectedLru.name)})</span>
+    </div>
 
-      <div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(280px, 1fr));gap:8px" id="cmc-fault-matrix">
-        ${cmcState.faultBits.map(b => {
-          let isAck = b.bit === 29;
-          let isInhibit = b.bit === 28;
-          let btnClass = "btn-sm";
-          if (isAck) btnClass = cmcState.bit29Ack ? "btn-sm ok" : "btn-sm fault";
-          else if (isInhibit) btnClass = cmcState.bit28Inhibit ? "btn-sm fault" : "btn-sm ok";
-          else btnClass = b.fault ? "btn-sm fault" : "btn-sm ok";
-
-          return `
-            <div class="channel-row" data-bit="${b.bit}" style="${b.fault ? 'background:rgba(239, 68, 68, 0.08);border-color:var(--fault, #ef4444)' : ''}">
-              <div style="display:flex;align-items:center;gap:8px">
-                <code style="color:var(--teal-primary, #0d9488);font-weight:700;font-size:12px;min-width:48px">BIT ${b.bit}</code>
-                <div>
-                  <div style="font-weight:600;font-size:12px">${b.label}</div>
-                  <div style="font-size:10.5px;color:#64748b">
-                    ${isAck ? '0=NAK, 1=ACK' : isInhibit ? '0=ENABLE, 1=INHIBIT' : b.is_spare ? 'Unused spare bit' : '0=OK, 1=FAILURE'}
-                  </div>
-                </div>
-              </div>
-              <button type="button" class="${btnClass}" style="min-width:85px;font-size:11px">
-                ${isAck ? (cmcState.bit29Ack ? 'ACK (1)' : 'NAK (0)') : isInhibit ? (cmcState.bit28Inhibit ? 'INHIBIT (1)' : 'ENABLE (0)') : (b.fault ? 'FAULT (1)' : 'OK (0)')}
-              </button>
-            </div>
-          `;
-        }).join("")}
-      </div>
+    <div class="cfds-slide1-footer">
+      <button type="button" class="btn btn-sm btn-ghost" id="cmc-s2-back">← Back to LRU Menu</button>
+      <span></span>
     </div>
   `;
-  c.appendChild(p);
+  container.appendChild(card);
 
-  const btnRestore = p.querySelector("#btn-restore-bus");
-  if (btnRestore) {
-    btnRestore.addEventListener("click", () => {
-      cmcState.hasWordsReceived = true;
-      renderCmcHub(r, s);
-    });
-  }
-
-  p.querySelector("#btn-toggle-bus-recv").addEventListener("click", () => {
-    cmcState.hasWordsReceived = !cmcState.hasWordsReceived;
-    renderCmcHub(r, s);
+  card.querySelector("#cmc-desired-grid").addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-slide]");
+    if (!btn) return;
+    switchCmcSlide(btn.dataset.slide, r, s);
   });
-
-  p.querySelector("#btn-switch-fault-page").addEventListener("click", () => {
-    cmcState.faultPage = is350 ? "351" : "350";
-    renderCmcHub(r, s);
-  });
-
-  p.querySelectorAll("#cmc-fault-matrix .channel-row").forEach(row => {
-    const bitNum = parseInt(row.getAttribute("data-bit"), 10);
-    const btn = row.querySelector("button");
-    btn.addEventListener("click", async () => {
-      const target = cmcState.faultBits.find(b => b.bit === bitNum);
-      if (bitNum === 29) {
-        cmcState.bit29Ack = !cmcState.bit29Ack;
-      } else if (bitNum === 28) {
-        cmcState.bit28Inhibit = !cmcState.bit28Inhibit;
-      } else {
-        if (target) target.fault = !target.fault;
-      }
-
-      try {
-        await api("/api/cmc/fault-summary", {
-          method: "POST",
-          body: JSON.stringify({
-            label: cmcState.faultPage,
-            bit: bitNum,
-            fault: bitNum === 28 ? cmcState.bit28Inhibit : bitNum === 29 ? !cmcState.bit29Ack : Boolean(target && target.fault),
-            command_ack: cmcState.bit29Ack,
-            bite_inhibit: cmcState.bit28Inhibit,
-          }),
-        });
-      } catch (err) {
-        console.error("Fault toggle API error:", err);
-      }
-      renderCmcHub(r, s);
-    });
-  });
+  card.querySelector("#cmc-s2-back").onclick = () => switchCmcSlide("menu", r, s);
 }
 
-// CMC Tab 3: EDIT COMMAND SUMMARY WORD 227
-function renderCmcEditCommandTab(c, r, s) {
-  const p = el("div", "panel");
-  p.innerHTML = `
-    <div class="panel-head">
-      <div>
-        <h2 style="font-size:1.15rem;font-weight:700">EDIT COMMAND SUMMARY WORD (LABEL 227)</h2>
-        <p class="muted">Interrogation Command structure per Boeing D243W201-1 / ARINC 604-1</p>
-      </div>
-      <div style="display:flex;gap:8px;align-items:center">
-        <span class="pill-category" style="font-family:monospace;font-size:13px">
-          WORD: <strong style="color:var(--teal-primary, #0d9488)">0x80${escAttr(cmcState.selectedLru.code)}00E9</strong>
-        </span>
-        <select id="cmc-cmd-channel" class="category-select">
-          <option value="TX-A">Transmit on TX-A</option>
-          <option value="TX-B">Transmit on TX-B</option>
-          <option value="TX-C">Transmit on TX-C</option>
-          <option value="TX-D">Transmit on TX-D</option>
-        </select>
-      </div>
-    </div>
-
-    <!-- Editable Parameters Grid -->
-    <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(210px, 1fr));gap:12px;margin:14px 0">
-      <div class="channel-row" style="flex-direction:column;align-items:flex-start;gap:4px">
-        <span style="font-weight:600">LABEL</span>
-        <div style="font-size:11px;color:#64748b">Bits 1..8 (Wire reversed)</div>
-        <input type="text" readonly class="category-select" style="width:100%;font-family:monospace;background:#f8fafc" value="227 (Octal)" />
-      </div>
-
-      <div class="channel-row" style="flex-direction:column;align-items:flex-start;gap:4px">
-        <span style="font-weight:600">EQ ID (Bits 13–24)</span>
-        <div style="font-size:11px;color:#64748b">3-Digit Hex (000–FFF)</div>
-        <input type="text" id="cmc-cmd-eqid" maxlength="3" class="category-select" style="width:100%;font-family:monospace;font-weight:700" value="${escAttr(cmcState.selectedLru.code)}" />
-      </div>
-
-      <div class="channel-row" style="flex-direction:column;align-items:flex-start;gap:4px">
-        <span style="font-weight:600">SDI (Bits 9–10)</span>
-        <div style="font-size:11px;color:#64748b">Source / Destination</div>
-        <select id="cmc-cmd-sdi" class="category-select" style="width:100%;font-family:monospace">
-          <option value="00">ALL (00)</option>
-          <option value="01">1 / LEFT (01)</option>
-          <option value="10">2 / RIGHT (10)</option>
-          <option value="11">3 / CENTER (11)</option>
-        </select>
-      </div>
-
-      <div class="channel-row" style="flex-direction:column;align-items:flex-start;gap:4px">
-        <span style="font-weight:600">RATE (ms)</span>
-        <div style="font-size:11px;color:#64748b">Default 100 ms or 1000 ms</div>
-        <select id="cmc-cmd-rate" class="category-select" style="width:100%;font-family:monospace">
-          <option value="100" selected>100 ms (Fast Interrogation)</option>
-          <option value="1000">1000 ms (Standard CMC Rate)</option>
-          <option value="200">200 ms</option>
-          <option value="500">500 ms</option>
-        </select>
-      </div>
-
-      <div class="channel-row" style="flex-direction:column;align-items:flex-start;gap:4px">
-        <span style="font-weight:600">PARITY (Bit 32)</span>
-        <div style="font-size:11px;color:#64748b">ARINC 429 Odd/Even Mode</div>
-        <select id="cmc-cmd-parity" class="category-select" style="width:100%;font-family:monospace">
-          <option value="ODD" selected>ODD (Default ARINC 429)</option>
-          <option value="EVEN">EVEN</option>
-        </select>
-      </div>
-    </div>
-
-    <!-- 6 Function Select Switches (Bits 25-31) -->
-    <div style="margin-top:20px">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-        <div>
-          <h3 style="font-size:14px;font-weight:700;margin:0">FUNCTION SELECT SWITCHES (BITS 25–31)</h3>
-          <p class="muted" style="margin:2px 0 0">Clicking a function switch replaces NO REQUEST (00H) temporarily until LRU ACK or 5s timeout</p>
-        </div>
-        <span class="pill-category">Bit 29 ACK: ${cmcState.bit29Ack ? 'VALID (ACK)' : 'NAK'}</span>
-      </div>
-
-      <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(280px, 1fr));gap:10px" id="cmc-fn-grid">
-        ${CMC_FUNCTION_SWITCHES.map(fn => {
-          const isActive = cmcState.cmdFunction === fn.id;
-          return `
-            <button type="button" class="channel-row" data-fn="${fn.id}" data-hex="${fn.codeHex}"
-              style="cursor:pointer;text-align:left;padding:12px 14px;${isActive ? 'background:var(--teal-bg, #f0fdfa);border-color:var(--teal-primary, #0d9488)' : ''}">
-              <div>
-                <div style="font-weight:700;font-size:13px;color:${isActive ? 'var(--teal-primary, #0d9488)' : 'inherit'}">${fn.label}</div>
-                <div style="font-size:11px;color:#64748b;margin-top:2px">${fn.desc}</div>
-              </div>
-              <span class="pill ${isActive ? 'primary' : ''}" style="font-family:monospace;font-weight:700">${fn.codeHex}</span>
-            </button>
-          `;
-        }).join("")}
-      </div>
-    </div>
-
-    <!-- Command History Table -->
-    <div style="margin-top:24px">
-      <div class="channel-col-title">TRANSMITTED COMMAND HISTORY LOG</div>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th style="width:140px">TIMESTAMP</th>
-              <th>FUNCTION</th>
-              <th class="mono" style="width:100px">OP CODE</th>
-              <th class="mono" style="width:140px">HEX WORD</th>
-              <th style="width:120px">CHANNEL</th>
-              <th style="width:120px">STATUS</th>
-            </tr>
-          </thead>
-          <tbody id="cmc-history-tbody">
-            ${cmcState.cmdHistory.length ? cmcState.cmdHistory.map(h => `
-              <tr>
-                <td>${escAttr(h.time)}</td>
-                <td><strong>${escAttr(h.function)}</strong></td>
-                <td class="mono">${escAttr(h.code)}</td>
-                <td class="mono"><code>${escAttr(h.hex)}</code></td>
-                <td>${escAttr(h.channel)}</td>
-                <td><span class="pill ok">${escAttr(h.status)}</span></td>
-              </tr>
-            `).join("") : `
-              <tr><td colspan="6" class="muted" style="text-align:center">No command words transmitted in this session yet.</td></tr>
-            `}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  `;
-  c.appendChild(p);
-
-  p.querySelectorAll("#cmc-fn-grid button[data-fn]").forEach(btn => {
-    btn.addEventListener("click", async () => {
-      const fnId = btn.getAttribute("data-fn");
-      const hexCode = btn.getAttribute("data-hex");
-      const ch = p.querySelector("#cmc-cmd-channel").value;
-      const rateVal = parseInt(p.querySelector("#cmc-cmd-rate").value, 10);
-      const eqCode = p.querySelector("#cmc-cmd-eqid").value.trim().toUpperCase();
-
-      cmcState.cmdFunction = fnId;
-      cmcState.cmdChannel = ch;
-      cmcState.cmdRateMs = rateVal;
-
-      try {
-        await api("/api/cmc/command", {
-          method: "POST",
-          body: JSON.stringify({
-            function: fnId,
-            eq_id: eqCode,
-            rate_ms: rateVal,
-            channel: ch,
-          }),
-        });
-
-        cmcState.cmdHistory.unshift({
-          time: new Date().toLocaleTimeString(),
-          function: fnId,
-          code: hexCode,
-          hex: `0x80${eqCode}${hexCode.slice(0, 2)}E9`,
-          channel: ch,
-          status: "ACK RECEIVED",
-        });
-      } catch (err) {
-        alert("Command execution error: " + err.message);
-      }
-
-      renderCmcHub(r, s);
-    });
-  });
-}
-
-// CMC Tab 4: SHOP FAULTS & CONFIG TERMINAL (Label 356)
-function renderCmcShopConfigTab(c, r, s) {
-  const p = el("div", "panel");
-  const isTerm = cmcState.terminalView === "TERMINAL";
-  p.innerHTML = `
-    <div class="panel-head">
-      <div>
-        <h2 style="font-size:1.15rem;font-weight:700">SHOP FAULTS &amp; CONFIG DATA (LABEL 356)</h2>
-        <p class="muted">Aeroflex T1200B CDU Terminal Interface &amp; Decoded Configuration Parameters</p>
+function renderCmcSlide3EditTx(container, r, s) {
+  const tp = cmcState.txParams;
+  const cfg = cmcState.aircraftConfig;
+  const card = el("div", "cfds-card-box");
+  card.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:12px">
+      <div class="cfds-header-title">
+        <h2>DATA TRANSMITTED TO LRU</h2>
+        <p>ARINC 604 CMC TRANSMIT WORDS (LABELS 260, 125, 126, 233–236, 170)</p>
       </div>
       <div style="display:flex;gap:8px">
-        <button type="button" class="btn btn-sm ${isTerm ? 'primary' : 'btn-ghost'}" id="btn-view-term">CDU TERMINAL</button>
-        <button type="button" class="btn btn-sm ${!isTerm ? 'primary' : 'btn-ghost'}" id="btn-view-table">TABLE VIEW</button>
+        <button type="button" class="btn btn-sm primary" id="cmc-s3-save">Save &amp; Transmit</button>
+        <button type="button" class="btn btn-sm btn-ghost" id="cmc-s3-cmd">Command Word ›</button>
       </div>
     </div>
 
-    ${isTerm ? `
-      <!-- CDU Terminal Visual Unit with Side Keys -->
-      <div class="cdu-bezel">
-        <div class="cdu-header">
-          <span>AEROFLEX T1200B CDU — CMC MAINTENANCE TERMINAL (LABEL 356)</span>
-          <div style="display:flex;gap:12px">
-            <span>VIEW: <strong style="color:#10b981">MAINTENANCE</strong></span>
-            <span>LRU: <strong style="color:#10b981">${escAttr(cmcState.selectedLru.id)}</strong></span>
-          </div>
-        </div>
-
-        <div class="cdu-grid">
-          <!-- Left Keys 1..6 -->
-          <div class="cdu-key-col">
-            ${[1, 2, 3, 4, 5, 6].map(k => `
-              <button type="button" class="cdu-key" data-ckey="${k}" title="Menu select key <${k}">&lt; ${k}</button>
-            `).join("")}
-          </div>
-
-          <!-- CRT Display -->
-          <div class="cdu-crt" id="cmc-cdu-crt">
-            <div>
-              ${cmcState.terminalLines.map(ln => `<div style="min-height:19px">${escAttr(ln)}</div>`).join("")}
-            </div>
-            <div class="cdu-crt-status">
-              <span id="cmc-cdu-status-text">MSG: ${escAttr(cmcState.terminalMsg)}</span>
-              <span>PAGE ${cmcState.terminalPage}/2</span>
-            </div>
-          </div>
-
-          <!-- Right Keys A..F -->
-          <div class="cdu-key-col">
-            ${['A', 'B', 'C', 'D', 'E', 'F'].map(k => `
-              <button type="button" class="cdu-key" data-ckey="${k}" title="Menu select key ${k}>">${k} &gt;</button>
-            `).join("")}
-          </div>
-        </div>
+    <div class="cmc-tx-form-grid" id="cmc-tx-inputs">
+      <div class="cmc-tx-field">
+        <label>DATE (LBL 260)</label>
+        <input type="text" data-tx-key="date" value="${escAttr(tp.date || '')}" />
       </div>
-    ` : `
-      <!-- Table View for Config Parameters -->
-      <div style="margin-top:14px">
-        <div class="meters" style="margin-bottom:16px">
-          <div class="meter">
-            <div class="meter-label">PART NUMBER</div>
-            <div class="meter-value" style="font-size:16px">${escAttr(cmcState.configData.part_number)}</div>
-            <div class="meter-unit">D243W201-1 Verified</div>
-          </div>
-          <div class="meter">
-            <div class="meter-label">OPERATIONAL SW</div>
-            <div class="meter-value" style="font-size:16px">${escAttr(cmcState.configData.sw_version)}</div>
-            <div class="meter-unit">Label 356 Field #2</div>
-          </div>
-          <div class="meter">
-            <div class="meter-label">DATABASE PART NUMBER</div>
-            <div class="meter-value" style="font-size:16px">${escAttr(cmcState.configData.database_pn)}</div>
-            <div class="meter-unit">Label 356 Field #3</div>
-          </div>
-          <div class="meter">
-            <div class="meter-label">SERIAL NUMBER</div>
-            <div class="meter-value" style="font-size:16px">${escAttr(cmcState.configData.serial_number)}</div>
-            <div class="meter-unit">Label 356 Field #4</div>
-          </div>
-        </div>
-
-        <button type="button" class="btn btn-sm primary" id="btn-request-cfg">REQUEST REFRESH FROM LRU</button>
+      <div class="cmc-tx-field">
+        <label>TIME (LBL 125)</label>
+        <input type="text" data-tx-key="time" value="${escAttr(tp.time || '')}" />
       </div>
-    `}
+      <div class="cmc-tx-field">
+        <label>FLT_NUM (LBL 233/234)</label>
+        <input type="text" data-tx-key="flt_num" value="${escAttr(tp.flt_num || '')}" />
+      </div>
+      <div class="cmc-tx-field">
+        <label>CITY_PAIRS (LBL 235)</label>
+        <input type="text" data-tx-key="city_pairs" value="${escAttr(tp.city_pairs || '')}" />
+      </div>
+      <div class="cmc-tx-field">
+        <label>FLT_PHASE (LBL 126)</label>
+        <input type="text" data-tx-key="flt_phase" value="${escAttr(tp.flt_phase || '')}" />
+      </div>
+      <div class="cmc-tx-field">
+        <label>AIRCRAFT_ID (LBL 236)</label>
+        <input type="text" data-tx-key="aircraft_id" value="${escAttr(tp.aircraft_id || '')}" />
+      </div>
+    </div>
+
+    <div>
+      <div style="font-size:11px;font-weight:700;color:var(--muted,#64748b);margin-bottom:6px;letter-spacing:0.5px">
+        AIRCRAFT CONFIGURATION WORD (LABEL 170 · 17 DISCRETE SYSTEM TOGGLES)
+      </div>
+      <div class="cmc-cfg-grid" id="cmc-cfg-grid">
+        ${CMC_AIRCRAFT_CFG_KEYS.map(key => `
+          <button type="button" class="cmc-cfg-btn ${cfg[key] ? 'active' : ''}" data-cfg-key="${escAttr(key)}">
+            ${escAttr(key.replace('_', ' '))}
+          </button>
+        `).join("")}
+      </div>
+    </div>
+
+    <div class="cfds-slide1-footer">
+      <button type="button" class="btn btn-sm btn-ghost" id="cmc-s3-back">← Back to Desired Mode</button>
+      <span class="mono muted" id="cmc-s3-status" style="font-size:11.5px">READY · 8 TX WORDS ARMED</span>
+    </div>
   `;
-  c.appendChild(p);
+  container.appendChild(card);
 
-  p.querySelector("#btn-view-term").addEventListener("click", () => {
-    cmcState.terminalView = "TERMINAL";
-    renderCmcHub(r, s);
-  });
-
-  p.querySelector("#btn-view-table").addEventListener("click", () => {
-    cmcState.terminalView = "TABLE_VIEW";
-    renderCmcHub(r, s);
-  });
-
-  if (isTerm) {
-    const statusText = p.querySelector("#cmc-cdu-status-text");
-    p.querySelectorAll("button[data-ckey]").forEach(btn => {
-      btn.addEventListener("click", async () => {
-        const k = btn.getAttribute("data-ckey");
-        statusText.textContent = `MSG: EXECUTING KEY ${k}...`;
-        try {
-          await api("/api/cmc/terminal-action", {
-            method: "POST",
-            body: JSON.stringify({ key: k }),
-          });
-          statusText.textContent = `MSG: KEY ${k} PROCESSED`;
-        } catch (err) {
-          statusText.textContent = `MSG: ERROR — ${err.message}`;
-        }
+  const commitTx = async () => {
+    const statusEl = card.querySelector("#cmc-s3-status");
+    try {
+      const res = await api("/api/arinc/cmc/tx-data", {
+        method: "POST",
+        body: JSON.stringify({
+          tx_params: cmcState.txParams,
+          aircraft_config: cmcState.aircraftConfig,
+        }),
       });
-    });
-  } else {
-    p.querySelector("#btn-request-cfg").addEventListener("click", async () => {
-      try {
-        await api("/api/cmc/request-config-data", { method: "POST" });
-        alert("Configuration data requested from LRU via ARINC 429 Label 356.");
-      } catch (err) {
-        alert("Request error: " + err.message);
-      }
-    });
-  }
+      if (res) syncCmcFromResponse(res, s, false);
+      if (statusEl) statusEl.textContent = "TRANSMITTED LABELS 260, 125, 126, 233-236, 170";
+    } catch (err) {
+      if (statusEl) statusEl.textContent = `TX ERROR: ${err.message}`;
+    }
+  };
+
+  card.querySelector("#cmc-tx-inputs").addEventListener("input", (e) => {
+    const inp = e.target.closest("[data-tx-key]");
+    if (!inp) return;
+    cmcState.txParams[inp.dataset.txKey] = inp.value;
+  });
+
+  card.querySelector("#cmc-cfg-grid").addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-cfg-key]");
+    if (!btn) return;
+    const key = btn.dataset.cfgKey;
+    cmcState.aircraftConfig[key] = !cmcState.aircraftConfig[key];
+    btn.classList.toggle("active", Boolean(cmcState.aircraftConfig[key]));
+    commitTx();
+  });
+
+  card.querySelector("#cmc-s3-save").onclick = () => commitTx();
+  card.querySelector("#cmc-s3-cmd").onclick = () => switchCmcSlide("command_summary", r, s);
+  card.querySelector("#cmc-s3-back").onclick = () => switchCmcSlide("desired_mode", r, s);
 }
 
-// CMC Tab 5: CHANNELS PANEL
-function renderCmcChannelsTab(c, r, s) {
-  const p = el("div", "panel");
-  p.innerHTML = `
-    <div class="panel-head">
-      <div>
-        <h2 style="font-size:1.15rem;font-weight:700">CONFIGURE TX/RX CHANNELS A-D</h2>
-        <p class="muted">ARINC 429 Hardware Interface Configuration for Boeing CMC Bus</p>
+function renderCmcSlide4FaultSummary(container, r, s) {
+  const fs = cmcState.faultSummary || {};
+  const bits = Array.isArray(fs.bits) ? fs.bits : [];
+  const leftBits = bits.filter(b => b.bit >= 11 && b.bit <= 20);
+  const rightBits = bits.filter(b => b.bit >= 21 && b.bit <= 29);
+
+  const card = el("div", "cfds-card-box");
+  card.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:12px">
+      <div class="cfds-header-title">
+        <h2>FAULT SUMMARY WORD FOR ${escAttr(cmcState.selectedLru.short || cmcState.selectedLru.name)}</h2>
+        <p>ARINC 429 LABEL 350 BIT DECODE (${escAttr(cmcState.selectedLru.name)} · EQ 0x${escAttr(cmcState.selectedLru.code)})${cmcState.isSimulation ? ' · CLICK ANY BIT TO TOGGLE (SIM)' : ''}</p>
+      </div>
+      <div style="display:flex;gap:8px;flex-shrink:0">
+        <button type="button" class="btn btn-sm cfds-refresh-btn" id="cmc-btn-refresh">Refresh</button>
+        <button type="button" class="btn btn-sm btn-ghost" id="cmc-s4-cmd">Command Word ›</button>
+        <button type="button" class="btn btn-sm btn-ghost" id="cmc-s4-back">← Back</button>
       </div>
     </div>
 
-    <div class="table-wrap" style="margin-bottom:16px">
-      <table>
-        <thead>
-          <tr>
-            <th>CHANNEL</th>
-            <th>DIRECTION</th>
-            <th>BIT RATE</th>
-            <th>PARITY</th>
-            <th>STATUS</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${['A', 'B', 'C', 'D'].map(ch => `
+    <div class="cmc-fault-2col" id="cmc-fault-grid">
+      ${[leftBits, rightBits].map(group => `
+        <table class="cmc-fault-table">
+          <thead>
             <tr>
-              <td><strong>Channel ${ch}</strong></td>
-              <td>TX &amp; RX (Shared Coordinator)</td>
-              <td>
-                <select class="category-select">
-                  <option value="HIGH" ${ch === 'A' ? 'selected' : ''}>High Speed (100 kbps)</option>
-                  <option value="LOW" ${ch !== 'A' ? 'selected' : ''}>Low Speed (12.5 kbps)</option>
-                </select>
-              </td>
-              <td><span class="pill">ODD</span></td>
-              <td><span class="pill ok">ONLINE</span></td>
+              <th style="width:44px">BIT</th>
+              <th style="width:62px">STATUS</th>
+              <th>FUNCTION</th>
             </tr>
-          `).join("")}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            ${group.map(b => {
+              const isFault = Boolean(b.status) && b.bit <= 27;
+              const isAck = Boolean(b.status) && b.bit >= 28;
+              return `
+                <tr id="cmc-bit-row-${b.bit}" data-bit="${b.bit}" class="cmc-fault-row ${isFault ? 'fault-active' : ''} ${isAck ? 'ack-active' : ''}">
+                  <td><strong>${b.bit}</strong></td>
+                  <td id="cmc-bit-status-${b.bit}" class="cmc-bit-status">${b.status ? 1 : 0}</td>
+                  <td>${escAttr(b.function)}</td>
+                </tr>
+              `;
+            }).join("")}
+          </tbody>
+        </table>
+      `).join("")}
     </div>
 
-    <button type="button" class="btn btn-sm primary" id="btn-save-cmc-channels">Save Bus Configuration</button>
+    <div class="cmc-fault-bottom-bar">
+      <div><strong>SDI:</strong> <span id="cmc-fs-sdi">${escAttr(fs.sdi_str || 'ALL (00)')}</span></div>
+      <div><strong>SSM:</strong> <span id="cmc-fs-ssm">${escAttr(fs.ssm_str || '00')}</span></div>
+      <div style="flex:1;text-align:right;font-weight:700">
+        <span id="cmc-fs-word-msg" style="color:${fs.has_data ? 'var(--teal-primary,#0d9488)' : '#64748b'}">
+          ${escAttr(fs.has_data ? (fs.formatted || fs.hex_32) : 'NO WORDS RECEIVED')}
+        </span>
+      </div>
+    </div>
   `;
-  c.appendChild(p);
+  container.appendChild(card);
 
-  p.querySelector("#btn-save-cmc-channels").addEventListener("click", () => {
-    alert("CMC Bus Channel configuration saved.");
+  card.querySelector("#cmc-fault-grid").addEventListener("click", async (e) => {
+    const row = e.target.closest("[data-bit]");
+    if (!row || !cmcState.isSimulation) return;
+    const bitNum = Number(row.dataset.bit);
+    try {
+      const res = await api("/api/arinc/cmc/sim-bit", {
+        method: "POST",
+        body: JSON.stringify({ bit: bitNum }),
+      });
+      if (res) patchCmcRx({ cmc: res });
+    } catch (err) {
+      console.warn("CMC sim-bit error:", err);
+    }
   });
+
+  card.querySelector("#cmc-btn-refresh").onclick = async () => {
+    try {
+      const res = await api("/api/arinc/cmc/refresh", { method: "POST" });
+      if (res) patchCmcRx({ cmc: res });
+    } catch (err) {
+      console.warn("CMC refresh error:", err);
+    }
+  };
+  card.querySelector("#cmc-s4-cmd").onclick = () => switchCmcSlide("command_summary", r, s);
+  card.querySelector("#cmc-s4-back").onclick = () => switchCmcSlide("desired_mode", r, s);
+}
+
+function renderCmcSlide5CommandSummary(container, r, s) {
+  const cs = cmcState.cmdSummary;
+  const lastHex = cmcState.lastCmdWord ? `LBL ${cs.label}: ${cmcState.lastCmdWord.hex_32}` : `LBL ${cs.label}: READY`;
+  const card = el("div", "cfds-card-box");
+  card.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:12px">
+      <div class="cfds-header-title">
+        <h2>COMMAND SUMMARY WORD FOR ${escAttr(cmcState.selectedLru.short || cmcState.selectedLru.name)}</h2>
+        <p>ARINC 429 LABEL 227 MAINTENANCE COMMAND TRANSMITTER · CLICK FIELDS OR SELECT FUNCTION BELOW</p>
+      </div>
+      <span class="pill mono" id="cmc-cmd-last-hex" style="font-size:12px">${escAttr(lastHex)}</span>
+    </div>
+
+    <table class="cmc-cmd-table" id="cmc-cmd-table">
+      <thead>
+        <tr>
+          <th>LABEL</th>
+          <th>EQ ID</th>
+          <th>FUNCTION</th>
+          <th>PAD</th>
+          <th>SDI</th>
+          <th>RATE(ms)</th>
+          <th>PARITY</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><button type="button" class="cmc-cmd-cell-btn" data-cmd-field="label">${escAttr(cs.label)}</button></td>
+          <td><button type="button" class="cmc-cmd-cell-btn" data-cmd-field="eq_id">${escAttr(cs.eq_id)}</button></td>
+          <td><strong id="cmc-cmd-fn-text" style="color:var(--teal-primary,#0d9488)">${escAttr(cs.function_label)}</strong></td>
+          <td><button type="button" class="cmc-cmd-cell-btn" data-cmd-field="pad">${escAttr(cs.pad)}</button></td>
+          <td><button type="button" class="cmc-cmd-cell-btn" data-cmd-field="sdi">${escAttr(cs.sdi)}</button></td>
+          <td><button type="button" class="cmc-cmd-cell-btn" data-cmd-field="rate_ms">${escAttr(cs.rate_ms)}</button></td>
+          <td><button type="button" class="cmc-cmd-cell-btn" data-cmd-field="parity">${escAttr(cs.parity)}</button></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div>
+      <div style="font-size:11px;font-weight:700;color:var(--muted,#64748b);margin-bottom:6px;letter-spacing:0.5px">
+        FUNCTION SELECT SWITCHES (BITS 14–16 COMMAND CODE)
+      </div>
+      <div class="cmc-fn-switches-6" id="cmc-fn-switches">
+        ${CMC_FUNCTION_SWITCHES_6.map(fn => `
+          <button type="button"
+                  class="cmc-fn-btn ${Number(cs.function_code) === fn.code ? 'active' : ''}"
+                  data-fn-code="${fn.code}">
+            <span style="font-size:12px;font-weight:700">${escAttr(fn.label)}</span>
+            <span class="cfds-btn-code mono">CODE ${fn.code} · ${escAttr(fn.desc)}</span>
+          </button>
+        `).join("")}
+      </div>
+    </div>
+
+    <div class="cfds-slide1-footer">
+      <button type="button" class="btn btn-sm btn-ghost" id="cmc-s5-back">← Back to Desired Mode</button>
+      <div style="display:flex;gap:8px">
+        <button type="button" class="btn btn-sm btn-ghost" id="cmc-s5-faults">Display Fault Summary ›</button>
+      </div>
+    </div>
+  `;
+  container.appendChild(card);
+
+  const sendCommandPatch = async (patch) => {
+    cmcState.cmdSummary = { ...cmcState.cmdSummary, ...patch };
+    try {
+      const res = await api("/api/arinc/cmc/command", {
+        method: "POST",
+        body: JSON.stringify(cmcState.cmdSummary),
+      });
+      if (res) syncCmcFromResponse(res, s, false);
+    } catch (err) {
+      console.warn("CMC command error:", err);
+    }
+    renderCmcHub(r, s);
+  };
+
+  card.querySelector("#cmc-cmd-table").addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-cmd-field]");
+    if (!btn) return;
+    const field = btn.dataset.cmdField;
+    if (field === "label") {
+      openCmcKeypadModal({
+        title: "EDIT COMMAND LABEL (OCTAL)",
+        initialValue: cmcState.cmdSummary.label,
+        maxLength: 3,
+        hexAllowed: false,
+        onApply: (v) => sendCommandPatch({ label: (v || "227").padStart(3, "0") }),
+      });
+    } else if (field === "eq_id") {
+      openCmcKeypadModal({
+        title: "EDIT EQUIPMENT ID (000–FFF)",
+        initialValue: cmcState.cmdSummary.eq_id,
+        maxLength: 3,
+        hexAllowed: true,
+        onApply: (v) => sendCommandPatch({ eq_id: (v || "000").padStart(3, "0") }),
+      });
+    } else if (field === "rate_ms") {
+      openCmcKeypadModal({
+        title: "EDIT TX RATE (ms)",
+        initialValue: String(cmcState.cmdSummary.rate_ms),
+        maxLength: 5,
+        hexAllowed: false,
+        onApply: (v) => sendCommandPatch({ rate_ms: Math.max(20, parseInt(v || "1000", 10) || 1000) }),
+      });
+    } else if (field === "pad") {
+      const pads = ["00", "01", "10", "11"];
+      const next = pads[(pads.indexOf(cmcState.cmdSummary.pad) + 1) % pads.length];
+      sendCommandPatch({ pad: next });
+    } else if (field === "sdi") {
+      const sdis = ["ALL", "1", "2", "3"];
+      const next = sdis[(sdis.indexOf(String(cmcState.cmdSummary.sdi)) + 1) % sdis.length];
+      sendCommandPatch({ sdi: next });
+    } else if (field === "parity") {
+      sendCommandPatch({ parity: cmcState.cmdSummary.parity === "ODD" ? "EVEN" : "ODD" });
+    }
+  });
+
+  card.querySelector("#cmc-fn-switches").addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-fn-code]");
+    if (!btn) return;
+    const code = Number(btn.dataset.fnCode);
+    const fnObj = CMC_FUNCTION_SWITCHES_6.find(f => f.code === code);
+    sendCommandPatch({
+      function_code: code,
+      function_label: fnObj ? fnObj.label : "NO REQUEST",
+    });
+  });
+
+  card.querySelector("#cmc-s5-back").onclick = () => switchCmcSlide("desired_mode", r, s);
+  card.querySelector("#cmc-s5-faults").onclick = () => switchCmcSlide("fault_summary", r, s);
+}
+
+function renderCmcSlide6Channels(container, r, s) {
+  const ch = cmcState.channels;
+  const card = el("div", "cfds-card-box");
+  card.innerHTML = `
+    <div class="cfds-header-title">
+      <h2>CONFIGURE CHANNELS A, B, C, D</h2>
+      <p>ARINC 429 HARDWARE BUS INTERFACE · BIT RATE, TRANSMITTER/RECEIVER SELECT &amp; DISPLAY MODE</p>
+    </div>
+
+    <div class="cmc-channels-grid" id="cmc-channels-grid">
+      <div class="cmc-channel-panel">
+        <div style="font-size:11px;font-weight:700;color:var(--muted,#64748b)">BIT RATE</div>
+        <div class="cmc-seg-row">
+          ${["12.5", "100"].map(rate => `
+            <button type="button" class="cmc-seg-btn ${ch.bit_rate_kbps === rate ? 'active' : ''}" data-ch-prop="bit_rate_kbps" data-ch-val="${rate}">
+              ${rate} KBPS
+            </button>
+          `).join("")}
+        </div>
+      </div>
+
+      <div class="cmc-channel-panel">
+        <div style="font-size:11px;font-weight:700;color:var(--muted,#64748b)">DISPLAY MODE</div>
+        <div class="cmc-seg-row">
+          ${["ENG", "BIN", "HEX"].map(dm => `
+            <button type="button" class="cmc-seg-btn ${ch.display_mode === dm ? 'active' : ''}" data-ch-prop="display_mode" data-ch-val="${dm}">
+              ${dm}
+            </button>
+          `).join("")}
+        </div>
+      </div>
+
+      <div class="cmc-channel-panel">
+        <div style="font-size:11px;font-weight:700;color:var(--muted,#64748b)">XMTR SELECT</div>
+        <div class="cmc-seg-row">
+          ${["TX-A", "TX-B", "TX-C", "TX-D"].map(tx => `
+            <button type="button" class="cmc-seg-btn ${ch.xmtr_select === tx ? 'active' : ''}" data-ch-prop="xmtr_select" data-ch-val="${tx}">
+              ${tx}
+            </button>
+          `).join("")}
+        </div>
+      </div>
+
+      <div class="cmc-channel-panel">
+        <div style="font-size:11px;font-weight:700;color:var(--muted,#64748b)">RCVR SELECT</div>
+        <div class="cmc-seg-row">
+          ${["RX-A", "RX-B", "RX-C", "RX-D"].map(rx => `
+            <button type="button" class="cmc-seg-btn ${ch.rcvr_select === rx ? 'active' : ''}" data-ch-prop="rcvr_select" data-ch-val="${rx}">
+              ${rx}
+            </button>
+          `).join("")}
+        </div>
+      </div>
+
+      <div class="cmc-channel-panel" style="grid-column:1 / -1">
+        <div style="font-size:11px;font-weight:700;color:var(--muted,#64748b)">TRANSMITTER ENABLE (A, B, C, D)</div>
+        <div class="cmc-seg-row">
+          ${["A", "B", "C", "D"].map(bus => {
+            const on = Boolean(ch.tx_enabled && ch.tx_enabled[bus]);
+            return `
+              <button type="button" class="cmc-seg-btn ${on ? 'active' : ''}" data-ch-tx-bus="${bus}">
+                TX-${bus}: ${on ? 'ON' : 'OFF'}
+              </button>
+            `;
+          }).join("")}
+        </div>
+      </div>
+    </div>
+
+    <div class="cfds-slide1-footer">
+      <button type="button" class="btn btn-sm btn-ghost" id="cmc-s6-back">← Back to Desired Mode</button>
+      <button type="button" class="btn btn-sm primary" id="cmc-s6-faults">Display Fault Summary ›</button>
+    </div>
+  `;
+  container.appendChild(card);
+
+  const commitChannels = async (patch) => {
+    try {
+      const res = await api("/api/arinc/cmc/channels", {
+        method: "POST",
+        body: JSON.stringify(patch),
+      });
+      if (res) syncCmcFromResponse(res, s, false);
+    } catch (err) {
+      console.warn("CMC channels error:", err);
+    }
+    renderCmcHub(r, s);
+  };
+
+  card.querySelector("#cmc-channels-grid").addEventListener("click", (e) => {
+    const segBtn = e.target.closest("[data-ch-prop]");
+    if (segBtn) {
+      const prop = segBtn.dataset.chProp;
+      const val = segBtn.dataset.chVal;
+      cmcState.channels[prop] = val;
+      commitChannels({ [prop]: val });
+      return;
+    }
+    const txBtn = e.target.closest("[data-ch-tx-bus]");
+    if (txBtn) {
+      const bus = txBtn.dataset.chTxBus;
+      const next = !Boolean(cmcState.channels.tx_enabled && cmcState.channels.tx_enabled[bus]);
+      cmcState.channels.tx_enabled = { ...(cmcState.channels.tx_enabled || {}), [bus]: next };
+      commitChannels({ tx_enabled: { [bus]: next } });
+    }
+  });
+
+  card.querySelector("#cmc-s6-back").onclick = () => switchCmcSlide("desired_mode", r, s);
+  card.querySelector("#cmc-s6-faults").onclick = () => switchCmcSlide("fault_summary", r, s);
 }
 
 
@@ -3685,6 +3748,10 @@ function renderCmcChannelsTab(c, r, s) {
       }
       if (view === "cfds") {
         patchCfdsRx(s);
+        return;
+      }
+      if (view === "cmc") {
+        patchCmcRx(s);
         return;
       }
       if (isWorkbench(view)) patchRxTable(s);

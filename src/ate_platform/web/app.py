@@ -314,6 +314,51 @@ class CfdsClearBody(BaseModel):
     mode: str | None = None
 
 
+class CmcSelectLruBody(BaseModel):
+    lru: str
+    manual_code: str | None = None
+    time_constant: str | None = None
+    advance_to_mode: bool = True
+
+
+class CmcSlideBody(BaseModel):
+    slide: str
+
+
+class CmcTxDataBody(BaseModel):
+    tx_params: dict[str, Any] | None = None
+    aircraft_config: dict[str, bool] | None = None
+    time_constant: str | None = None
+
+
+class CmcCommandBody(BaseModel):
+    label: str | None = None
+    eq_id: str | None = None
+    function_code: int | None = None
+    pad: str | None = None
+    sdi: str | int | None = None
+    rate_ms: int | None = None
+    parity: str | None = None
+
+
+class CmcChannelsBody(BaseModel):
+    bit_rate_kbps: str | None = None
+    xmtr_select: str | None = None
+    rcvr_select: str | None = None
+    tx_enabled: dict[str, bool] | None = None
+    display_mode: str | None = None
+
+
+class CmcSimModeBody(BaseModel):
+    enabled: bool | None = None
+    sim: bool | None = None
+
+
+class CmcSimBitBody(BaseModel):
+    bit: int
+    status: int | None = None
+
+
 class CfdsSimulateBody(BaseModel):
     mode: str
     lru_code: str | None = None
@@ -944,6 +989,56 @@ def create_app(
     @app.post("/api/arinc/cfds/simulate")
     def api_arinc_cfds_simulate(body: CfdsSimulateBody, _sid: str = Depends(require_session)):
         return get_arinc().simulate_cfds_scenario(body.mode, body.lru_code)
+
+    # --- Boeing CMC / Sensor BITE (ARINC 604) -----------------------------
+
+    @app.get("/api/arinc/cmc/state")
+    def api_arinc_cmc_state(_sid: str = Depends(require_session)):
+        return get_arinc().get_cmc_state()
+
+    @app.post("/api/arinc/cmc/select-lru")
+    def api_arinc_cmc_select_lru(body: CmcSelectLruBody, _sid: str = Depends(require_session)):
+        return get_arinc().select_cmc_lru(
+            body.lru,
+            manual_code=body.manual_code,
+            time_constant=body.time_constant,
+            advance_to_mode=body.advance_to_mode,
+        )
+
+    @app.post("/api/arinc/cmc/slide")
+    def api_arinc_cmc_slide(body: CmcSlideBody, _sid: str = Depends(require_session)):
+        return get_arinc().set_cmc_slide(body.slide)
+
+    @app.post("/api/arinc/cmc/tx-data")
+    def api_arinc_cmc_tx_data(body: CmcTxDataBody, _sid: str = Depends(require_session)):
+        return get_arinc().update_cmc_tx_data(
+            tx_params=body.tx_params,
+            aircraft_config=body.aircraft_config,
+            time_constant=body.time_constant,
+        )
+
+    @app.post("/api/arinc/cmc/command")
+    def api_arinc_cmc_command(body: CmcCommandBody, _sid: str = Depends(require_session)):
+        data = {k: v for k, v in body.model_dump().items() if v is not None}
+        return get_arinc().send_cmc_command(**data)
+
+    @app.post("/api/arinc/cmc/channels")
+    def api_arinc_cmc_channels(body: CmcChannelsBody, _sid: str = Depends(require_session)):
+        data = {k: v for k, v in body.model_dump().items() if v is not None}
+        return get_arinc().set_cmc_channels(**data)
+
+    @app.post("/api/arinc/cmc/sim-mode")
+    def api_arinc_cmc_sim_mode(body: CmcSimModeBody, _sid: str = Depends(require_session)):
+        target = body.enabled if body.enabled is not None else bool(body.sim)
+        return get_arinc().set_cmc_sim_mode(target)
+
+    @app.post("/api/arinc/cmc/refresh")
+    def api_arinc_cmc_refresh(_sid: str = Depends(require_session)):
+        return get_arinc().refresh_cmc()
+
+    @app.post("/api/arinc/cmc/sim-bit")
+    def api_arinc_cmc_sim_bit(body: CmcSimBitBody, _sid: str = Depends(require_session)):
+        return get_arinc().toggle_cmc_sim_bit(body.bit, body.status)
 
     @app.websocket("/ws")
     async def ws_feed(websocket: WebSocket):

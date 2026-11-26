@@ -58,6 +58,7 @@ from ate_platform.device.arinc_profile import (
 from ate_platform.device.label_dict import decode_received, format_display, library_catalog, lookup_label
 from ate_platform.device.vhf900_align import Vhf900AlignManager
 from ate_platform.device.cfds import CfdsProtocolManager
+from ate_platform.device.cmc import CmcProtocolManager
 from ate_platform.paths import REPO_ROOT, force_simulation
 
 try:
@@ -320,6 +321,7 @@ class ArincSession:
         self.rx_profile: dict[str, str | None] = {b: None for b in BUSES}
         self._sim_override: bool = False
         self._cfds_sim_override: bool | None = None
+        self._cmc_sim_override: bool | None = None
         self.active_lru_code: str = "709"
         self.time_constant_s: float = 0.0
         self.ln1: dict[str, str] = {"kind": "tx", "bus": "A"}
@@ -331,6 +333,7 @@ class ArincSession:
         self.mmr_inc_time: bool = False
         self.vhf900: Vhf900AlignManager = Vhf900AlignManager()
         self.cfds: CfdsProtocolManager = CfdsProtocolManager(simulation_mode=self.simulation_mode)
+        self.cmc: CmcProtocolManager = CmcProtocolManager(simulation_mode=self.simulation_mode)
         self._filter_hist: dict[tuple[str, str], list[tuple[float, float]]] = {}
         self._last_rx_ts: dict[tuple[str, str], float] = {}
 
@@ -934,7 +937,8 @@ class ArincSession:
         rec = decode_received(int(raw), display_mode=dm)
         if filters and rec["label_octal"] not in filters:
             dme_active = (self.active_profile == "dme" or getattr(self, "dme_mode", "") in {"standard", "single", "multi"} or getattr(self, "screen", "") in {"dme_diagnostic", "dme_single", "dme_multi", "standard_dme"})
-            if not (dme_active and rec["label_octal"] in {"035", "201", "202", "246", "247"}):
+            cmc_active = hasattr(self, "cmc") and self.cmc.active and rec["label_octal"] == "350"
+            if not cmc_active and not (dme_active and rec["label_octal"] in {"035", "201", "202", "246", "247"}):
                 return None
         eng_val = rec.get("eng_value")
         if tc > 0 and rec["label_octal"] in FILTER_LABELS and isinstance(eng_val, (int, float)):
@@ -989,6 +993,11 @@ class ArincSession:
         if hasattr(self, "cfds") and self.cfds.active:
             try:
                 self.cfds.ingest_rx_word(hit.raw, hit.label_octal)
+            except Exception:
+                pass
+        if hasattr(self, "cmc"):
+            try:
+                self.cmc.ingest_rx_word(hit.raw, hit.label_octal)
             except Exception:
                 pass
         return hit
@@ -2280,6 +2289,131 @@ class ArincSession:
         self.cfds.simulation_mode = self.is_cfds_simulation_active()
         return self.cfds.get_state(rx_bus=self.rx_ch or "A")
 
+    # --- Boeing CMC / Sensor BITE (ARINC 604) -----------------------------
+
+    def is_cmc_simulation_active(self) -> bool:
+        """Return whether Boeing CMC should synthesize simulation Label 350 data.
+
+        - If user explicitly toggled SIM: ON/OFF, honor `_cmc_sim_override`.
+        - Otherwise, default OFF when physical Ballard hardware is connected,
+          and ON when running purely in software simulation mode (`--sim`).
+        """
+        if self._cmc_sim_override is not None:
+            return bool(self._cmc_sim_override)
+        if not HAS_BTIDRIVER:
+            return True
+        hw = self.hardware_info or {}
+        if hw.get("simulated", False) or hw.get("open_error"):
+            return True
+        cores = hw.get("cores") or []
+        hardware_connected = any(c.get("open_ok") and c.get("count", 0) > 0 for c in cores)
+        return not hardware_connected
+
+    def set_cmc_sim_mode(self, enabled: bool) -> dict[str, Any]:
+        """Explicitly enable/disable CMC simulation mode without affecting physical hardware."""
+        with self._lock:
+            self._cmc_sim_override = bool(enabled)
+            active = self.is_cmc_simulation_active()
+            return self.cmc.apply_sim_mode(active)
+
+    def get_cmc_state(self) -> dict[str, Any]:
+        with self._lock:
+            self.cmc.simulation_mode = self.is_cmc_simulation_active()
+            return self.cmc.get_state()
+
+    def select_cmc_lru(
+        self,
+        lru: str,
+        *,
+        manual_code: str | None = None,
+        time_constant: str | None = None,
+        advance_to_mode: bool = True,
+    ) -> dict[str, Any]:
+        with self._lock:
+            self.cmc.simulation_mode = self.is_cmc_simulation_active()
+            res = self.cmc.select_lru(
+                lru,
+                manual_code=manual_code,
+                time_constant=time_constant,
+                advance_to_mode=advance_to_mode,
+            )
+            if self.cmc.selected_lru.get("name") == "750 VDR":
+                self.channel["C"].high_speed = True
+                self.channel["C"].bit_rate_kbps = 100.0
+                self.channel["C"].tx_enable = True
+                self.channel["C"].rx_enable = True
+                self.rx["C"].enabled = True
+                self.tx_ch = "C"
+                self.rx_ch = "C"
+            else:
+                rx_bus = self.rx_ch or "A"
+                self.channel[rx_bus].rx_enable = True
+                self.rx[rx_bus].enabled = True
+            return res
+
+    def set_cmc_slide(self, slide: str) -> dict[str, Any]:
+        with self._lock:
+            self.cmc.simulation_mode = self.is_cmc_simulation_active()
+            rx_bus = self.rx_ch or "A"
+            self.channel[rx_bus].rx_enable = True
+            self.rx[rx_bus].enabled = True
+            return self.cmc.set_slide(slide, active=True)
+
+    def update_cmc_tx_data(
+        self,
+        tx_params: dict[str, Any] | None = None,
+        aircraft_config: dict[str, bool] | None = None,
+        time_constant: str | None = None,
+    ) -> dict[str, Any]:
+        with self._lock:
+            self.cmc.simulation_mode = self.is_cmc_simulation_active()
+            state, encoded = self.cmc.update_tx_params(
+                tx_params=tx_params,
+                aircraft_config=aircraft_config,
+                time_constant=time_constant,
+            )
+            state["encoded_words"] = encoded
+            return state
+
+    def send_cmc_command(self, **kwargs: Any) -> dict[str, Any]:
+        with self._lock:
+            self.cmc.simulation_mode = self.is_cmc_simulation_active()
+            state, cmd_record = self.cmc.send_command(**kwargs)
+            state["transmitted_command"] = cmd_record
+            return state
+
+    def set_cmc_channels(self, **kwargs: Any) -> dict[str, Any]:
+        with self._lock:
+            self.cmc.simulation_mode = self.is_cmc_simulation_active()
+            state = self.cmc.set_channels(**kwargs)
+            ch_cfg = state["channels"]
+            rate = 100.0 if ch_cfg["bit_rate_kbps"] == "100" else 12.5
+            high = rate >= 50.0
+            tx_bus = ch_cfg["xmtr_select"].replace("TX-", "")
+            rx_bus = ch_cfg["rcvr_select"].replace("RX-", "")
+            if tx_bus in BUSES:
+                self.tx_ch = tx_bus
+            if rx_bus in BUSES:
+                self.rx_ch = rx_bus
+            for bus in BUSES:
+                self.channel[bus].bit_rate_kbps = rate
+                self.channel[bus].high_speed = high
+                self.channel[bus].tx_enable = bool(ch_cfg["tx_enabled"].get(bus, True))
+            return state
+
+    def refresh_cmc(self) -> dict[str, Any]:
+        with self._lock:
+            return self.cmc.refresh_screen(self.is_cmc_simulation_active())
+
+    def toggle_cmc_sim_bit(self, bit: int, status: int | None = None) -> dict[str, Any]:
+        with self._lock:
+            self.cmc.simulation_mode = self.is_cmc_simulation_active()
+            return self.cmc.toggle_sim_bit(bit, status)
+
+    def _get_cmc_snapshot_locked(self) -> dict[str, Any]:
+        self.cmc.simulation_mode = self.is_cmc_simulation_active()
+        return self.cmc.get_state()
+
     # --- snapshot + run control -----------------------------------------
 
     def snapshot(self) -> dict[str, Any]:
@@ -2500,6 +2634,7 @@ class ArincSession:
                 "simulation_override": self._sim_override,
                 "vhf_align": self.vhf900.get_state(rx_bus_c=self.rx["C"], lightweight=(self.active_profile != "vhf_align")),
                 "cfds": self._get_cfds_snapshot_locked(),
+                "cmc": self._get_cmc_snapshot_locked(),
             }
 
     def start(self) -> None:
