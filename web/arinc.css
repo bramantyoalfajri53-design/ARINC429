@@ -2786,3 +2786,611 @@ tr.slot-off td { color: var(--muted); }
   border-top: 1px solid var(--border) !important;
   box-sizing: border-box !important;
 }
+
+/* ====================================================================
+   CFDS 10 SLIDES LIGHT CONSOLE THEME (JcAIR T1200B / ABD0018 & ABD0048)
+   100% White Light Console Theme · Clean Monospace · Fit-To-Screen
+   ==================================================================== */
+
+.cfds-slide-container {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.cfds-card-box {
+  background: #ffffff;
+  border: 1px solid var(--border, #cbd5e1);
+  border-radius: 8px;
+  padding: 16px 20px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.cfds-header-title h2 {
+  margin: 0 0 4px 0;
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: var(--text, #0f172a);
+}
+
+.cfds-header-title p {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--muted, #64748b);
+  letter-spacing: 0.5px;
+}
+
+/* Slide 1 Matrix */
+.cfds-lru-matrix {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.cfds-slide1-row {
+  display: grid;
+  gap: 8px;
+}
+
+.cfds-slide1-row.row-1 {
+  grid-template-columns: repeat(10, 1fr);
+}
+
+.cfds-slide1-row.row-2 {
+  grid-template-columns: repeat(7, 1fr);
+}
+
+.cfds-slide1-row.row-3 {
+  grid-template-columns: repeat(3, 1fr);
+  max-width: 50%;
+}
+
+.cfds-lru-btn {
+  background: #ffffff;
+  border: 1px solid var(--border, #cbd5e1);
+  border-radius: 6px;
+  padding: 8px 4px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  min-height: 48px;
+}
+
+.cfds-lru-btn:hover {
+  border-color: var(--teal-primary, #0d9488);
+  background: var(--teal-bg, #f0fdfa);
+}
+
+.cfds-lru-btn.active {
+  border-color: var(--teal-primary, #0d9488);
+  background: var(--teal-bg, #f0fdfa);
+  box-shadow: 0 0 0 1px var(--teal-primary, #0d9488);
+}
+
+.cfds-lru-btn.manual {
+  border: 1px dashed var(--teal-primary, #0d9488);
+  background: #f8fafc;
+}
+
+.cfds-btn-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text, #0f172a);
+  text-align: center;
+}
+
+.cfds-btn-code, .cfds-btn-sub {
+  font-size: 10.5px;
+  color: var(--teal-primary, #0d9488);
+  margin-top: 2px;
+}
+
+.cfds-slide1-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-top: 1px solid var(--border-light, #f1f5f9);
+  padding-top: 12px;
+  margin-top: 6px;
+}
+
+.cfds-time-const-btn {
+  background: #ffffff;
+  border: 1px solid var(--border, #cbd5e1);
+  border-radius: 6px;
+  padding: 6px 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  cursor: pointer;
+}
+
+.cfds-time-const-btn:hover {
+  border-color: var(--teal-primary, #0d9488);
+}
+
+.cfds-time-const-btn .tc-title {
+  font-size: 12px;
+  color: var(--text, #0f172a);
+}
+
+.cfds-time-const-btn .tc-sub {
+  font-size: 10px;
+  color: var(--muted, #64748b);
+  letter-spacing: 0.5px;
+}
+
+/* Slide 2: Desired Modes Grid */
+.cfds-desired-modes-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 12px 0;
+}
+
+.cfds-mode-hero-btn {
+  background: #ffffff;
+  border: 1px solid var(--border, #cbd5e1);
+  border-radius: 8px;
+  padding: 16px 20px;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.cfds-mode-hero-btn:hover {
+  border-color: var(--teal-primary, #0d9488);
+  background: var(--teal-bg, #f0fdfa);
+}
+
+.cfds-mode-hero-btn.primary-hero {
+  border-color: var(--teal-primary, #0d9488);
+  background: #f8fafc;
+}
+
+.cfds-mode-hero-btn .hero-title {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--text, #0f172a);
+}
+
+.cfds-mode-hero-btn .hero-sub {
+  font-size: 12px;
+  color: var(--muted, #64748b);
+}
+
+.cfds-eq-code-footer {
+  background: #f8fafc;
+  border: 1px solid var(--border, #cbd5e1);
+  border-radius: 6px;
+  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.cfds-eq-code-footer .footer-code {
+  font-weight: 700;
+  color: var(--teal-primary, #0d9488);
+  font-size: 15px;
+}
+
+/* Slide 3: Edit TX Data */
+.cfds-tx-datetime-bar {
+  display: flex;
+  gap: 20px;
+  background: #f8fafc;
+  border: 1px solid var(--border, #cbd5e1);
+  border-radius: 6px;
+  padding: 10px 16px;
+}
+
+.cfds-tx-datetime-bar .dt-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.cfds-tx-datetime-bar .dt-input {
+  padding: 4px 8px;
+  font-family: var(--mono, monospace);
+  font-weight: 700;
+}
+
+.cfds-section-card {
+  border: 1px solid var(--border, #cbd5e1);
+  border-radius: 6px;
+  padding: 12px 16px;
+}
+
+.cfds-section-card .section-title {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--muted, #64748b);
+  letter-spacing: 0.5px;
+  margin-bottom: 10px;
+}
+
+.cfds-params-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+
+.cfds-params-grid .param-box {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.cfds-params-grid label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text, #0f172a);
+}
+
+.cfds-toggles-container {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cfds-toggle-row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.cfds-cfg-toggle {
+  background: #ffffff;
+  border: 1px solid var(--border, #cbd5e1);
+  border-radius: 4px;
+  padding: 6px 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  cursor: pointer;
+  flex: 1 1 80px;
+  min-width: 75px;
+}
+
+.cfds-cfg-toggle.on {
+  background: var(--teal-bg, #f0fdfa);
+  border-color: var(--teal-primary, #0d9488);
+}
+
+.cfds-cfg-toggle .toggle-name {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--text, #0f172a);
+}
+
+.cfds-cfg-toggle .toggle-state {
+  font-size: 9.5px;
+  font-family: var(--mono, monospace);
+  font-weight: 700;
+  color: var(--muted, #64748b);
+  margin-top: 2px;
+}
+
+.cfds-cfg-toggle.on .toggle-state {
+  color: var(--teal-primary, #0d9488);
+}
+
+/* Slide 4: Op Buttons Grid */
+.cfds-op-buttons-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 12px 0;
+}
+
+.cfds-op-btn {
+  background: #ffffff;
+  border: 1px solid var(--border, #cbd5e1);
+  border-radius: 6px;
+  padding: 12px 18px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.cfds-op-btn:hover {
+  border-color: var(--teal-primary, #0d9488);
+  background: var(--teal-bg, #f0fdfa);
+}
+
+.cfds-op-btn .op-num {
+  font-family: var(--mono, monospace);
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--teal-primary, #0d9488);
+  width: 20px;
+}
+
+.cfds-op-btn .op-text {
+  font-weight: 700;
+  font-size: 13.5px;
+  color: var(--text, #0f172a);
+}
+
+/* Slide 5: Channels Table */
+.cfds-channels-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.cfds-channels-table th, .cfds-channels-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border, #cbd5e1);
+  text-align: left;
+  font-size: 12.5px;
+}
+
+.cfds-disp-mode-radios {
+  display: flex;
+  gap: 12px;
+}
+
+/* Slide 6/8: Normal Mode */
+.cfds-phase-btn {
+  padding: 4px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border, #cbd5e1);
+  background: #ffffff;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.cfds-phase-btn.air {
+  border-color: #0284c7;
+  color: #0369a1;
+  background: #f0f9ff;
+}
+
+.cfds-phase-btn.ground {
+  border-color: #0d9488;
+  color: #0f766e;
+  background: #f0fdfa;
+}
+
+.cfds-normal-log-box {
+  background: #ffffff;
+  border: 1px solid var(--border, #cbd5e1);
+  border-radius: 6px;
+  padding: 16px;
+  min-height: 240px;
+  max-height: 360px;
+  overflow-y: auto;
+  font-family: var(--mono, monospace);
+  font-size: 13px;
+}
+
+.cfds-empty-msg {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 200px;
+  color: var(--muted, #64748b);
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+
+.cfds-msg-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.cfds-log-line {
+  color: var(--text, #0f172a);
+  line-height: 1.4;
+}
+
+/* Slide 7 & 9: MCDU Surround and Screen (Light Console Theme) */
+.cfds-mcdu-surround {
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  gap: 12px;
+  margin: 10px 0;
+}
+
+.cfds-lsk-col {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-around;
+  gap: 6px;
+}
+
+.cfds-lsk-btn {
+  background: #ffffff;
+  border: 1px solid var(--border, #cbd5e1);
+  border-radius: 4px;
+  padding: 8px 12px;
+  cursor: pointer;
+  font-family: var(--mono, monospace);
+  font-size: 12px;
+  font-weight: 700;
+  transition: all 0.1s ease;
+  min-width: 50px;
+}
+
+.cfds-lsk-btn:hover {
+  border-color: var(--teal-primary, #0d9488);
+  background: var(--teal-bg, #f0fdfa);
+}
+
+.cfds-lsk-btn.pressed {
+  background: var(--teal-primary, #0d9488);
+  color: #ffffff;
+}
+
+.cfds-mcdu-screen {
+  background: #ffffff !important;
+  border: 2px solid var(--border, #cbd5e1) !important;
+  border-radius: 6px !important;
+  padding: 12px 18px !important;
+  font-family: var(--mono, 'Courier New', monospace) !important;
+  font-size: 13px !important;
+  color: var(--text, #0f172a) !important;
+  line-height: 1.35 !important;
+  box-shadow: none !important;
+  min-width: 280px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.mcdu-row {
+  white-space: pre;
+  color: var(--text, #0f172a);
+}
+
+.cfds-mcdu-status-bar {
+  background: #f8fafc;
+  border: 1px solid var(--border, #cbd5e1);
+  border-radius: 4px;
+  padding: 6px 12px;
+  font-family: var(--mono, monospace);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--teal-primary, #0d9488);
+  text-align: center;
+}
+
+/* Slide 9: Interactive Mode Workbench */
+.cfds-interactive-workbench {
+  display: flex;
+  gap: 16px;
+  align-items: stretch;
+  justify-content: center;
+}
+
+.cfds-mcdu-flanked {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.cfds-keypad-panel {
+  border: 1px solid var(--border, #cbd5e1);
+  border-radius: 6px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: #f8fafc;
+  min-width: 220px;
+}
+
+.keypad-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted, #64748b);
+  text-align: center;
+  letter-spacing: 0.5px;
+}
+
+.cfds-func-keys-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.cfds-num-keys-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.cfds-kpd-btn {
+  background: #ffffff;
+  border: 1px solid var(--border, #cbd5e1);
+  border-radius: 4px;
+  padding: 8px 4px;
+  font-family: var(--mono, monospace);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  text-align: center;
+}
+
+.cfds-kpd-btn:hover {
+  border-color: var(--teal-primary, #0d9488);
+  background: var(--teal-bg, #f0fdfa);
+}
+
+.cfds-kpd-btn.func {
+  background: #f1f5f9;
+  font-size: 11px;
+}
+
+.cfds-kpd-btn.pressed {
+  background: var(--teal-primary, #0d9488);
+  color: #ffffff;
+}
+
+.cfds-telemetry-box {
+  background: #f8fafc;
+  border: 1px solid var(--border, #cbd5e1);
+  border-radius: 4px;
+  padding: 8px 12px;
+  font-size: 12px;
+  text-align: center;
+  color: var(--text, #0f172a);
+}
+
+/* Slide 10: Discrete Mode */
+.cfds-discrete-card {
+  background: #ffffff;
+  border: 1px solid var(--border, #cbd5e1);
+  border-radius: 6px;
+  padding: 16px;
+  min-height: 220px;
+}
+
+.cfds-discrete-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px 16px;
+}
+
+.disc-field {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12.5px;
+  border-bottom: 1px dashed var(--border-light, #f1f5f9);
+  padding-bottom: 6px;
+}
+
+.disc-field.full-width {
+  grid-column: 1 / -1;
+}
+
+.disc-label {
+  font-weight: 700;
+  color: var(--muted, #64748b);
+  width: 180px;
+  flex-shrink: 0;
+}
+
+.disc-val {
+  font-weight: 700;
+  color: var(--teal-primary, #0d9488);
+}

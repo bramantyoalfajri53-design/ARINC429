@@ -265,6 +265,47 @@ class HfDualWordConfigBody(BaseModel):
     rate_ms: int = 75
 
 
+class CfdsSelectLruBody(BaseModel):
+    code: str
+    name: str | None = None
+    short: str | None = None
+
+
+class CfdsSlideBody(BaseModel):
+    slide: str
+
+
+class CfdsTxParamsBody(BaseModel):
+    params: dict[str, Any] = {}
+    config: dict[str, bool] | None = None
+
+
+class CfdsFlightPhaseBody(BaseModel):
+    phase: str
+
+
+class CfdsKeyBody(BaseModel):
+    key: str
+    lru_code: str | None = None
+
+
+class CfdsChannelsBody(BaseModel):
+    bit_rate: str | None = None
+    xmtr_select: str | None = None
+    rcvr_select: str | None = None
+    tx_enable: bool | None = None
+    display_mode: str | None = None
+
+
+class CfdsClearBody(BaseModel):
+    mode: str | None = None
+
+
+class CfdsSimulateBody(BaseModel):
+    mode: str
+    lru_code: str | None = None
+
+
 def create_app(
     *,
     simulation: bool | None = None,
@@ -835,6 +876,45 @@ def create_app(
             ssm=body.ssm,
             rate_ms=body.rate_ms,
         )
+
+    # --- CFDS (Aeroflex JcAIR T1200B / ABD0018 & ABD0048) Endpoints ---
+
+    @app.get("/api/arinc/cfds/state")
+    def api_arinc_cfds_state(_sid: str = Depends(require_session)):
+        return get_arinc().get_cfds_state()
+
+    @app.post("/api/arinc/cfds/select-lru")
+    def api_arinc_cfds_select_lru(body: CfdsSelectLruBody, _sid: str = Depends(require_session)):
+        return get_arinc().select_cfds_lru(body.code, body.name, body.short)
+
+    @app.post("/api/arinc/cfds/slide")
+    def api_arinc_cfds_slide(body: CfdsSlideBody, _sid: str = Depends(require_session)):
+        return get_arinc().set_cfds_slide(body.slide)
+
+    @app.post("/api/arinc/cfds/tx-data")
+    def api_arinc_cfds_tx_data(body: CfdsTxParamsBody, _sid: str = Depends(require_session)):
+        return get_arinc().update_cfds_tx_params(body.params, body.config)
+
+    @app.post("/api/arinc/cfds/flight-phase")
+    def api_arinc_cfds_flight_phase(body: CfdsFlightPhaseBody, _sid: str = Depends(require_session)):
+        return get_arinc().set_cfds_flight_phase(body.phase)
+
+    @app.post("/api/arinc/cfds/key")
+    def api_arinc_cfds_key(body: CfdsKeyBody, _sid: str = Depends(require_session)):
+        return get_arinc().send_cfds_key(body.key, body.lru_code)
+
+    @app.post("/api/arinc/cfds/channels")
+    def api_arinc_cfds_channels(body: CfdsChannelsBody, _sid: str = Depends(require_session)):
+        data = {k: v for k, v in body.model_dump().items() if v is not None}
+        return get_arinc().set_cfds_channels(**data)
+
+    @app.post("/api/arinc/cfds/clear")
+    def api_arinc_cfds_clear(body: CfdsClearBody, _sid: str = Depends(require_session)):
+        return get_arinc().clear_cfds_rx(body.mode)
+
+    @app.post("/api/arinc/cfds/simulate")
+    def api_arinc_cfds_simulate(body: CfdsSimulateBody, _sid: str = Depends(require_session)):
+        return get_arinc().simulate_cfds_scenario(body.mode, body.lru_code)
 
     @app.websocket("/ws")
     async def ws_feed(websocket: WebSocket):

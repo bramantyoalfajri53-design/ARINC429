@@ -57,6 +57,7 @@ from ate_platform.device.arinc_profile import (
 )
 from ate_platform.device.label_dict import decode_received, format_display, library_catalog, lookup_label
 from ate_platform.device.vhf900_align import Vhf900AlignManager
+from ate_platform.device.cfds import CfdsProtocolManager
 from ate_platform.paths import REPO_ROOT
 
 try:
@@ -328,6 +329,7 @@ class ArincSession:
         self.mmr_menu: str | None = None
         self.mmr_inc_time: bool = False
         self.vhf900: Vhf900AlignManager = Vhf900AlignManager()
+        self.cfds: CfdsProtocolManager = CfdsProtocolManager()
         self._filter_hist: dict[tuple[str, str], list[tuple[float, float]]] = {}
         self._last_rx_ts: dict[tuple[str, str], float] = {}
 
@@ -983,6 +985,11 @@ class ArincSession:
             for t in v.traps:
                 if t.label_octal == hit.label_octal and (t.sdi is None or t.sdi == hit.sdi):
                     t.triggered = True
+        if hasattr(self, "cfds") and self.cfds.active:
+            try:
+                self.cfds.ingest_rx_word(hit.raw, hit.label_octal)
+            except Exception:
+                pass
         return hit
 
     def catalog(self) -> list[dict[str, Any]]:
@@ -2186,6 +2193,53 @@ class ArincSession:
             "waiting": waiting,
         }
 
+    # --- CFDS protocol control ------------------------------------------
+
+    def get_cfds_state(self) -> dict[str, Any]:
+        with self._lock:
+            return self.cfds.get_state(rx_bus=self.rx_ch or "A")
+
+    def select_cfds_lru(self, code: str, name: str | None = None, short: str | None = None) -> dict[str, Any]:
+        with self._lock:
+            res = self.cfds.select_lru(code, name, short)
+            if self.cfds.selected_lru.get("code") == "050":
+                self.channel["C"].high_speed = True
+                self.channel["C"].bit_rate_kbps = 100.0
+                self.channel["C"].tx_enable = True
+                self.tx_ch = "C"
+            return res
+
+    def set_cfds_slide(self, slide: str) -> dict[str, Any]:
+        with self._lock:
+            return self.cfds.set_slide(slide)
+
+    def update_cfds_tx_params(self, params: dict[str, Any], config: dict[str, bool] | None = None) -> dict[str, Any]:
+        with self._lock:
+            return self.cfds.update_tx_params(params, config)
+
+    def set_cfds_flight_phase(self, phase: str) -> dict[str, Any]:
+        with self._lock:
+            return self.cfds.set_flight_phase(phase)
+
+    def send_cfds_key(self, key: str, lru_code: str | None = None) -> dict[str, Any]:
+        with self._lock:
+            return self.cfds.send_key_command(key, lru_code)
+
+    def set_cfds_channels(self, **kwargs: Any) -> dict[str, Any]:
+        with self._lock:
+            for k, v in kwargs.items():
+                if k in self.cfds.channel_config and v is not None:
+                    self.cfds.channel_config[k] = v
+            return self.cfds.get_state()
+
+    def clear_cfds_rx(self, mode: str | None = None) -> dict[str, Any]:
+        with self._lock:
+            return self.cfds.clear_rx_data(mode)
+
+    def simulate_cfds_scenario(self, mode: str, lru_code: str | None = None) -> dict[str, Any]:
+        with self._lock:
+            return self.cfds.simulate_test_scenario(mode, lru_code)
+
     # --- snapshot + run control -----------------------------------------
 
     def snapshot(self) -> dict[str, Any]:
@@ -2405,6 +2459,7 @@ class ArincSession:
                 "lru_connection": self.check_lru_connected(self.active_lru_code or "709", bus="A"),
                 "simulation_override": self._sim_override,
                 "vhf_align": self.vhf900.get_state(rx_bus_c=self.rx["C"], lightweight=(self.active_profile != "vhf_align")),
+                "cfds": self.cfds.get_state(rx_bus=self.rx_ch or "A"),
             }
 
     def start(self) -> None:

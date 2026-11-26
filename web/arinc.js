@@ -1427,108 +1427,103 @@ const CMC_FUNCTION_SWITCHES = [
   { id: "CONFIG DATA", codeHex: "05H", label: "CONFIG DATA (05H)", desc: "Requests Part Number, SW and HW modification level" },
 ];
 
-// Operational States for CFDS & CMC
-let cfdsState = {
-  currentView: "LRU_SELECTION",
-  selectedLru: CFDS_LRU_TABLE[2], // 709 DME
-  dataSource: "SIMULATION",
-  busRunning: false,
-  searchFilter: "",
-  sdi: 0,
-  nxtReverseVideo: false,
-  menuPage: 1,
-  menuTimeoutTimer: null,
-  menuStatusText: "SELECT OPTION",
-  interactiveProgress: 0,
-  interactiveStatus: "READY",
-  burstRows: [],
-  simulationMode: false,      // Explicit Simulation Mode toggle (default: Real Device Mode)
-  simDeviceConnected: false,  // In simulation mode: whether mock simulator is active
-  realDeviceConnected: false, // In real mode: live detected physical hardware status
-  deviceStatusDetail: "",     // Communication detail from backend
-  lastKnownRealConn: undefined,
-  lruSubScreen: "main",
-  xmitRateOn: false,
-  dmeAgcVal: "00",
-};
-
-let cmcState = {
-  activeTab: "TRANSMIT_DATA",
-  selectedLru: BOEING_LRU_DATABASE[0], // 707 LRA
-  manualCode: "000",
-  timeConstant: "OFF",
-  source: "SIMULATION",
-  cmdChannel: "TX-A",
-  cmdFunction: "NO REQUEST",
-  cmdSdi: "00",
-  cmdRateMs: 100,
-  cmdParity: "ODD",
-  cmdHistory: [],
-  faultPage: "350",
-  hasWordsReceived: true,
-  bit28Inhibit: false,
-  bit29Ack: true,
-  faultBits: Array.from({ length: 19 }, (_, i) => ({
-    bit: 11 + i,
-    label: (11 + i === 29) ? "COMMAND ACK" : (11 + i === 28) ? "BITE INHIBIT" : `LRU FAULT BIT ${11 + i}`,
-    fault: false,
-    status: (11 + i === 29) ? "ACK (1)" : (11 + i === 28) ? "ENABLE (0)" : "OK (0)",
-    is_spare: (11 + i >= 24 && 11 + i <= 27),
-  })),
-  terminalView: "TERMINAL",
-  terminalPage: 1,
-  terminalMsg: "AEROFLEX T1200B READY",
-  terminalLines: [
-    "AEROFLEX T1200B CDU INTERFACE",
-    "----------------------------",
-    "1L< CURRENT BITE REPORT",
-    "2L< PREVIOUS FLIGHT LEGS",
-    "3L< LRU CONFIGURATION",
-    "4L< CONTINUOUS MONITORING",
-    "5L< GROUND TEST SEQUENCE",
-    "6L< SHOP FAULTS MATRIX",
-    "",
-    "1R> INITIATE SELF TEST",
-    "2R> CLEAR FAULT MEMORY",
-    "3R> VERIFY INTERFACE",
-    "4R> RETURN TO CMC MAIN",
+// Operational States for CFDS (Aeroflex JcAIR T1200B / ABD0018 & ABD0048)
+const CFDS_SLIDE1_LRUS = [
+  // Row 1 (10 LRUs)
+  [
+    { code: "007", short: "RALT",  name: "707 LRA",   desc: "Low Range Radio Altimeter", bus: "A", speed: "12.5k" },
+    { code: "008", short: "WXR",   name: "708 WXR",   desc: "Weather Radar", bus: "A", speed: "12.5k" },
+    { code: "009", short: "DME",   name: "709 DME",   desc: "Distance Measuring Equipment", bus: "A", speed: "12.5k" },
+    { code: "010", short: "ILS",   name: "710 ILS",   desc: "Instrument Landing System", bus: "A", speed: "12.5k" },
+    { code: "011", short: "VOR",   name: "711 VOR",   desc: "VHF Omnidirectional Range", bus: "A", speed: "12.5k" },
+    { code: "012", short: "ADF",   name: "712 ADF",   desc: "Automatic Direction Finder", bus: "A", speed: "12.5k" },
+    { code: "016", short: "VHF",   name: "716 VHF",   desc: "VHF Communication Transceiver", bus: "A", speed: "12.5k" },
+    { code: "018", short: "ATC",   name: "718 ATC",   desc: "Air Traffic Control Transponder", bus: "A", speed: "12.5k" },
+    { code: "019", short: "HF",    name: "719 HF",    desc: "High Frequency Communication Transceiver", bus: "A", speed: "12.5k" },
+    { code: "023", short: "GPWS",  name: "723 GPWS",  desc: "Ground Proximity Warning System", bus: "A", speed: "12.5k" },
   ],
-  configData: {
-    part_number: "777-12345-001",
-    sw_version: "OPS-SW-V3.4.2",
-    database_pn: "NAV-DB-2026",
-    serial_number: "SN-98234-A",
+  // Row 2 (6 LRUs + Manual Entry)
+  [
+    { code: "024", short: "ACARS", name: "724 ACARS", desc: "ACARS Management Unit", bus: "A", speed: "12.5k" },
+    { code: "027", short: "MLS",   name: "727 MLS",   desc: "Microwave Landing System", bus: "A", speed: "12.5k" },
+    { code: "035", short: "TCAS",  name: "735 TCAS",  desc: "Traffic Alert & Collision Avoidance", bus: "A", speed: "12.5k" },
+    { code: "040", short: "PRNTR", name: "740 PRNTR", desc: "Cockpit Printer", bus: "A", speed: "12.5k" },
+    { code: "041", short: "SATCM", name: "741 SATCM", desc: "Satellite Communication System", bus: "A", speed: "12.5k" },
+    { code: "018", short: "ATC/S", name: "718 ATC/S", desc: "ATC Mode S Transponder", bus: "A", speed: "12.5k" },
+    { isManual: true, name: "MANUAL ENTRY", desc: "Manual Hex Equipment Code Entry" },
+  ],
+  // Row 3 (3 LRUs)
+  [
+    { code: "050", short: "VDR",   name: "750 VDR",   desc: "VHF Data Radio (High-Speed Channel C)", bus: "C", speed: "100k" },
+    { code: "053", short: "HFDU",  name: "753 HFDU",  desc: "HF Data Unit", bus: "A", speed: "12.5k" },
+    { code: "053", short: "HFDR",  name: "753 HFDR",  desc: "HF Data Radio", bus: "A", speed: "12.5k" },
+  ]
+];
+
+const CFDS_TIME_CONSTANTS = ["OFF", "0.4", "0.8", "1.6", "3.2", "6.4", "12.8"];
+
+let cfdsState = {
+  currentSlide: "menu", // "menu", "desired_mode", "edit_tx", "op_mode_hub", "channels", "normal_0018", "menu_0018", "normal_0048", "interactive_0048", "discrete_0048"
+  selectedLru: CFDS_SLIDE1_LRUS[0][2], // default 709 DME
+  timeConstantIdx: 0,
+  txParams: {
+    date: "12/31/86",
+    time: "15:49.5",
+    flt_num: "9999999999",
+    city_pairs: "DNVR MKCI",
+    flt_phase: "1",
+    aircraft_id: "N123456 63153",
+    shop_code: "N12345",
   },
-  transmitData: {
-    date: "11/16/26",
-    time: "10:15.0 GMT",
-    flt_num: "AA1234",
-    city_pairs: "KSEA KORD",
-    flt_phase: 5,
-    aircraft_id: "N777AA",
-    channel: "TX-A",
-    config_word_bits: {},
-  }
+  aircraftConfig: {
+    DATA_PRINTER: false,
+    DATA_LINK: false,
+    AIDS: false,
+    RMP3: false,
+    VHF3: false,
+    HF1: false,
+    HF2: false,
+    ADF2: false,
+    MLS1: false,
+    MLS2: false,
+    WBS1: false,
+    RADAR2: false,
+    TPIS: false,
+    "AFT_CRG/HT": false,
+    "FWD_CRG/HT": false,
+    "CRG/SMOKE": false,
+    WBS2: false,
+  },
+  flightPhase: "GROUND", // "GROUND" or "AIR"
+  channelConfig: {
+    bit_rate: "12.5k",
+    xmtr_select: "A",
+    rcvr_select: "A",
+    tx_enable: true,
+    display_mode: "ENG",
+  },
+  mcduLines: Array(14).fill("".padEnd(24, " ")),
+  mcduStatus: "AWAITING LRU RESPONSE (LABEL 356)",
+  normalMessages: [],
+  discreteHasData: false,
+  discreteFields: {
+    failure_number: "",
+    failure_type_code: "",
+    failure_type_string: "",
+    witness_position: "",
+    witness_side: "",
+    suspect1_position: "",
+    suspect1_side: "",
+    suspect2_position: "",
+    suspect2_side: "",
+    suspect3_position: "",
+    suspect3_side: "",
+  },
+  lastTxCommand: null,
 };
-
-// Initialize Label 155 default bits
-CMC_LABEL155_SWITCHES.forEach((sw) => {
-  cmcState.transmitData.config_word_bits[sw.key] = false;
-});
-
-// Helper: Escape HTML attribute
-function escAttr(str) {
-  if (str == null) return "";
-  return String(str)
-    .replace(/&/g, "&amp;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-}
 
 // ====================================================================
-// CFDS MODE IMPLEMENTATION (AEROFLEX T1200B / ABD0018 / ABD0048)
+// CFDS 10 SLIDES ENGINE (AEROFLEX JcAIR T1200B / ABD0018 & ABD0048)
 // ====================================================================
 
 function renderCfdsHub(r, s) {
@@ -1536,1243 +1531,1192 @@ function renderCfdsHub(r, s) {
   const wb = el("div", "cfds-workbench");
   r.appendChild(wb);
 
-  // Status Strip matching GitHub CFDSLayout.tsx
-  const strip = el("div", "cfds-status-strip");
-  strip.innerHTML = `
-    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-      <span class="cfds-status-pill ${cfdsState.dataSource === 'HARDWARE' ? 'hw' : 'sim'}">
-        SOURCE: ${cfdsState.dataSource === 'HARDWARE' ? 'HARDWARE CONNECTED' : 'SIMULATION (NO HW RX)'}
-      </span>
-      <span style="color:#475569;font-weight:600">
-        BUS: ${s.bus && s.bus.A && s.bus.A.running ? 'RUNNING' : 'IDLE'}
-      </span>
-      ${cfdsState.selectedLru ? `<span style="color:#0f766e;font-weight:600">LRU: ${escAttr(cfdsState.selectedLru.name)} (0x${escAttr(cfdsState.selectedLru.code)})</span>` : ''}
-    </div>
-    <div style="display:flex;align-items:center;gap:10px">
-      <span style="color:#64748b;font-family:monospace;font-size:11px">VIEW: ${cfdsState.currentView}</span>
-      ${cfdsState.currentView !== 'LRU_SELECTION' ? '<button type="button" class="btn btn-sm btn-ghost" id="btn-cfds-lru-nav">Change LRU</button>' : ''}
-      <button type="button" class="btn btn-sm btn-ghost" id="btn-cfds-main-menu">Mode Select</button>
-    </div>
-  `;
-  wb.appendChild(strip);
-
-  const btnLruNav = strip.querySelector("#btn-cfds-lru-nav");
-  if (btnLruNav) {
-    btnLruNav.addEventListener("click", () => {
-      cfdsState.currentView = "LRU_SELECTION";
-      renderCfdsHub(r, s);
-    });
+  // Sync state from snapshot if available
+  if (s && s.cfds) {
+    if (s.cfds.normal_messages) cfdsState.normalMessages = s.cfds.normal_messages;
+    if (s.cfds.mcdu_lines) cfdsState.mcduLines = s.cfds.mcdu_lines;
+    if (s.cfds.mcdu_status) cfdsState.mcduStatus = s.cfds.mcdu_status;
+    if (s.cfds.discrete_has_data !== undefined) cfdsState.discreteHasData = s.cfds.discrete_has_data;
+    if (s.cfds.discrete_fields) cfdsState.discreteFields = s.cfds.discrete_fields;
+    if (s.cfds.last_tx_command) cfdsState.lastTxCommand = s.cfds.last_tx_command;
+    if (s.cfds.flight_phase_mode) cfdsState.flightPhase = s.cfds.flight_phase_mode;
+    if (s.cfds.selected_lru && !cfdsState.selectedLru) cfdsState.selectedLru = s.cfds.selected_lru;
   }
 
-  strip.querySelector("#btn-cfds-main-menu").addEventListener("click", () => {
+  // Top header status bar
+  const topStrip = el("div", "cfds-status-strip");
+  const currentSlideName = {
+    "menu": "CFDS MENU (SLIDE 1)",
+    "desired_mode": "SELECT DESIRED MODE (SLIDE 2)",
+    "edit_tx": "EDIT CFDS TX DATA (SLIDE 3)",
+    "op_mode_hub": "CFDS OPERATION MODE (SLIDE 4)",
+    "channels": "CONFIGURE CHANNELS A, B, C, D (SLIDE 5)",
+    "normal_0018": "NORMAL MODE ABD0018 (SLIDE 6)",
+    "menu_0018": "MENU MODE ABD0018 (SLIDE 7)",
+    "normal_0048": "NORMAL MODE ABD0048 (SLIDE 8)",
+    "interactive_0048": "INTERACTIVE MODE ABD0048 (SLIDE 9)",
+    "discrete_0048": "DISCRETE MODE ABD0048 (SLIDE 10)",
+  }[cfdsState.currentSlide] || "CFDS MODE";
+
+  topStrip.innerHTML = `
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <span class="cfds-status-pill hw">CFDS CENTRALIZED FAULT DISPLAY SYSTEM</span>
+      <span style="font-weight:700;color:var(--text, #1e293b)">${escAttr(currentSlideName)}</span>
+      <span style="color:var(--teal-primary, #0d9488);font-weight:600">LRU: ${escAttr(cfdsState.selectedLru.name)} (${escAttr(cfdsState.selectedLru.short)} - 0x${escAttr(cfdsState.selectedLru.code)})</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px">
+      ${cfdsState.currentSlide !== "menu" ? '<button type="button" class="btn btn-sm btn-ghost" id="cfds-btn-top-menu">CFDS Menu</button>' : ''}
+      <button type="button" class="btn btn-sm btn-ghost" id="cfds-btn-top-exit">Mode Select</button>
+    </div>
+  `;
+  wb.appendChild(topStrip);
+
+  const btnTopMenu = topStrip.querySelector("#cfds-btn-top-menu");
+  if (btnTopMenu) {
+    btnTopMenu.onclick = () => {
+      cfdsState.currentSlide = "menu";
+      renderCfdsHub(r, s);
+    };
+  }
+  topStrip.querySelector("#cfds-btn-top-exit").onclick = () => {
     pushScreen("mode_select");
-  });
+  };
 
-  // Render view corresponding to currentView
-  const viewContainer = el("div", "cfds-view-body");
-  wb.appendChild(viewContainer);
+  // Body container for current slide
+  const body = el("div", "cfds-slide-container");
+  wb.appendChild(body);
 
-  switch (cfdsState.currentView) {
-    case "LRU_SELECTION":
-      renderCfdsLruSelection(viewContainer, r, s);
+  switch (cfdsState.currentSlide) {
+    case "menu":
+      renderCfdsSlide1Menu(body, r, s);
       break;
-    case "LRU_CONSOLE":
-      renderCfdsLruConsole(viewContainer, r, s);
+    case "desired_mode":
+      renderCfdsSlide2DesiredMode(body, r, s);
       break;
-    case "MODE_SELECT":
-      renderCfdsSubmodeSelect(viewContainer, r, s);
+    case "edit_tx":
+      renderCfdsSlide3EditTx(body, r, s);
       break;
-    case "NORMAL_MODE_ABD0018":
-    case "NORMAL_MODE_ABD0048":
-      renderCfdsNormalModeView(viewContainer, r, s);
+    case "op_mode_hub":
+      renderCfdsSlide4OpModeHub(body, r, s);
       break;
-    case "MENU_MODE_ABD0018":
-      renderCfdsMenuModeView(viewContainer, r, s);
+    case "channels":
+      renderCfdsSlide5Channels(body, r, s);
       break;
-    case "DISCRETE_MODE_ABD0048":
-      renderCfdsDiscreteModeView(viewContainer, r, s);
+    case "normal_0018":
+      renderCfdsSlide6_8Normal(body, r, s, false);
       break;
-    case "INTERACTIVE_MODE_ABD0048":
-      renderCfdsInteractiveModeView(viewContainer, r, s);
+    case "menu_0018":
+      renderCfdsSlide7Menu0018(body, r, s);
       break;
-    case "EDIT_TX":
-      renderCfdsEditTxView(viewContainer, r, s);
+    case "normal_0048":
+      renderCfdsSlide6_8Normal(body, r, s, true);
       break;
-    case "CONFIGURE_CHANNELS":
-      renderCfdsConfigChannelsView(viewContainer, r, s);
+    case "interactive_0048":
+      renderCfdsSlide9Interactive0048(body, r, s);
+      break;
+    case "discrete_0048":
+      renderCfdsSlide10Discrete0048(body, r, s);
       break;
     default:
-      renderCfdsLruSelection(viewContainer, r, s);
+      renderCfdsSlide1Menu(body, r, s);
       break;
   }
 }
 
-// 1. CFDS LRU SELECTION (Figure 47 Horizontal Grid & Add LRU)
-function renderCfdsLruSelection(c, r, s) {
-  const p = el("div", "panel");
-  p.innerHTML = `
-    <div class="panel-head" style="margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
-      <div>
-        <h2 style="font-size:1.2rem;font-weight:700;margin:0 0 4px 0">CFDS LRU SELECTION</h2>
-        <p class="muted" style="margin:0;font-size:13px">Aeroflex JcAIR T1200B Operation Manual Figure 47 (Section 4.F)</p>
-      </div>
-      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-        <input type="text" id="cfds-lru-filter" placeholder="Search LRU by code or name..."
-          class="category-select" style="min-width:220px" value="${escAttr(cfdsState.searchFilter)}" />
-        <button type="button" class="btn primary" id="btn-cfds-add-lru">+ Add LRU</button>
-      </div>
+// --------------------------------------------------------------------
+// SLIDE 1: CFDS MENU (Figure 47)
+// --------------------------------------------------------------------
+function renderCfdsSlide1Menu(c, r, s) {
+  const p = el("div", "cfds-card-box");
+  const tcVal = CFDS_TIME_CONSTANTS[cfdsState.timeConstantIdx] || "OFF";
+
+  let rowsHtml = CFDS_SLIDE1_LRUS.map((row, rIdx) => `
+    <div class="cfds-slide1-row row-${rIdx + 1}">
+      ${row.map((item, cIdx) => {
+        if (item.isManual) {
+          return `
+            <button type="button" class="cfds-lru-btn manual" id="btn-cfds-manual-entry">
+              <span class="cfds-btn-title">MANUAL ENTRY</span>
+              <span class="cfds-btn-sub">CUSTOM CODE</span>
+            </button>
+          `;
+        }
+        const isSel = cfdsState.selectedLru && cfdsState.selectedLru.code === item.code && cfdsState.selectedLru.name === item.name;
+        return `
+          <button type="button" class="cfds-lru-btn ${isSel ? 'active' : ''}" data-row="${rIdx}" data-col="${cIdx}">
+            <span class="cfds-btn-title">${escAttr(item.name)}</span>
+            <span class="cfds-btn-code mono">[${escAttr(item.code)}]</span>
+          </button>
+        `;
+      }).join("")}
     </div>
-    <div class="cfds-lru-grid" id="cfds-lru-grid"></div>
+  `).join("");
+
+  p.innerHTML = `
+    <div class="cfds-header-title">
+      <h2>CFDS MENU</h2>
+      <p class="muted">SELECT LRU TO INTERROGATE</p>
+    </div>
+
+    <div class="cfds-lru-matrix">
+      ${rowsHtml}
+    </div>
+
+    <div class="cfds-slide1-footer">
+      <button type="button" class="btn btn-sm btn-ghost" id="cfds-slide1-back">&lt; Mode Select</button>
+      <button type="button" class="cfds-time-const-btn" id="cfds-slide1-tc-btn">
+        <span class="tc-title">TIME CONSTANT: <strong>${tcVal}${tcVal !== 'OFF' ? ' s' : ''}</strong></span>
+        <span class="tc-sub">VOR ILS ADF FILTER</span>
+      </button>
+    </div>
   `;
   c.appendChild(p);
 
-  const grid = p.querySelector("#cfds-lru-grid");
-  const filterInput = p.querySelector("#cfds-lru-filter");
-  const btnAddLru = p.querySelector("#btn-cfds-add-lru");
-
-  btnAddLru.addEventListener("click", () => {
-    openAddCfdsLruModal(r, s);
+  // LRU selection handlers
+  p.querySelectorAll(".cfds-lru-btn[data-row]").forEach(btn => {
+    btn.onclick = async () => {
+      const rIdx = parseInt(btn.getAttribute("data-row"), 10);
+      const cIdx = parseInt(btn.getAttribute("data-col"), 10);
+      const lru = CFDS_SLIDE1_LRUS[rIdx][cIdx];
+      cfdsState.selectedLru = lru;
+      cfdsState.currentSlide = "desired_mode";
+      try {
+        await api("/api/arinc/cfds/select-lru", {
+          method: "POST",
+          body: JSON.stringify({ code: lru.code, name: lru.name, short: lru.short }),
+        });
+      } catch (e) {}
+      renderCfdsHub(r, s);
+    };
   });
 
-  function updateLruGrid() {
-    const q = (filterInput.value || "").trim().toLowerCase();
-    const filtered = CFDS_LRU_TABLE.filter(
-      (item) => item.code.toLowerCase().includes(q) || item.name.toLowerCase().includes(q) || (item.description && item.description.toLowerCase().includes(q))
-    );
-
-    if (!filtered.length) {
-      grid.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:32px;color:#94a3b8">No LRUs matching "${escAttr(q)}"</div>`;
-      return;
-    }
-
-    grid.innerHTML = filtered.map((lru) => {
-      const isSelected = cfdsState.selectedLru && cfdsState.selectedLru.code === lru.code && cfdsState.selectedLru.name === lru.name;
-      return `
-        <div class="cfds-lru-card ${isSelected ? 'selected' : ''}" data-lru-code="${escAttr(lru.code)}" data-lru-name="${escAttr(lru.name)}">
-          <div class="cfds-lru-card-header">
-            <span class="cfds-lru-code-pill mono">EQ 0x${escAttr(lru.code)}</span>
-            ${lru.isCustom ? '<span style="font-size:10px;color:#0d9488;background:#ccfbf1;padding:1px 6px;border-radius:3px;font-weight:700">CUSTOM</span>' : ''}
-          </div>
-          <div class="cfds-lru-card-title">${escAttr(lru.name)}</div>
-          <div class="cfds-lru-card-desc">${escAttr(lru.description || '')}</div>
-          <div class="cfds-lru-card-footer">
-            <button type="button" class="btn btn-sm ${isSelected ? 'primary' : 'btn-ghost'}" data-lru-act="select">
-              ${isSelected ? 'Selected' : 'Select'}
-            </button>
-          </div>
-        </div>
-      `;
-    }).join("");
-
-    grid.querySelectorAll(".cfds-lru-card").forEach((card) => {
-      card.addEventListener("click", () => {
-        const code = card.getAttribute("data-lru-code");
-        const name = card.getAttribute("data-lru-name");
-        const found = CFDS_LRU_TABLE.find((item) => item.code === code && item.name === name) || CFDS_LRU_TABLE.find((item) => item.code === code);
-        if (found) {
-          cfdsState.selectedLru = found;
-          cfdsState.currentView = "LRU_CONSOLE";
-          cfdsState.lruSubScreen = "main";
-          cfdsState.deviceConnected = false; // Disconnected by default
-          api("/api/cfds/lru", {
-            method: "POST",
-            body: JSON.stringify({ code: found.code, name: found.name }),
-          }).catch(() => {});
-          renderCfdsHub(r, s);
-        }
-      });
-    });
+  // Manual Entry Modal
+  const btnManual = p.querySelector("#btn-cfds-manual-entry");
+  if (btnManual) {
+    btnManual.onclick = () => {
+      openCfdsManualEntryModal(r, s);
+    };
   }
 
-  filterInput.addEventListener("input", () => {
-    cfdsState.searchFilter = filterInput.value;
-    updateLruGrid();
-  });
+  // Back button
+  p.querySelector("#cfds-slide1-back").onclick = () => {
+    pushScreen("mode_select");
+  };
 
-  updateLruGrid();
-}
-
-function openAddCfdsLruModal(r, s) {
-  const existingModal = document.getElementById("cfds-modal-container");
-  if (existingModal) existingModal.remove();
-
-  const modal = el("div", "cfds-modal-overlay");
-  modal.id = "cfds-modal-container";
-  modal.innerHTML = `
-    <div class="cfds-modal-card">
-      <div class="cfds-modal-header">
-        <h3 style="margin:0;font-size:1.15rem;font-weight:700">Add New CFDS LRU</h3>
-        <button type="button" class="btn-close" id="btn-modal-close" style="background:none;border:none;font-size:20px;cursor:pointer;color:#64748b">&times;</button>
-      </div>
-      <div class="cfds-modal-body" style="margin-top:14px">
-        <div style="margin-bottom:12px">
-          <label style="display:block;font-size:12px;font-weight:700;margin-bottom:4px;color:#334155">LRU Name (e.g. ADIRU, FWC, FMGC)</label>
-          <input type="text" id="modal-lru-name" class="category-select" style="width:100%" placeholder="e.g. ADIRU" required />
-        </div>
-        <div style="margin-bottom:12px">
-          <label style="display:block;font-size:12px;font-weight:700;margin-bottom:4px;color:#334155">Equipment Code (Hex, e.g. 738, 020, 009)</label>
-          <input type="text" id="modal-lru-code" class="category-select" style="width:100%" placeholder="e.g. 738" required />
-        </div>
-        <div style="margin-bottom:16px">
-          <label style="display:block;font-size:12px;font-weight:700;margin-bottom:4px;color:#334155">LRU Description</label>
-          <input type="text" id="modal-lru-desc" class="category-select" style="width:100%" placeholder="e.g. Air Data Inertial Reference Unit" required />
-        </div>
-      </div>
-      <div class="cfds-modal-footer" style="display:flex;justify-content:flex-end;gap:10px">
-        <button type="button" class="btn btn-ghost" id="btn-modal-cancel">Cancel</button>
-        <button type="button" class="btn primary" id="btn-modal-save">Add LRU</button>
-      </div>
-    </div>
-  `;
-  document.body.appendChild(modal);
-
-  const close = () => modal.remove();
-  modal.querySelector("#btn-modal-close").onclick = close;
-  modal.querySelector("#btn-modal-cancel").onclick = close;
-  modal.addEventListener("click", (e) => {
-    if (e.target === modal) close();
-  });
-
-  modal.querySelector("#btn-modal-save").onclick = () => {
-    const name = modal.querySelector("#modal-lru-name").value.trim();
-    const code = modal.querySelector("#modal-lru-code").value.trim().replace(/^0x/i, "");
-    const desc = modal.querySelector("#modal-lru-desc").value.trim();
-    if (!name || !code) {
-      alert("Please enter LRU Name and Equipment Code.");
-      return;
-    }
-    const newLru = {
-      code: code.toUpperCase(),
-      name: name.toUpperCase(),
-      description: desc || `${name.toUpperCase()} Avionics Equipment`,
-      isCustom: true
-    };
-    CFDS_LRU_TABLE.push(newLru);
+  // Time Constant Button
+  p.querySelector("#cfds-slide1-tc-btn").onclick = async () => {
+    cfdsState.timeConstantIdx = (cfdsState.timeConstantIdx + 1) % CFDS_TIME_CONSTANTS.length;
+    const valStr = CFDS_TIME_CONSTANTS[cfdsState.timeConstantIdx];
+    const sec = valStr === "OFF" ? 0.0 : parseFloat(valStr);
     try {
-      const raw = localStorage.getItem("cfds_custom_lrus");
-      const list = raw ? JSON.parse(raw) : [];
-      list.push(newLru);
-      localStorage.setItem("cfds_custom_lrus", JSON.stringify(list));
+      await api("/api/arinc/time-constant", {
+        method: "POST",
+        body: JSON.stringify({ seconds: sec }),
+      });
     } catch (e) {}
-    close();
-    cfdsState.selectedLru = newLru;
     renderCfdsHub(r, s);
   };
 }
 
-// 1.B CFDS LRU INTERACTIVE CONSOLE (Dynapro 1780A INFOTOUCH CRT Display)
-// Real Device Mode (Automatic Physical Detection) & Simulation Mode (Explicit Demo/Mock)
-function renderCfdsLruConsole(c, r, s) {
-  const lru = cfdsState.selectedLru || CFDS_LRU_TABLE[2]; // Default DME
-  const lruKey = (lru.code || "").toUpperCase();
-  const lruMenuConfig = CFDS_LRU_MENUS[lruKey] || CFDS_LRU_MENUS[lru.name.toUpperCase()] || getGenericLruMenu(lru);
-  const currentSub = cfdsState.lruSubScreen || "main";
-  const activeScreen = (lruMenuConfig.screens && lruMenuConfig.screens[currentSub]) || lruMenuConfig.screens["main"];
+function openCfdsManualEntryModal(r, s) {
+  const existing = document.getElementById("cfds-manual-modal");
+  if (existing) existing.remove();
 
-  const isSimMode = !!cfdsState.simulationMode;
-  // In Real Device Mode: strictly based on real hardware response from backend (no fake connect).
-  // In Simulation Mode: based on mock simulator toggle.
-  const isConnected = isSimMode ? !!cfdsState.simDeviceConnected : !!cfdsState.realDeviceConnected;
-
-  const p = el("div", "panel cfds-console-panel");
-  p.innerHTML = `
-    <!-- Top Console Toolbar -->
-    <div class="panel-head" style="margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
-      <div>
-        <div style="display:flex;align-items:center;gap:10px">
-          <h2 style="font-size:1.25rem;font-weight:700;margin:0">${escAttr(lru.name)} CFDS CONSOLE</h2>
-          <span class="cfds-lru-code-pill mono">EQ 0x${escAttr(lru.code)}</span>
-          ${lru.isCustom ? '<span style="font-size:10px;color:#0d9488;background:#ccfbf1;padding:1px 6px;border-radius:3px;font-weight:700">CUSTOM</span>' : ''}
-        </div>
-        <p class="muted" style="margin:3px 0 0 0;font-size:13px">${escAttr(lru.description || '')}</p>
+  const m = el("div", "cfds-modal-overlay");
+  m.id = "cfds-manual-modal";
+  m.innerHTML = `
+    <div class="cfds-modal-card">
+      <div class="cfds-modal-header">
+        <h3 style="margin:0;font-size:1.15rem;font-weight:700">CFDS MANUAL EQUIPMENT ENTRY</h3>
+        <button type="button" class="btn-close" id="btn-close-man" style="background:none;border:none;font-size:20px;cursor:pointer;color:#64748b">&times;</button>
       </div>
-
-      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-        <!-- Mode Switcher: Real Device Mode vs Simulation Mode -->
-        <div class="cfds-mode-switcher" title="Switch between Real Hardware Detection and Software Simulation">
-          <button type="button" class="cfds-mode-btn ${!isSimMode ? 'active' : ''}" id="btn-mode-real">
-            Real Device Mode
-          </button>
-          <button type="button" class="cfds-mode-btn ${isSimMode ? 'active' : ''}" id="btn-mode-sim">
-            Simulation Mode
-          </button>
+      <div class="cfds-modal-body" style="margin-top:14px">
+        <div style="margin-bottom:12px">
+          <label style="display:block;font-size:12px;font-weight:700;margin-bottom:4px">Equipment Code (3-Digit Hex/Octal, e.g. 009, 012, 050)</label>
+          <input type="text" id="manual-eq-code" class="category-select" style="width:100%" placeholder="009" maxlength="3" autofocus />
         </div>
-
-        <!-- Connection Status Pill -->
-        <div class="cfds-conn-status ${!isConnected ? 'is-disconnected' : (isSimMode ? 'is-sim-connected' : 'is-connected')}">
-          <span class="cfds-conn-dot"></span>
-          <span>${!isConnected ? 'DISCONNECTED' : (isSimMode ? 'CONNECTED (SIMULATION)' : 'CONNECTED (REAL DEVICE)')}</span>
+        <div style="margin-bottom:16px">
+          <label style="display:block;font-size:12px;font-weight:700;margin-bottom:4px">Short Name / Function (e.g. DME, VOR, ADIRU)</label>
+          <input type="text" id="manual-eq-name" class="category-select" style="width:100%" placeholder="DME" maxlength="8" />
         </div>
-
-        <!-- Action Button depending on Mode -->
-        ${!isSimMode ? `
-          <button type="button" class="btn btn-sm btn-ghost" id="btn-detect-real-device" title="Interrogate and detect physical DME on ARINC 429 bus">
-            Detect Device
-          </button>
-        ` : `
-          <button type="button" class="btn btn-sm ${cfdsState.simDeviceConnected ? 'btn-ghost' : 'primary'}" id="btn-sim-toggle-conn">
-            ${cfdsState.simDeviceConnected ? 'Simulate Disconnect' : 'Simulate Connect'}
-          </button>
-        `}
-
-        <!-- Submode Navigation -->
-        <button type="button" class="btn btn-sm btn-ghost" id="btn-cfds-modes-menu" title="Open CFDS Submodes (Normal, Discrete, TX, Channels)">
-          CFDS Submodes
-        </button>
-
-        <!-- Back to LRUs -->
-        <button type="button" class="btn btn-sm btn-ghost" id="btn-cfds-back-lrus">
-          &lt; Back to LRUs
-        </button>
       </div>
-    </div>
-
-    <!-- Explicit Simulation Mode Banner -->
-    ${isSimMode ? `
-      <div class="cfds-sim-banner">
-        <div style="display:flex;align-items:center;gap:10px">
-          <span class="cfds-sim-badge">SIMULATION MODE ACTIVE</span>
-          <span>Data and responses are generated by software simulator for demonstration/test. No physical device communication.</span>
-        </div>
-        <span class="cfds-sim-subtag">DEMO / MOCK</span>
-      </div>
-    ` : ''}
-
-    <!-- Dynapro 1780A INFOTOUCH CRT Chassis -->
-    <div class="dynapro-chassis">
-      <div class="dynapro-bezel-header">
-        <span class="dynapro-badge">DYNAPRO 1780A INFOTOUCH DISPLAY ${isSimMode ? '[SIMULATION]' : '[REAL HARDWARE]'}</span>
-        <span class="dynapro-target mono">${escAttr(lru.name)} BITE INTERFACE (EQ 0x${escAttr(lru.code)})</span>
-      </div>
-
-      <!-- CRT Display Screen: SOLID BLACK POLOS WHEN DISCONNECTED -->
-      <div id="cfds-lru-crt-screen" class="cfds-crt-screen ${isConnected ? 'is-connected' : 'is-disconnected'}"></div>
-
-      <!-- Tactile Hardware Buttons Below CRT Screen -->
-      <div class="dynapro-tactile-bar">
-        <div style="display:flex;gap:8px">
-          <button type="button" class="dynapro-hw-btn" id="hw-btn-prev-pg" ${!isConnected ? 'disabled style="opacity:0.5;cursor:not-allowed"' : ''}>&lt; PRIOR PG</button>
-          <button type="button" class="dynapro-hw-btn" id="hw-btn-nxt-pg" ${!isConnected ? 'disabled style="opacity:0.5;cursor:not-allowed"' : ''}>NEXT PG &gt;</button>
-        </div>
-        <div style="display:flex;gap:8px">
-          <button type="button" class="dynapro-hw-btn" id="hw-btn-self-test" ${!isConnected ? 'disabled style="opacity:0.5;cursor:not-allowed"' : ''}>SELF TEST</button>
-          <button type="button" class="dynapro-hw-btn clr" id="hw-btn-clr" ${!isConnected ? 'disabled style="opacity:0.5;cursor:not-allowed"' : ''}>CLR</button>
-        </div>
+      <div class="cfds-modal-footer" style="display:flex;justify-content:flex-end;gap:10px">
+        <button type="button" class="btn btn-ghost" id="btn-cancel-man">Cancel</button>
+        <button type="button" class="btn primary" id="btn-submit-man">Interrogate LRU</button>
       </div>
     </div>
   `;
-  c.appendChild(p);
+  document.body.appendChild(m);
 
-  const crtScreen = p.querySelector("#cfds-lru-crt-screen");
+  const close = () => m.remove();
+  m.querySelector("#btn-close-man").onclick = close;
+  m.querySelector("#btn-cancel-man").onclick = close;
 
-  // A. DISCONNECTED: SOLID PURE BLACK BOX WITHOUT ANY TEXT, LABELS, BUTTONS
-  if (!isConnected) {
-    crtScreen.innerHTML = ""; // 100% BLANK, SOLID BLACK POLOS
-  } else {
-    // B. CONNECTED: GREEN PHOSPHOR CRT SCREEN WITH INTERACTIVE MENU/MODE
-    renderCrtGreenScreen(crtScreen, lru, activeScreen, currentSub, r, s, isSimMode);
-  }
-
-  // Mode Switcher Listeners
-  p.querySelector("#btn-mode-real").addEventListener("click", async () => {
-    if (cfdsState.simulationMode) {
-      cfdsState.simulationMode = false;
-      try {
-        await api("/api/arinc/simulation", { method: "POST", body: JSON.stringify({ enabled: false }) });
-        const res = await api(`/api/arinc/device/detect?lru=${encodeURIComponent(lru.code)}&bus=A`);
-        cfdsState.realDeviceConnected = !!res.connected;
-        cfdsState.deviceStatusDetail = res.detail || "";
-      } catch (e) {
-        cfdsState.realDeviceConnected = false;
-      }
-      renderCfdsHub(r, s);
-    }
-  });
-
-  p.querySelector("#btn-mode-sim").addEventListener("click", async () => {
-    if (!cfdsState.simulationMode) {
-      cfdsState.simulationMode = true;
-      cfdsState.simDeviceConnected = true; // Auto-connect mock simulator
-      try {
-        await api("/api/arinc/simulation", { method: "POST", body: JSON.stringify({ enabled: true }) });
-      } catch (e) {}
-      renderCfdsHub(r, s);
-    }
-  });
-
-  // Real Device Mode: Detect button
-  const btnDetect = p.querySelector("#btn-detect-real-device");
-  if (btnDetect) {
-    btnDetect.addEventListener("click", async () => {
-      try {
-        btnDetect.textContent = "Detecting...";
-        btnDetect.disabled = true;
-        const res = await api(`/api/arinc/device/detect?lru=${encodeURIComponent(lru.code)}&bus=A`);
-        cfdsState.realDeviceConnected = !!res.connected;
-        cfdsState.deviceStatusDetail = res.detail || "";
-        if (!res.connected) {
-          alert(`[STATUS: DISCONNECTED]\n${res.detail || "Perangkat fisik tidak merespons pada bus ARINC 429 RCVR_A."}\n\nPastikan kabel ATE CONNECTOR, catu daya 28V, dan transceiver DME terhubung dengan benar.`);
-        }
-        renderCfdsHub(r, s);
-      } catch (err) {
-        alert("Gagal melakukan deteksi perangkat: " + err.message);
-        renderCfdsHub(r, s);
-      }
-    });
-  }
-
-  // Simulation Mode: Toggle connect/disconnect button
-  const btnSimToggle = p.querySelector("#btn-sim-toggle-conn");
-  if (btnSimToggle) {
-    btnSimToggle.addEventListener("click", () => {
-      cfdsState.simDeviceConnected = !cfdsState.simDeviceConnected;
-      renderCfdsHub(r, s);
-    });
-  }
-
-  // Back to LRUs
-  p.querySelector("#btn-cfds-back-lrus").addEventListener("click", () => {
-    cfdsState.currentView = "LRU_SELECTION";
-    renderCfdsHub(r, s);
-  });
-
-  // CFDS Submodes (Normal, Discrete, TX, Channels)
-  p.querySelector("#btn-cfds-modes-menu").addEventListener("click", () => {
-    cfdsState.currentView = "MODE_SELECT";
-    renderCfdsHub(r, s);
-  });
-
-  // Hardware tactile buttons
-  p.querySelector("#hw-btn-clr").addEventListener("click", () => {
-    if (isConnected) {
-      cfdsState.lruSubScreen = "main";
-      renderCfdsHub(r, s);
-    }
-  });
-
-  p.querySelector("#hw-btn-self-test").addEventListener("click", () => {
-    if (isConnected) {
-      cfdsState.lruSubScreen = "test";
-      renderCfdsHub(r, s);
-    }
-  });
-
-  p.querySelector("#hw-btn-prev-pg").addEventListener("click", () => {
-    if (isConnected && cfdsState.lruSubScreen !== "main") {
-      cfdsState.lruSubScreen = "main";
-      renderCfdsHub(r, s);
-    }
-  });
-
-  p.querySelector("#hw-btn-nxt-pg").addEventListener("click", () => {
-    if (isConnected) {
-      cfdsState.nxtReverseVideo = !cfdsState.nxtReverseVideo;
-      renderCfdsHub(r, s);
-    }
-  });
-}
-
-function renderCrtGreenScreen(container, lru, activeScreen, currentSub, r, s, isSimMode) {
-  const title = activeScreen.title || `${lru.name}-0`;
-  const subtitle = activeScreen.subtitle || "";
-
-  let linesHtml = "";
-  if (activeScreen.lines && activeScreen.lines.length) {
-    linesHtml = `
-      <div class="dynapro-screen-body-lines">
-        ${activeScreen.lines.map(line => {
-          let txt = typeof line === "string" ? line : (line.text || "");
-          txt = txt.replace("{AGC_VAL}", cfdsState.dmeAgcVal || "00");
-          return `<div class="dynapro-line ${line.type || 'info'}">${escAttr(txt)}</div>`;
-        }).join("")}
-      </div>
-    `;
-  }
-
-  let itemsHtml = "";
-  if (activeScreen.items && activeScreen.items.length) {
-    itemsHtml = `
-      <div class="dynapro-menu-grid">
-        ${activeScreen.items.map(item => {
-          let labelText = (item.label || "").replace("{AGC_VAL}", cfdsState.dmeAgcVal || "00");
-          if (item.blank) {
-            return `
-              <div class="dynapro-menu-row">
-                <span class="dynapro-menu-item-text" style="display:inline-flex;align-items:center;gap:12px;padding:4px 8px;">
-                  <span class="dynapro-key-num">${escAttr(item.key)}</span>
-                  <span class="dynapro-key-label" style="visibility:hidden">-</span>
-                </span>
-                <span class="dynapro-key-right">${escAttr(item.letter || '')}</span>
-              </div>
-            `;
-          }
-          if (item.isText) {
-            return `
-              <div class="dynapro-menu-row">
-                <span class="dynapro-menu-item-text" style="display:inline-flex;align-items:center;gap:12px;padding:4px 8px;color:#22c55e">
-                  <span class="dynapro-key-num">${escAttr(item.key)}</span>
-                  <span class="dynapro-key-label" style="font-weight:700;margin-left:8px;">${escAttr(labelText)}</span>
-                </span>
-                <span class="dynapro-key-right">${escAttr(item.letter || '')}</span>
-              </div>
-            `;
-          }
-          return `
-            <div class="dynapro-menu-row">
-              <button type="button" class="dynapro-menu-item-btn" data-act="${escAttr(item.action)}">
-                <span class="dynapro-key-num">${escAttr(item.key)}</span>
-                <span class="dynapro-key-label">${escAttr(labelText)}</span>
-              </button>
-              <span class="dynapro-key-right">${escAttr(item.letter || '')}</span>
-            </div>
-          `;
-        }).join("")}
-      </div>
-    `;
-  }
-
-  container.innerHTML = `
-    <div class="dynapro-inner-box">
-      <div class="dynapro-screen-header">
-        <span class="dynapro-screen-title">${escAttr(title)}</span>
-        <div style="display:flex;align-items:center;gap:6px">
-          ${isSimMode ? '<span class="dynapro-sim-crt-tag">&lt;SIMULATION&gt;</span>' : ''}
-          <span class="dynapro-screen-nxt ${cfdsState.nxtReverseVideo ? 'rev' : ''}" id="crt-nxt-btn" style="cursor:pointer;" title="Toggle Next Page / Menu">NXT</span>
-        </div>
-      </div>
-      ${subtitle ? `<div class="dynapro-screen-sub">${subtitle.split("\n").map(str => escAttr(str)).join("<br>")}</div>` : ''}
-      ${linesHtml}
-      ${itemsHtml}
-    </div>
-  `;
-
-  // Attach NXT click handler
-  const nxtBtn = container.querySelector("#crt-nxt-btn");
-  if (nxtBtn) {
-    nxtBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      cfdsState.nxtReverseVideo = !cfdsState.nxtReverseVideo;
-      if (cfdsState.selectedLru && (cfdsState.selectedLru.code === "709" || cfdsState.selectedLru.name === "DME")) {
-        if (cfdsState.lruSubScreen === "main") {
-          cfdsState.lruSubScreen = "menu_2";
-        } else if (cfdsState.lruSubScreen === "menu_2") {
-          cfdsState.lruSubScreen = "main";
-        }
-      }
-      renderCfdsHub(r, s);
-    });
-  }
-
-  // Attach interactive click handlers for menu items
-  container.querySelectorAll("button[data-act]").forEach(btn => {
-    btn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      const act = btn.getAttribute("data-act");
-      if (!act) return;
-
-      if (act.startsWith("screen:")) {
-        const targetScreen = act.replace("screen:", "");
-        cfdsState.lruSubScreen = targetScreen;
-        renderCfdsHub(r, s);
-      } else if (act === "exit") {
-        cfdsState.currentView = "LRU_SELECTION";
-        renderCfdsHub(r, s);
-      } else if (act.startsWith("set_agc:")) {
-        cfdsState.dmeAgcVal = act.replace("set_agc:", "");
-        renderCfdsHub(r, s);
-      } else if (act.startsWith("toggle:")) {
-        const prop = act.replace("toggle:", "");
-        if (prop === "xmit_rate") {
-          cfdsState.xmitRateOn = !cfdsState.xmitRateOn;
-          alert("Fixed Transmit Rate: " + (cfdsState.xmitRateOn ? "ON (40 PPS)" : "OFF"));
-          renderCfdsHub(r, s);
-        }
-      }
-    });
-  });
-}
-
-// 2. CFDS SUBMODE SELECTION
-function renderCfdsSubmodeSelect(c, r, s) {
-  const p = el("div", "panel");
-  p.innerHTML = `
-    <div class="panel-head" style="margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
-      <div>
-        <h2 style="font-size:1.15rem;font-weight:700;margin:0 0 4px 0">CFDS OPERATION MODE SELECT</h2>
-        <p class="muted" style="margin:0">Interrogating: <strong style="color:var(--teal-primary, #0d9488)">${escAttr(cfdsState.selectedLru.name)}</strong> (Eq Code: 0x${escAttr(cfdsState.selectedLru.code)})</p>
-      </div>
-      <div style="display:flex;gap:8px">
-        <button type="button" class="btn btn-sm primary" id="btn-back-to-console">Return to LRU Console</button>
-        <button type="button" class="btn btn-sm btn-ghost" id="btn-back-to-lrus">LRU Selection</button>
-      </div>
-    </div>
-    <div class="mode-grid">
-      <div class="mode-card" data-submode="LRU_CONSOLE">
-        <div class="tag">BITE Console</div>
-        <h2>LRU Interactive Console</h2>
-        <p>Dynapro 1780A Infotouch CRT Console with connected/disconnected state and LRU BITE menus.</p>
-      </div>
-      <div class="mode-card" data-submode="NORMAL_MODE_ABD0048">
-        <div class="tag">ABD0048 / 0018</div>
-        <h2>Normal Mode</h2>
-        <p>Label 356 burst simulation (Figure 58). Generates 14-byte block packets with STX, decoded ASCII lines, and parity.</p>
-      </div>
-      <div class="mode-card" data-submode="MENU_MODE_ABD0018">
-        <div class="tag">ABD0018</div>
-        <h2>Menu Mode (MCDU)</h2>
-        <p>Emulates Aeroflex T1200B Figures 59-61 MCDU navigation with side keys (1..6, A..F, PAGE) and timeout monitoring.</p>
-      </div>
-      <div class="mode-card" data-submode="DISCRETE_MODE_ABD0048">
-        <div class="tag">ABD0048</div>
-        <h2>Discrete Mode</h2>
-        <p>ABD0048 pin status matrix, ground/open discretes, program pins, and active fault detection.</p>
-      </div>
-      <div class="mode-card" data-submode="INTERACTIVE_MODE_ABD0048">
-        <div class="tag">ABD0048</div>
-        <h2>Interactive Mode</h2>
-        <p>Interactive BITE test session with Word 227 Command builder and real-time handshake monitoring.</p>
-      </div>
-      <div class="mode-card" data-submode="EDIT_TX">
-        <div class="tag">Configuration</div>
-        <h2>Edit CFDS TX Data</h2>
-        <p>Configure and broadcast custom 32-bit ARINC 429 maintenance words and parameters.</p>
-      </div>
-      <div class="mode-card" data-submode="CONFIGURE_CHANNELS">
-        <div class="tag">Channels</div>
-        <h2>Configure Channels</h2>
-        <p>Setup ARINC 429 Channel A-D speeds (12.5k / 100k), loopback, and parity.</p>
-      </div>
-    </div>
-  `;
-  c.appendChild(p);
-
-  p.querySelector("#btn-back-to-console").addEventListener("click", () => {
-    cfdsState.currentView = "LRU_CONSOLE";
-    renderCfdsHub(r, s);
-  });
-  p.querySelector("#btn-back-to-lrus").addEventListener("click", () => {
-    cfdsState.currentView = "LRU_SELECTION";
-    renderCfdsHub(r, s);
-  });
-
-  p.querySelectorAll(".mode-card[data-submode]").forEach((card) => {
-    card.addEventListener("click", () => {
-      cfdsState.currentView = card.getAttribute("data-submode");
-      renderCfdsHub(r, s);
-    });
-  });
-}
-
-// 3. CFDS NORMAL MODE (Figure 58 Burst)
-function renderCfdsNormalModeView(c, r, s) {
-  const p = el("div", "panel");
-  const is48 = cfdsState.currentView === "NORMAL_MODE_ABD0048";
-  p.innerHTML = `
-    <div class="panel-head">
-      <div>
-        <h2 style="font-size:1.15rem;font-weight:700">CFDS NORMAL MODE — ${is48 ? 'ABD0048' : 'ABD0018'}</h2>
-        <p class="muted">Figure 58 Burst Reception & Decoding · LRU: ${escAttr(cfdsState.selectedLru.name)} (0x${escAttr(cfdsState.selectedLru.code)})</p>
-      </div>
-      <div style="display:flex;gap:8px">
-        <select id="cfds-norm-proto" class="category-select">
-          <option value="NORMAL_MODE_ABD0048" ${is48 ? 'selected' : ''}>ABD0048 (Figure 58 Burst)</option>
-          <option value="NORMAL_MODE_ABD0018" ${!is48 ? 'selected' : ''}>ABD0018 (350-Word Standard)</option>
-        </select>
-        <button type="button" class="btn btn-sm btn-ghost" id="btn-norm-back">Back to Modes</button>
-      </div>
-    </div>
-
-    <!-- Figure 58 Burst Block Diagram -->
-    <div class="cfds-fig58-box">
-      <div class="channel-col-title">FIGURE 58 — ARINC 429 NORMAL MODE BURST PROTOCOL STRUCTURE</div>
-      <div class="cfds-burst-flow">
-        <div class="cfds-burst-item stx">STX (0x02)<br><small>Start of Text</small></div>
-        <div style="color:#94a3b8">→</div>
-        <div class="cfds-burst-item">EQ CODE (0x${escAttr(cfdsState.selectedLru.code)})<br><small>Bits 13–24</small></div>
-        <div style="color:#94a3b8">→</div>
-        <div class="cfds-burst-item">BLK LENGTH (0x0E)<br><small>14 Bytes / Burst</small></div>
-        <div style="color:#94a3b8">→</div>
-        <div class="cfds-burst-item" style="border-color:#0d9488">DATA WORDS (Label 356)<br><small>ISO #5 ASCII Payload</small></div>
-        <div style="color:#94a3b8">→</div>
-        <div class="cfds-burst-item etx">ETX (0x03)<br><small>End of Text</small></div>
-        <div style="color:#94a3b8">→</div>
-        <div class="cfds-burst-item">CHECKSUM<br><small>ARINC Parity (Bit 32)</small></div>
-      </div>
-    </div>
-
-    <!-- CRT Terminal Monitor -->
-    <div style="margin:12px 0">
-      <div class="cdu-crt" style="min-height:220px" id="cfds-burst-terminal">
-        <div>[CFDS NORMAL BURST MONITOR READY — WAITING FOR LABEL 356 PACKETS]
-AWAITING INTERROGATION BURST FROM ${escAttr(cfdsState.selectedLru.name)}...</div>
-        <div class="cdu-crt-status">
-          <span>STATUS: STANDBY</span>
-          <span>PROTOCOL: ${is48 ? 'ABD0048 FIG 58' : 'ABD0018'}</span>
-        </div>
-      </div>
-    </div>
-
-    <div style="display:flex;gap:8px;align-items:center;margin-bottom:14px">
-      <button type="button" class="btn btn-sm primary" id="btn-run-burst">Simulate Burst (Figure 58)</button>
-      <button type="button" class="btn btn-sm btn-ghost" id="btn-clear-burst-term">Clear Terminal</button>
-      <span id="cfds-burst-spinner" class="muted" style="font-size:12px" hidden>Simulating...</span>
-    </div>
-
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th class="mono" style="width:70px">SLOT</th>
-            <th class="mono" style="width:90px">LABEL</th>
-            <th class="mono" style="width:130px">DATA (HEX)</th>
-            <th style="width:180px">DECODED ASCII</th>
-            <th>DESCRIPTION</th>
-          </tr>
-        </thead>
-        <tbody id="cfds-norm-tbody">
-          <tr><td colspan="5" class="muted" style="text-align:center">No burst packets received. Click 'Simulate Burst' to execute test.</td></tr>
-        </tbody>
-      </table>
-    </div>
-  `;
-  c.appendChild(p);
-
-  p.querySelector("#cfds-norm-proto").addEventListener("change", (e) => {
-    cfdsState.currentView = e.target.value;
-    renderCfdsHub(r, s);
-  });
-
-  p.querySelector("#btn-norm-back").addEventListener("click", () => {
-    cfdsState.currentView = "MODE_SELECT";
-    renderCfdsHub(r, s);
-  });
-
-  const term = p.querySelector("#cfds-burst-terminal");
-  const tbody = p.querySelector("#cfds-norm-tbody");
-  const btnRun = p.querySelector("#btn-run-burst");
-
-  btnRun.addEventListener("click", async () => {
-    btnRun.disabled = true;
-    p.querySelector("#cfds-burst-spinner").hidden = false;
+  m.querySelector("#btn-submit-man").onclick = async () => {
+    const code = (m.querySelector("#manual-eq-code").value || "009").trim().toUpperCase();
+    const short = (m.querySelector("#manual-eq-name").value || code).trim().toUpperCase();
+    close();
+    const customLru = {
+      code: code.padStart(3, "0"),
+      short: short,
+      name: `LRU ${code}`,
+      desc: `Custom Avionics LRU (${code})`,
+      bus: "A",
+      speed: "12.5k",
+    };
+    cfdsState.selectedLru = customLru;
+    cfdsState.currentSlide = "desired_mode";
     try {
-      const res = await api("/api/cfds/normal/simulate", {
+      await api("/api/arinc/cfds/select-lru", {
         method: "POST",
-        body: JSON.stringify({ mode_type: is48 ? "ABD0048" : "ABD0018" }),
+        body: JSON.stringify({ code: customLru.code, name: customLru.name, short: customLru.short }),
       });
-      const words = (res.normal_rx && res.normal_rx.words) || [];
-      if (words.length) {
-        tbody.innerHTML = words.map((w) => `
-          <tr>
-            <td class="mono">${escAttr(w.slot)}</td>
-            <td class="mono" style="color:var(--teal-primary, #0d9488);font-weight:700">${escAttr(w.label)}</td>
-            <td class="mono"><code>${escAttr(w.dataHex || "")}</code></td>
-            <td class="mono" style="color:var(--ok, #10b981);font-weight:700">${escAttr(w.desc && w.desc.includes("'") ? w.desc.split("'")[1] : "")}</td>
-            <td>${escAttr(w.desc || "")}</td>
-          </tr>
-        `).join("");
-
-        term.innerHTML = `
-          <div>[BURST PACKET RECEIVED — ${words.length} WORDS]
-==================================================
-STX: 0x02 | LENGTH: 14 BYTES | PROTOCOL: ${is48 ? 'ABD0048' : 'ABD0018'}
-PAYLOAD ASCII STREAM:
-${words.filter(w => w.desc && w.desc.includes("'")).map(w => w.desc.split("'")[1]).join("")}
-==================================================
-CHECKSUM VERIFIED (ODD PARITY VALID)</div>
-          <div class="cdu-crt-status">
-            <span>STATUS: PACKET DECODED OK</span>
-            <span>WORDS: ${words.length}</span>
-          </div>
-        `;
-      }
-    } catch (err) {
-      alert("Burst simulation error: " + err.message);
-    } finally {
-      btnRun.disabled = false;
-      p.querySelector("#cfds-burst-spinner").hidden = true;
-    }
-  });
-
-  p.querySelector("#btn-clear-burst-term").addEventListener("click", () => {
-    term.innerHTML = `
-      <div>[TERMINAL CLEARED — READY]</div>
-      <div class="cdu-crt-status"><span>STATUS: READY</span><span>PROTOCOL: ${is48 ? 'ABD0048 FIG 58' : 'ABD0018'}</span></div>
-    `;
-    tbody.innerHTML = `<tr><td colspan="5" class="muted" style="text-align:center">Terminal cleared.</td></tr>`;
-  });
+    } catch (e) {}
+    renderCfdsHub(r, s);
+  };
 }
 
-// 4. CFDS MENU MODE (Aeroflex Figures 59-61 MCDU)
-function renderCfdsMenuModeView(c, r, s) {
-  const p = el("div", "panel");
+// --------------------------------------------------------------------
+// SLIDE 2: SELECT DESIRED MODE (Figure 48)
+// --------------------------------------------------------------------
+function renderCfdsSlide2DesiredMode(c, r, s) {
+  const p = el("div", "cfds-card-box");
+  const lru = cfdsState.selectedLru;
+
   p.innerHTML = `
-    <div class="panel-head">
-      <div>
-        <h2 style="font-size:1.15rem;font-weight:700">CFDS MENU MODE — AEROFLEX T1200B (ABD0018)</h2>
-        <p class="muted">Aeroflex Figures 59-61 (pp. 1-4-101 to 1-4-103) · MCDU Interactive Navigation</p>
-      </div>
-      <button type="button" class="btn btn-sm btn-ghost" id="btn-menu-back">Back to Modes</button>
+    <div class="cfds-header-title">
+      <h2>SELECT DESIRED MODE</h2>
+      <p class="muted">INTERROGATING ${escAttr(lru.name)} · ${escAttr(lru.desc || '')}</p>
     </div>
 
-    <!-- MCDU Visual Unit with Side Keys -->
-    <div class="cdu-bezel">
-      <div class="cdu-header">
-        <span>AEROFLEX T1200B MCDU DISPLAY UNIT (FIGURE 59)</span>
-        <span>TARGET: <strong style="color:#10b981">${escAttr(cfdsState.selectedLru.name)}</strong> (0x${escAttr(cfdsState.selectedLru.code)})</span>
-      </div>
+    <div class="cfds-desired-modes-grid">
+      <button type="button" class="cfds-mode-hero-btn" id="btn-go-edit-tx">
+        <span class="hero-title">EDIT CFDS TX DATA</span>
+        <span class="hero-sub">Date, Time, Flight ID, Aircraft Configuration Word</span>
+      </button>
 
-      <div class="cdu-grid">
-        <!-- Left Keys 1..6 -->
-        <div class="cdu-key-col">
-          ${[1, 2, 3, 4, 5, 6].map(k => `
-            <button type="button" class="cdu-key" data-mkey="${k}" title="Line Select Key <${k}">&lt; ${k}</button>
+      <button type="button" class="cfds-mode-hero-btn primary-hero" id="btn-go-op-mode">
+        <span class="hero-title">CFDS OPERATION MODE</span>
+        <span class="hero-sub">Normal ABD0018/0048, Menu MCDU, Interactive, Discrete</span>
+      </button>
+
+      <button type="button" class="cfds-mode-hero-btn" id="btn-go-channels">
+        <span class="hero-title">CONFIGURE CHANNELS A, B, C, D</span>
+        <span class="hero-sub">Bit Rate, XMTR, RCVR, Transmitter Enable, Display Mode</span>
+      </button>
+    </div>
+
+    <div class="cfds-eq-code-footer">
+      <span class="footer-label">LRU EQUIPMENT CODE :</span>
+      <span class="footer-code mono">${escAttr(lru.code)}</span>
+    </div>
+
+    <div class="cfds-slide-nav-bar">
+      <button type="button" class="btn btn-sm btn-ghost" id="cfds-slide2-back">&lt; CFDS Menu</button>
+    </div>
+  `;
+  c.appendChild(p);
+
+  p.querySelector("#btn-go-edit-tx").onclick = () => {
+    cfdsState.currentSlide = "edit_tx";
+    renderCfdsHub(r, s);
+  };
+  p.querySelector("#btn-go-op-mode").onclick = () => {
+    cfdsState.currentSlide = "op_mode_hub";
+    renderCfdsHub(r, s);
+  };
+  p.querySelector("#btn-go-channels").onclick = () => {
+    cfdsState.currentSlide = "channels";
+    renderCfdsHub(r, s);
+  };
+  p.querySelector("#cfds-slide2-back").onclick = () => {
+    cfdsState.currentSlide = "menu";
+    renderCfdsHub(r, s);
+  };
+}
+
+// --------------------------------------------------------------------
+// SLIDE 3: EDIT CFDS TX DATA (Figure 49)
+// --------------------------------------------------------------------
+function renderCfdsSlide3EditTx(c, r, s) {
+  const p = el("div", "cfds-card-box");
+  const tp = cfdsState.txParams;
+  const cfg = cfdsState.aircraftConfig;
+
+  const row1Keys = ["DATA_PRINTER", "DATA_LINK", "AIDS", "RMP3", "VHF3", "HF1", "HF2", "ADF2", "MLS1", "MLS2"];
+  const row2Keys = ["WBS1", "RADAR2", "TPIS", "AFT_CRG/HT", "FWD_CRG/HT", "CRG/SMOKE", "WBS2"];
+
+  p.innerHTML = `
+    <div class="cfds-header-title">
+      <h2>EDIT CFDS TX DATA</h2>
+      <p class="muted">ARINC 429 Maintenance Word Transmission to LRU (Figure 49)</p>
+    </div>
+
+    <!-- Date and Time Header Row -->
+    <div class="cfds-tx-datetime-bar">
+      <div class="dt-field">
+        <label>DATE:</label>
+        <input type="text" id="tx-input-date" class="category-select dt-input" value="${escAttr(tp.date)}" />
+      </div>
+      <div class="dt-field">
+        <label>TIME:</label>
+        <input type="text" id="tx-input-time" class="category-select dt-input" value="${escAttr(tp.time)}" />
+      </div>
+    </div>
+
+    <!-- Group 1: DATA TRANSMITTED TO LRU -->
+    <div class="cfds-section-card">
+      <div class="section-title">DATA TRANSMITTED TO LRU</div>
+      <div class="cfds-params-grid">
+        <div class="param-box">
+          <label>FLT_NUM:</label>
+          <input type="text" id="tx-flt-num" class="category-select" value="${escAttr(tp.flt_num)}" />
+        </div>
+        <div class="param-box">
+          <label>CITY_PAIRS:</label>
+          <input type="text" id="tx-city-pairs" class="category-select" value="${escAttr(tp.city_pairs)}" />
+        </div>
+        <div class="param-box">
+          <label>FLT PHASE:</label>
+          <input type="text" id="tx-flt-phase" class="category-select" value="${escAttr(tp.flt_phase)}" />
+        </div>
+        <div class="param-box">
+          <label>AIRCRAFT ID:</label>
+          <input type="text" id="tx-aircraft-id" class="category-select" value="${escAttr(tp.aircraft_id)}" />
+        </div>
+      </div>
+    </div>
+
+    <!-- Group 2: AIRCRAFT CONFIGURATION WORD (17 Toggles in 2 Rows) -->
+    <div class="cfds-section-card">
+      <div class="section-title">AIRCRAFT CONFIGURATION WORD (17 TOGGLE SWITCHES)</div>
+      <div class="cfds-toggles-container">
+        <div class="cfds-toggle-row">
+          ${row1Keys.map(k => `
+            <button type="button" class="cfds-cfg-toggle ${cfg[k] ? 'on' : 'off'}" data-cfg="${k}">
+              <span class="toggle-name">${k.replace('_', ' ')}</span>
+              <span class="toggle-state">${cfg[k] ? 'ON' : 'OFF'}</span>
+            </button>
           `).join("")}
         </div>
-
-        <!-- CRT Display Screen -->
-        <div class="cdu-crt" id="cfds-mcdu-crt">
-          <div class="cfds-mcdu-header">
-            <span>&lt; ${escAttr(cfdsState.selectedLru.name)} BITE MENU &gt;</span>
-            <span class="${cfdsState.nxtReverseVideo ? 'cfds-nxt-rev' : ''}">NXT</span>
-          </div>
-          <div style="flex:1" id="cfds-mcdu-lines">
-            <div>&lt; 1  SYSTEM STATUS / FAULTS</div>
-            <div>&lt; 2  CURRENT FLIGHT LEG REPORT</div>
-            <div>&lt; 3  PREVIOUS LEGS LOG (64 FLIGHTS)</div>
-            <div>&lt; 4  LRU IDENTIFICATION &amp; PART NO</div>
-            <div>&lt; 5  GROUND TEST INITIATION</div>
-            <div>&lt; 6  CLASS 3 INTERNAL FAULTS</div>
-            <div style="margin-top:14px;color:#94a3b8">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;RETURN &gt;</div>
-          </div>
-          <div class="cdu-crt-status">
-            <span id="cfds-mcdu-status-msg">MSG: ${cfdsState.menuStatusText}</span>
-            <span>PAGE ${cfdsState.menuPage}/2</span>
-          </div>
-        </div>
-
-        <!-- Right Keys A..F -->
-        <div class="cdu-key-col">
-          ${['A', 'B', 'C', 'D', 'E', 'F'].map(k => `
-            <button type="button" class="cdu-key" data-mkey="${k}" title="Line Select Key ${k}>">${k} &gt;</button>
+        <div class="cfds-toggle-row">
+          ${row2Keys.map(k => `
+            <button type="button" class="cfds-cfg-toggle ${cfg[k] ? 'on' : 'off'}" data-cfg="${k}">
+              <span class="toggle-name">${k.replace('_', ' ')}</span>
+              <span class="toggle-state">${cfg[k] ? 'ON' : 'OFF'}</span>
+            </button>
           `).join("")}
         </div>
       </div>
-
-      <!-- Bottom Control Keys -->
-      <div style="display:flex;justify-content:center;gap:12px;margin-top:16px">
-        <button type="button" class="cdu-key" style="padding:8px 16px" id="btn-mcdu-page">PAGE</button>
-        <button type="button" class="cdu-key" style="padding:8px 16px" id="btn-mcdu-prev">&lt; PREV</button>
-        <button type="button" class="cdu-key" style="padding:8px 16px" id="btn-mcdu-next">NEXT &gt;</button>
-        <button type="button" class="cdu-key" style="padding:8px 16px;background:#7f1d1d;border-color:#991b1b" id="btn-mcdu-clr">CLR</button>
-      </div>
     </div>
 
-    <!-- Test Controls for 3s / 30s Timeouts -->
-    <div style="display:flex;gap:10px;margin-top:12px;flex-wrap:wrap">
-      <button type="button" class="btn btn-sm btn-ghost" id="btn-test-3s">Trigger 3s Timeout (Fig 60)</button>
-      <button type="button" class="btn btn-sm btn-ghost" id="btn-test-30s">Trigger 30s Error (Fig 61)</button>
-      <button type="button" class="btn btn-sm btn-ghost" id="btn-reset-mcdu">Reset Menu Display</button>
+    <div class="cfds-slide-nav-bar" style="display:flex;justify-content:space-between">
+      <button type="button" class="btn btn-sm btn-ghost" id="cfds-slide3-back">&lt; Return to Desired Mode</button>
+      <button type="button" class="btn btn-sm primary" id="cfds-slide3-save">Save &amp; Broadcast TX Data</button>
     </div>
   `;
   c.appendChild(p);
 
-  p.querySelector("#btn-menu-back").addEventListener("click", () => {
-    cfdsState.currentView = "MODE_SELECT";
-    renderCfdsHub(r, s);
+  // Toggle handlers
+  p.querySelectorAll(".cfds-cfg-toggle").forEach(btn => {
+    btn.onclick = () => {
+      const k = btn.getAttribute("data-cfg");
+      cfdsState.aircraftConfig[k] = !cfdsState.aircraftConfig[k];
+      btn.className = `cfds-cfg-toggle ${cfdsState.aircraftConfig[k] ? 'on' : 'off'}`;
+      btn.querySelector(".toggle-state").textContent = cfdsState.aircraftConfig[k] ? 'ON' : 'OFF';
+    };
   });
 
-  const crtLines = p.querySelector("#cfds-mcdu-lines");
-  const statusMsg = p.querySelector("#cfds-mcdu-status-msg");
-
-  p.querySelectorAll("button[data-mkey]").forEach((btn) => {
-    btn.addEventListener("click", async () => {
-      const k = btn.getAttribute("data-mkey");
-      statusMsg.textContent = `MSG: KEY ${k} PRESSED — TRANSMITTING WORD 227...`;
-      try {
-        await api("/api/cfds/command", {
-          method: "POST",
-          body: JSON.stringify({
-            equipment_code: cfdsState.selectedLru.code,
-            command_code: isNaN(parseInt(k, 10)) ? k.charCodeAt(0) : parseInt(k, 10),
-            channel: "TX-A",
-            submode: "MENU",
-            action_label: `MENU_KEY_${k}`,
-          }),
-        });
-        statusMsg.textContent = `MSG: KEY ${k} ACKNOWLEDGED BY ${cfdsState.selectedLru.name}`;
-      } catch (err) {
-        statusMsg.textContent = `MSG: ERROR — ${err.message}`;
-      }
-    });
-  });
-
-  p.querySelector("#btn-mcdu-page").addEventListener("click", () => {
-    cfdsState.nxtReverseVideo = !cfdsState.nxtReverseVideo;
-    cfdsState.menuPage = cfdsState.menuPage === 1 ? 2 : 1;
-    renderCfdsHub(r, s);
-  });
-
-  p.querySelector("#btn-test-3s").addEventListener("click", () => {
-    statusMsg.textContent = "MSG: NO RESPONSE RECEIVED FROM LRU";
-    statusMsg.style.color = "#f59e0b";
-  });
-
-  p.querySelector("#btn-test-30s").addEventListener("click", () => {
-    crtLines.innerHTML = `
-      <div style="color:#ef4444;font-weight:700;margin-top:20px;text-align:center">
-        LRU ERROR — HIT &lt;PRIOR PAGE&gt; OR ANOTHER KEY
-      </div>
-      <div style="color:#94a3b8;font-size:12px;margin-top:14px;text-align:center">
-        30-SECOND SYSTEM INTERROGATION TIMEOUT EXPIRED (FIG 61)
-      </div>
-    `;
-    statusMsg.textContent = "MSG: LRU RESPONSE TIMEOUT (30S)";
-    statusMsg.style.color = "#ef4444";
-  });
-
-  p.querySelector("#btn-reset-mcdu").addEventListener("click", () => {
-    cfdsState.menuStatusText = "SELECT OPTION";
-    cfdsState.nxtReverseVideo = false;
-    renderCfdsHub(r, s);
-  });
-}
-
-// 5. CFDS DISCRETE MODE (ABD0048)
-function renderCfdsDiscreteModeView(c, r, s) {
-  const p = el("div", "panel");
-  p.innerHTML = `
-    <div class="panel-head">
-      <div>
-        <h2 style="font-size:1.15rem;font-weight:700">CFDS DISCRETE MODE — ABD0048</h2>
-        <p class="muted">ABD0048 Pin Matrix &amp; Discrete Fault Status · LRU: ${escAttr(cfdsState.selectedLru.name)}</p>
-      </div>
-      <button type="button" class="btn btn-sm btn-ghost" id="btn-disc-back">Back to Modes</button>
-    </div>
-
-    <div class="meters" style="margin-bottom:16px">
-      <div class="meter">
-        <div class="meter-label">DISCRETE BUS STATUS</div>
-        <div class="meter-value" style="color:var(--ok, #10b981)">ACTIVE (SWEEP OK)</div>
-        <div class="meter-unit">Continuous ABD0048 sampling</div>
-      </div>
-      <div class="meter">
-        <div class="meter-label">GROUND SENSE</div>
-        <div class="meter-value">WEIGHT ON WHEELS</div>
-        <div class="meter-unit">Bit 12: GND (0)</div>
-      </div>
-      <div class="meter">
-        <div class="meter-label">INHIBIT INPUT</div>
-        <div class="meter-value" style="color:var(--ok, #10b981)">NORMAL (NOT INHIBITED)</div>
-        <div class="meter-unit">Bit 28: 0</div>
-      </div>
-    </div>
-
-    <div style="margin-bottom:16px">
-      <button type="button" class="btn btn-sm primary" id="btn-disc-sweep">Execute Discrete Sweep</button>
-    </div>
-
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th class="mono" style="width:100px">PIN / BIT</th>
-            <th>FUNCTION / SIGNAL</th>
-            <th style="width:140px">LOGIC STATE</th>
-            <th style="width:140px">PHYSICAL LEVEL</th>
-            <th style="width:120px">RESULT</th>
-          </tr>
-        </thead>
-        <tbody id="cfds-disc-tbody">
-          <tr><td class="mono">PIN A01</td><td>Ground / Flight Sense (WoW)</td><td>LOGIC 0</td><td>GND (0V)</td><td><span class="pill ok">PASS</span></td></tr>
-          <tr><td class="mono">PIN A02</td><td>BITE Test Inhibit Interlock</td><td>LOGIC 0</td><td>OPEN (28V)</td><td><span class="pill ok">PASS</span></td></tr>
-          <tr><td class="mono">PIN B05</td><td>Program Pin #1 (Ch A Enable)</td><td>LOGIC 1</td><td>GND (0V)</td><td><span class="pill ok">PASS</span></td></tr>
-          <tr><td class="mono">PIN B06</td><td>Program Pin #2 (Ch B Enable)</td><td>LOGIC 1</td><td>GND (0V)</td><td><span class="pill ok">PASS</span></td></tr>
-          <tr><td class="mono">PIN C12</td><td>Engine Running Sense Discrete</td><td>LOGIC 0</td><td>OPEN (28V)</td><td><span class="pill ok">PASS</span></td></tr>
-          <tr><td class="mono">PIN D08</td><td>Discrete Fault Bit 17</td><td>LOGIC 0</td><td>OPEN</td><td><span class="pill ok">NOMINAL</span></td></tr>
-        </tbody>
-      </table>
-    </div>
-  `;
-  c.appendChild(p);
-
-  p.querySelector("#btn-disc-back").addEventListener("click", () => {
-    cfdsState.currentView = "MODE_SELECT";
-    renderCfdsHub(r, s);
-  });
-
-  p.querySelector("#btn-disc-sweep").addEventListener("click", async () => {
-    try {
-      await api("/api/cfds/discrete/simulate", {
-        method: "POST",
-        body: JSON.stringify({ mode_type: "ABD0048" }),
-      });
-      alert("Discrete mode simulation sweep completed successfully. All 6 monitored pins NOMINAL.");
-    } catch (err) {
-      alert("Discrete sweep error: " + err.message);
-    }
-  });
-}
-
-// 6. CFDS INTERACTIVE MODE (ABD0048)
-function renderCfdsInteractiveModeView(c, r, s) {
-  const p = el("div", "panel");
-  p.innerHTML = `
-    <div class="panel-head">
-      <div>
-        <h2 style="font-size:1.15rem;font-weight:700">CFDS INTERACTIVE MODE — ABD0048</h2>
-        <p class="muted">Interactive BITE Handshake Protocol · LRU: ${escAttr(cfdsState.selectedLru.name)}</p>
-      </div>
-      <button type="button" class="btn btn-sm btn-ghost" id="btn-inter-back">Back to Modes</button>
-    </div>
-
-    <!-- Handshake State Machine Progress -->
-    <div style="background:#ffffff;border:1px solid #e2e8f0;border-radius:8px;padding:16px;margin-bottom:16px">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-        <div class="channel-col-title">HANDSHAKE STATE MACHINE STATUS</div>
-        <span class="pill primary" id="cfds-inter-status-pill">${cfdsState.interactiveStatus}</span>
-      </div>
-      <div style="background:#f1f5f9;border-radius:999px;height:10px;overflow:hidden">
-        <div id="cfds-inter-bar" style="background:#0d9488;height:100%;width:${cfdsState.interactiveProgress}%;transition:width .3s ease"></div>
-      </div>
-    </div>
-
-    <!-- Command Word 227 Builder Form -->
-    <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));gap:12px;margin-bottom:16px">
-      <div class="channel-row" style="flex-direction:column;align-items:flex-start;gap:4px">
-        <span style="font-weight:600">COMMAND TYPE</span>
-        <select id="cfds-inter-cmd" class="category-select" style="width:100%">
-          <option value="1">1 — SYSTEM TEST / BITE INITIATE</option>
-          <option value="2">2 — CLEAR ACTIVE FAULT LOG</option>
-          <option value="3">3 — READ MEMORY DUMP</option>
-          <option value="4">4 — CALIBRATION ROUTINE</option>
-        </select>
-      </div>
-
-      <div class="channel-row" style="flex-direction:column;align-items:flex-start;gap:4px">
-        <span style="font-weight:600">TRANSMIT CHANNEL</span>
-        <select id="cfds-inter-ch" class="category-select" style="width:100%">
-          <option value="TX-A">Broadcast TX-A</option>
-          <option value="TX-B">Broadcast TX-B</option>
-          <option value="TX-C">Broadcast TX-C</option>
-          <option value="TX-D">Broadcast TX-D</option>
-        </select>
-      </div>
-
-      <div class="channel-row" style="flex-direction:column;align-items:flex-start;gap:4px">
-        <span style="font-weight:600">SDI (BITS 9–10)</span>
-        <select id="cfds-inter-sdi" class="category-select" style="width:100%">
-          <option value="0">00 — ALL (DISCARD SDI)</option>
-          <option value="1">01 — SIDE 1 (LEFT)</option>
-          <option value="2">10 — SIDE 2 (RIGHT)</option>
-          <option value="3">11 — SIDE 3 (CENTER)</option>
-        </select>
-      </div>
-    </div>
-
-    <div style="margin-bottom:16px">
-      <button type="button" class="btn btn-sm primary" id="btn-send-inter-cmd">Transmit BITE Command 227</button>
-    </div>
-
-    <!-- Output Terminal -->
-    <div class="cdu-crt" style="min-height:160px" id="cfds-inter-output">
-      <div>[INTERACTIVE BITE SESSION READY — SELECT COMMAND ABOVE]</div>
-      <div class="cdu-crt-status"><span>STATE: IDLE</span><span>HANDSHAKE: WAITING</span></div>
-    </div>
-  `;
-  c.appendChild(p);
-
-  p.querySelector("#btn-inter-back").addEventListener("click", () => {
-    cfdsState.currentView = "MODE_SELECT";
-    renderCfdsHub(r, s);
-  });
-
-  const out = p.querySelector("#cfds-inter-output");
-  const bar = p.querySelector("#cfds-inter-bar");
-  const pill = p.querySelector("#cfds-inter-status-pill");
-
-  p.querySelector("#btn-send-inter-cmd").addEventListener("click", async () => {
-    const cmd = parseInt(p.querySelector("#cfds-inter-cmd").value, 10);
-    const ch = p.querySelector("#cfds-inter-ch").value;
-    const sdiVal = parseInt(p.querySelector("#cfds-inter-sdi").value, 10);
-
-    pill.textContent = "TRANSMITTING";
-    bar.style.width = "40%";
+  // Save handler
+  p.querySelector("#cfds-slide3-save").onclick = async () => {
+    cfdsState.txParams.date = p.querySelector("#tx-input-date").value.trim();
+    cfdsState.txParams.time = p.querySelector("#tx-input-time").value.trim();
+    cfdsState.txParams.flt_num = p.querySelector("#tx-flt-num").value.trim();
+    cfdsState.txParams.city_pairs = p.querySelector("#tx-city-pairs").value.trim();
+    cfdsState.txParams.flt_phase = p.querySelector("#tx-flt-phase").value.trim();
+    cfdsState.txParams.aircraft_id = p.querySelector("#tx-aircraft-id").value.trim();
 
     try {
-      const res = await api("/api/cfds/command", {
+      await api("/api/arinc/cfds/tx-data", {
         method: "POST",
         body: JSON.stringify({
-          equipment_code: cfdsState.selectedLru.code,
-          command_code: cmd,
-          channel: ch,
-          sdi: sdiVal,
-          submode: "INTERACTIVE",
-          action_label: `BITE_CMD_${cmd}`,
+          params: cfdsState.txParams,
+          config: cfdsState.aircraftConfig,
         }),
       });
-
-      bar.style.width = "100%";
-      pill.textContent = "COMPLETE (ACK)";
-
-      out.innerHTML = `
-        <div>[BITE COMMAND EXECUTED SUCCESSFULLY]
-TRANSMITTED: Word 227 on ${ch} | Eq: 0x${cfdsState.selectedLru.code} | Cmd: 0x0${cmd}
-HANDSHAKE RETURN: DATA VALID (ACKNOWLEDGED)
-RAW RESPONSE: ${JSON.stringify(res)}</div>
-        <div class="cdu-crt-status"><span>STATE: SUCCESS</span><span>ACK: RECEIVED</span></div>
-      `;
-    } catch (err) {
-      bar.style.width = "100%";
-      bar.style.background = "#ef4444";
-      pill.textContent = "ERROR";
-      out.innerHTML = `
-        <div style="color:#ef4444">[TRANSMISSION ERROR] ${err.message}</div>
-        <div class="cdu-crt-status"><span>STATE: FAILED</span><span>ACK: NAK</span></div>
-      `;
+      alert("CFDS TX Data & Configuration Word successfully saved and loaded!");
+    } catch (e) {
+      alert("Save error: " + e.message);
     }
-  });
+  };
+
+  p.querySelector("#cfds-slide3-back").onclick = () => {
+    cfdsState.currentSlide = "desired_mode";
+    renderCfdsHub(r, s);
+  };
 }
 
-// 7. CFDS EDIT TX VIEW
-function renderCfdsEditTxView(c, r, s) {
-  const p = el("div", "panel");
+// --------------------------------------------------------------------
+// SLIDE 4: CFDS OPERATION MODE HUB (Figure 50)
+// --------------------------------------------------------------------
+function renderCfdsSlide4OpModeHub(c, r, s) {
+  const p = el("div", "cfds-card-box");
+  const tp = cfdsState.txParams;
+
   p.innerHTML = `
-    <div class="panel-head">
-      <div>
-        <h2 style="font-size:1.15rem;font-weight:700">EDIT CFDS TRANSMIT DATA</h2>
-        <p class="muted">ARINC 429 Transmitted Word Parameters for ${escAttr(cfdsState.selectedLru.name)}</p>
-      </div>
-      <button type="button" class="btn btn-sm btn-ghost" id="btn-edtx-back">Back to Modes</button>
+    <div class="cfds-header-title">
+      <h2>CFDS OPERATION MODE</h2>
+      <p class="muted">DATE: ${escAttr(tp.date)} &nbsp;|&nbsp; SHOP CODE: ${escAttr(tp.shop_code || 'N12345')}</p>
     </div>
 
-    <div class="table-wrap" style="margin-bottom:16px">
-      <table>
-        <thead>
-          <tr>
-            <th class="mono">LABEL (OCTAL)</th>
-            <th class="mono">RAW HEX</th>
-            <th>SDI</th>
-            <th>SSM</th>
-            <th>PARITY</th>
-            <th style="width:120px">INTERVAL</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td class="mono" style="color:var(--teal-primary, #0d9488);font-weight:700">227</td>
-            <td class="mono"><input type="text" class="category-select" style="font-family:monospace;width:120px" value="0x80007000" id="cfds-tx-227"/></td>
-            <td><select class="category-select"><option>00 (ALL)</option><option>01 (L)</option><option>10 (R)</option></select></td>
-            <td><span class="pill ok">NO (Normal)</span></td>
-            <td>ODD</td>
-            <td>100 ms</td>
-          </tr>
-          <tr>
-            <td class="mono" style="color:var(--teal-primary, #0d9488);font-weight:700">356</td>
-            <td class="mono"><input type="text" class="category-select" style="font-family:monospace;width:120px" value="0x00E0E000" id="cfds-tx-356"/></td>
-            <td><select class="category-select"><option>00 (ALL)</option></select></td>
-            <td><span class="pill ok">NO (Normal)</span></td>
-            <td>ODD</td>
-            <td>1000 ms</td>
-          </tr>
-        </tbody>
-      </table>
+    <div class="cfds-op-buttons-grid">
+      <button type="button" class="cfds-op-btn" id="btn-op-norm-0018">
+        <span class="op-num">1</span>
+        <span class="op-text">NORMAL MODE ABD0018</span>
+      </button>
+
+      <button type="button" class="cfds-op-btn" id="btn-op-menu-0018">
+        <span class="op-num">2</span>
+        <span class="op-text">MENU MODE ABD0018</span>
+      </button>
+
+      <button type="button" class="cfds-op-btn" id="btn-op-norm-0048">
+        <span class="op-num">3</span>
+        <span class="op-text">NORMAL MODE ABD0048</span>
+      </button>
+
+      <button type="button" class="cfds-op-btn" id="btn-op-inter-0048">
+        <span class="op-num">4</span>
+        <span class="op-text">INTERACTIVE MODE ABD0048</span>
+      </button>
+
+      <button type="button" class="cfds-op-btn" id="btn-op-disc-0048">
+        <span class="op-num">5</span>
+        <span class="op-text">DISCRETE MODE ABD0048</span>
+      </button>
     </div>
 
-    <button type="button" class="btn btn-sm primary" id="btn-save-cfds-tx">Save &amp; Broadcast Words</button>
+    <div class="cfds-slide-nav-bar">
+      <button type="button" class="btn btn-sm btn-ghost" id="cfds-slide4-back">&lt; Return to Desired Mode</button>
+    </div>
   `;
   c.appendChild(p);
 
-  p.querySelector("#btn-edtx-back").addEventListener("click", () => {
-    cfdsState.currentView = "MODE_SELECT";
+  p.querySelector("#btn-op-norm-0018").onclick = () => {
+    cfdsState.currentSlide = "normal_0018";
     renderCfdsHub(r, s);
-  });
-
-  p.querySelector("#btn-save-cfds-tx").addEventListener("click", async () => {
-    try {
-      await api("/api/cfds/tx-params", {
-        method: "POST",
-        body: JSON.stringify({
-          equipment_code: cfdsState.selectedLru.code,
-          words: {
-            label_227: p.querySelector("#cfds-tx-227").value,
-            label_356: p.querySelector("#cfds-tx-356").value,
-          }
-        })
-      });
-      alert("CFDS Transmit parameters saved and loaded into ARINC 429 generator.");
-    } catch (err) {
-      alert("Save error: " + err.message);
-    }
-  });
+  };
+  p.querySelector("#btn-op-menu-0018").onclick = () => {
+    cfdsState.currentSlide = "menu_0018";
+    renderCfdsHub(r, s);
+  };
+  p.querySelector("#btn-op-norm-0048").onclick = () => {
+    cfdsState.currentSlide = "normal_0048";
+    renderCfdsHub(r, s);
+  };
+  p.querySelector("#btn-op-inter-0048").onclick = () => {
+    cfdsState.currentSlide = "interactive_0048";
+    renderCfdsHub(r, s);
+  };
+  p.querySelector("#btn-op-disc-0048").onclick = () => {
+    cfdsState.currentSlide = "discrete_0048";
+    renderCfdsHub(r, s);
+  };
+  p.querySelector("#cfds-slide4-back").onclick = () => {
+    cfdsState.currentSlide = "desired_mode";
+    renderCfdsHub(r, s);
+  };
 }
 
-// 8. CFDS CONFIGURE CHANNELS VIEW
-function renderCfdsConfigChannelsView(c, r, s) {
-  const p = el("div", "panel");
+// --------------------------------------------------------------------
+// SLIDE 5: CONFIGURE CHANNELS A, B, C, D (Figure 51)
+// --------------------------------------------------------------------
+function renderCfdsSlide5Channels(c, r, s) {
+  const p = el("div", "cfds-card-box");
+  const cc = cfdsState.channelConfig;
+
   p.innerHTML = `
-    <div class="panel-head">
-      <div>
-        <h2 style="font-size:1.15rem;font-weight:700">CONFIGURE CFDS CHANNELS</h2>
-        <p class="muted">ARINC 429 Hardware Channels A-D Bus Configuration</p>
-      </div>
-      <button type="button" class="btn btn-sm btn-ghost" id="btn-ch-back">Back to Modes</button>
+    <div class="cfds-header-title">
+      <h2>CONFIGURE CHANNELS A, B, C, D</h2>
+      <p class="muted">ARINC 429 Hardware Interface Channels Configuration</p>
     </div>
 
     <div class="table-wrap" style="margin-bottom:16px">
-      <table>
+      <table class="cfds-channels-table">
         <thead>
           <tr>
             <th>CHANNEL</th>
-            <th>DIRECTION</th>
             <th>BIT RATE</th>
-            <th>PARITY</th>
-            <th>LOOPBACK</th>
+            <th>XMTR SELECT</th>
+            <th>RCVR SELECT</th>
+            <th>TRANSMITTER ENABLE</th>
+            <th>DISPLAY MODE</th>
           </tr>
         </thead>
         <tbody>
-          ${['A', 'B', 'C', 'D'].map(ch => `
-            <tr>
-              <td><strong>Channel ${ch}</strong></td>
-              <td>TX &amp; RX</td>
-              <td>
-                <select class="category-select" data-ch="${ch}" data-key="speed">
-                  <option value="HIGH">High Speed (100 kbps)</option>
-                  <option value="LOW" selected>Low Speed (12.5 kbps)</option>
-                </select>
-              </td>
-              <td><span class="pill">ODD</span></td>
-              <td>
-                <label style="display:flex;align-items:center;gap:6px">
-                  <input type="checkbox" checked /> Enabled
-                </label>
-              </td>
-            </tr>
-          `).join("")}
+          ${['A', 'B', 'C', 'D'].map(ch => {
+            const isChC = ch === 'C';
+            const rate = isChC && cfdsState.selectedLru.code === '050' ? '100k' : (cc.bit_rate || '12.5k');
+            return `
+              <tr>
+                <td><strong>Channel ${ch}</strong></td>
+                <td>
+                  <button type="button" class="btn btn-sm btn-ghost ch-btn-rate" data-ch="${ch}">
+                    ${rate}
+                  </button>
+                </td>
+                <td>
+                  <button type="button" class="btn btn-sm btn-ghost ch-btn-xmtr" data-ch="${ch}">
+                    TX-${ch}
+                  </button>
+                </td>
+                <td>
+                  <button type="button" class="btn btn-sm btn-ghost ch-btn-rcvr" data-ch="${ch}">
+                    RX-${ch}
+                  </button>
+                </td>
+                <td>
+                  <button type="button" class="btn btn-sm ${cc.tx_enable ? 'primary' : 'btn-ghost'} ch-btn-txen" data-ch="${ch}">
+                    ${cc.tx_enable ? 'ON' : 'OFF'}
+                  </button>
+                </td>
+                <td>
+                  <div class="cfds-disp-mode-radios">
+                    ${['ENG', 'BIN', 'HEX'].map(dm => `
+                      <label style="font-size:12px;cursor:pointer">
+                        <input type="radio" name="disp_mode_${ch}" value="${dm}" ${cc.display_mode === dm ? 'checked' : ''} />
+                        ${dm}
+                      </label>
+                    `).join("")}
+                  </div>
+                </td>
+              </tr>
+            `;
+          }).join("")}
         </tbody>
       </table>
     </div>
 
-    <button type="button" class="btn btn-sm primary" id="btn-save-cfds-channels">Apply Channel Configuration</button>
+    <div class="cfds-slide-nav-bar" style="display:flex;justify-content:space-between">
+      <button type="button" class="btn btn-sm btn-ghost" id="cfds-slide5-back">&lt; Return to Desired Mode</button>
+      <button type="button" class="btn btn-sm primary" id="cfds-slide5-apply">Apply Channel Configuration</button>
+    </div>
   `;
   c.appendChild(p);
 
-  p.querySelector("#btn-ch-back").addEventListener("click", () => {
-    cfdsState.currentView = "MODE_SELECT";
-    renderCfdsHub(r, s);
+  // Rate toggle
+  p.querySelectorAll(".ch-btn-rate").forEach(btn => {
+    btn.onclick = () => {
+      const cur = btn.textContent.trim();
+      const nxt = cur === "12.5k" ? "100k" : "12.5k";
+      btn.textContent = nxt;
+      cfdsState.channelConfig.bit_rate = nxt;
+    };
   });
 
-  p.querySelector("#btn-save-cfds-channels").addEventListener("click", async () => {
-    try {
-      await api("/api/cfds/channels/configure", {
-        method: "POST",
-        body: JSON.stringify({ channel: "A", speed: "LOW" }),
-      });
-      alert("Channel configuration successfully applied to ARINC 429 coordinator.");
-    } catch (err) {
-      alert("Configuration error: " + err.message);
-    }
+  // TX enable toggle
+  p.querySelectorAll(".ch-btn-txen").forEach(btn => {
+    btn.onclick = () => {
+      cfdsState.channelConfig.tx_enable = !cfdsState.channelConfig.tx_enable;
+      btn.textContent = cfdsState.channelConfig.tx_enable ? "ON" : "OFF";
+      btn.className = `btn btn-sm ${cfdsState.channelConfig.tx_enable ? 'primary' : 'btn-ghost'} ch-btn-txen`;
+    };
   });
+
+  // Apply button
+  p.querySelector("#cfds-slide5-apply").onclick = async () => {
+    try {
+      await api("/api/arinc/cfds/channels", {
+        method: "POST",
+        body: JSON.stringify(cfdsState.channelConfig),
+      });
+      alert("Channel configuration successfully applied!");
+    } catch (e) {
+      alert("Apply error: " + e.message);
+    }
+  };
+
+  p.querySelector("#cfds-slide5-back").onclick = () => {
+    cfdsState.currentSlide = "desired_mode";
+    renderCfdsHub(r, s);
+  };
 }
+
+// --------------------------------------------------------------------
+// SLIDE 6 & 8: NORMAL MODE (ABD0018 / ABD0048) (Figure 52 & 54)
+// --------------------------------------------------------------------
+function renderCfdsSlide6_8Normal(c, r, s, is48) {
+  const p = el("div", "cfds-card-box");
+  const lru = cfdsState.selectedLru;
+
+  p.innerHTML = `
+    <div class="cfds-header-title" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap">
+      <div>
+        <h2>CFDS NORMAL MODE — ${is48 ? 'ABD0048' : 'ABD0018'}</h2>
+        <p class="muted">INTERROGATING ${escAttr(lru.name)} (${escAttr(lru.short)} - 0x${escAttr(lru.code)})</p>
+      </div>
+      <div style="display:flex;gap:10px;align-items:center">
+        <button type="button" class="cfds-phase-btn ${cfdsState.flightPhase === 'AIR' ? 'air' : 'ground'}" id="cfds-norm-phase-btn">
+          FLIGHT PHASE: <strong>${escAttr(cfdsState.flightPhase)}</strong>
+        </button>
+        <button type="button" class="btn btn-sm primary" id="cfds-norm-sim-btn">Simulate Normal Burst</button>
+        <button type="button" class="btn btn-sm btn-ghost" id="cfds-norm-clear-btn">Clear Log</button>
+      </div>
+    </div>
+
+    <!-- Live Messages Display Area -->
+    <div class="cfds-normal-log-box" id="cfds-normal-log">
+      ${cfdsState.normalMessages && cfdsState.normalMessages.length > 0 ? `
+        <div class="cfds-msg-lines">
+          ${cfdsState.normalMessages.map(m => `
+            <div class="cfds-log-line mono">${escAttr(m.text || m.chars || '')}</div>
+          `).join("")}
+        </div>
+      ` : `
+        <div class="cfds-empty-msg">NO MAINTENANCE DATA RECEIVED</div>
+      `}
+    </div>
+
+    <div class="cfds-slide-nav-bar">
+      <button type="button" class="btn btn-sm btn-ghost" id="cfds-norm-back">&lt; Operation Mode</button>
+    </div>
+  `;
+  c.appendChild(p);
+
+  // Flight Phase Toggle
+  p.querySelector("#cfds-norm-phase-btn").onclick = async () => {
+    cfdsState.flightPhase = cfdsState.flightPhase === "GROUND" ? "AIR" : "GROUND";
+    try {
+      await api("/api/arinc/cfds/flight-phase", {
+        method: "POST",
+        body: JSON.stringify({ phase: cfdsState.flightPhase }),
+      });
+    } catch (e) {}
+    renderCfdsHub(r, s);
+  };
+
+  // Simulate Burst
+  p.querySelector("#cfds-norm-sim-btn").onclick = async () => {
+    try {
+      const res = await api("/api/arinc/cfds/simulate", {
+        method: "POST",
+        body: JSON.stringify({ mode: "NORMAL", lru_code: lru.code }),
+      });
+      if (res && res.normal_messages) cfdsState.normalMessages = res.normal_messages;
+      renderCfdsHub(r, s);
+    } catch (e) {
+      alert("Simulate error: " + e.message);
+    }
+  };
+
+  // Clear Log
+  p.querySelector("#cfds-norm-clear-btn").onclick = async () => {
+    cfdsState.normalMessages = [];
+    try {
+      await api("/api/arinc/cfds/clear", {
+        method: "POST",
+        body: JSON.stringify({ mode: "normal" }),
+      });
+    } catch (e) {}
+    renderCfdsHub(r, s);
+  };
+
+  p.querySelector("#cfds-norm-back").onclick = () => {
+    cfdsState.currentSlide = "op_mode_hub";
+    renderCfdsHub(r, s);
+  };
+}
+
+// --------------------------------------------------------------------
+// SLIDE 7: MENU MODE ABD0018 (Figure 53)
+// --------------------------------------------------------------------
+function renderCfdsSlide7Menu0018(c, r, s) {
+  const p = el("div", "cfds-card-box");
+  const lru = cfdsState.selectedLru;
+
+  p.innerHTML = `
+    <div class="cfds-header-title" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap">
+      <div>
+        <h2>CFDS MENU MODE — ABD0018</h2>
+        <p class="muted">MCDU INTERFACE · ${escAttr(lru.name)} (${escAttr(lru.short)})</p>
+      </div>
+      <div style="display:flex;gap:10px;align-items:center">
+        <button type="button" class="btn btn-sm primary" id="cfds-menu-sim-btn">Simulate Menu</button>
+        <button type="button" class="btn btn-sm btn-ghost" id="cfds-menu-clear-btn">Clear Screen</button>
+      </div>
+    </div>
+
+    <!-- MCDU Screen Layout with Left and Right LSKs -->
+    <div class="cfds-mcdu-surround">
+      <!-- Left LSK Column (1..6) -->
+      <div class="cfds-lsk-col left">
+        ${['1', '2', '3', '4', '5', '6'].map(k => `
+          <button type="button" class="cfds-lsk-btn" data-key="${k}">
+            <span class="lsk-label">&lt; ${k}</span>
+          </button>
+        `).join("")}
+      </div>
+
+      <!-- Center 14x24 Monospace MCDU Screen Box -->
+      <div class="cfds-mcdu-screen" id="cfds-mcdu-screen">
+        ${(cfdsState.mcduLines || Array(14).fill("")).map((line, idx) => `
+          <div class="mcdu-row mono" data-row="${idx}">${escAttr((line || "").padEnd(24, " "))}</div>
+        `).join("")}
+      </div>
+
+      <!-- Right LSK Column (NXT on top, then A..F) -->
+      <div class="cfds-lsk-col right">
+        <button type="button" class="cfds-lsk-btn nxt-btn" data-key="NXT">
+          <span class="lsk-label">NXT &gt;</span>
+        </button>
+        ${['A', 'B', 'C', 'D', 'E', 'F'].map(k => `
+          <button type="button" class="cfds-lsk-btn" data-key="${k}">
+            <span class="lsk-label">${k} &gt;</span>
+          </button>
+        `).join("")}
+      </div>
+    </div>
+
+    <!-- Status Line -->
+    <div class="cfds-mcdu-status-bar" id="cfds-mcdu-status">
+      ${escAttr(cfdsState.mcduStatus || 'SELECT OPTION VIA LSK (LABEL 227 TRANSMISSION)')}
+    </div>
+
+    <div class="cfds-slide-nav-bar">
+      <button type="button" class="btn btn-sm btn-ghost" id="cfds-menu-back">&lt; Operation Mode</button>
+    </div>
+  `;
+  c.appendChild(p);
+
+  // LSK button handlers: call /api/arinc/cfds/key
+  p.querySelectorAll(".cfds-lsk-btn[data-key]").forEach(btn => {
+    btn.onclick = async () => {
+      const k = btn.getAttribute("data-key");
+      btn.classList.add("pressed");
+      setTimeout(() => btn.classList.remove("pressed"), 180);
+      try {
+        const res = await api("/api/arinc/cfds/key", {
+          method: "POST",
+          body: JSON.stringify({ key: k, lru_code: lru.code }),
+        });
+        if (res) {
+          if (res.mcdu_status) {
+            cfdsState.mcduStatus = res.mcdu_status;
+            const st = p.querySelector("#cfds-mcdu-status");
+            if (st) st.textContent = res.mcdu_status;
+          }
+          if (res.last_tx_command) cfdsState.lastTxCommand = res.last_tx_command;
+        }
+      } catch (e) {
+        alert("Key transmission error: " + e.message);
+      }
+    };
+  });
+
+  // Simulate Menu Mode
+  p.querySelector("#cfds-menu-sim-btn").onclick = async () => {
+    try {
+      const res = await api("/api/arinc/cfds/simulate", {
+        method: "POST",
+        body: JSON.stringify({ mode: "MENU", lru_code: lru.code }),
+      });
+      if (res && res.mcdu_lines) cfdsState.mcduLines = res.mcdu_lines;
+      if (res && res.mcdu_status) cfdsState.mcduStatus = res.mcdu_status;
+      renderCfdsHub(r, s);
+    } catch (e) {
+      alert("Simulate error: " + e.message);
+    }
+  };
+
+  // Clear Screen
+  p.querySelector("#cfds-menu-clear-btn").onclick = async () => {
+    cfdsState.mcduLines = Array(14).fill("".padEnd(24, " "));
+    cfdsState.mcduStatus = "MCDU SCREEN CLEARED";
+    try {
+      await api("/api/arinc/cfds/clear", {
+        method: "POST",
+        body: JSON.stringify({ mode: "menu" }),
+      });
+    } catch (e) {}
+    renderCfdsHub(r, s);
+  };
+
+  p.querySelector("#cfds-menu-back").onclick = () => {
+    cfdsState.currentSlide = "op_mode_hub";
+    renderCfdsHub(r, s);
+  };
+}
+
+// --------------------------------------------------------------------
+// SLIDE 9: INTERACTIVE MODE ABD0048 (Figure 55)
+// --------------------------------------------------------------------
+function renderCfdsSlide9Interactive0048(c, r, s) {
+  const p = el("div", "cfds-card-box");
+  const lru = cfdsState.selectedLru;
+
+  p.innerHTML = `
+    <div class="cfds-header-title" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap">
+      <div>
+        <h2>CFDS INTERACTIVE MODE — ABD0048</h2>
+        <p class="muted">COMPLETE MCDU PANEL &amp; KEYPAD · ${escAttr(lru.name)} (${escAttr(lru.short)})</p>
+      </div>
+      <div style="display:flex;gap:10px;align-items:center">
+        <button type="button" class="btn btn-sm primary" id="cfds-inter-sim-btn">Simulate Test</button>
+        <button type="button" class="btn btn-sm btn-ghost" id="cfds-inter-clear-btn">Clear Screen</button>
+      </div>
+    </div>
+
+    <div class="cfds-interactive-workbench">
+      <!-- Left: 14x24 MCDU Screen flanked by 1L..6L and 1R..6R -->
+      <div class="cfds-mcdu-flanked">
+        <div class="cfds-lsk-col left">
+          ${['1L', '2L', '3L', '4L', '5L', '6L'].map(k => `
+            <button type="button" class="cfds-lsk-btn" data-key="${k}">
+              <span class="lsk-label">&lt; ${k}</span>
+            </button>
+          `).join("")}
+        </div>
+
+        <div class="cfds-mcdu-screen" id="cfds-mcdu-screen">
+          ${(cfdsState.mcduLines || Array(14).fill("")).map((line, idx) => `
+            <div class="mcdu-row mono" data-row="${idx}">${escAttr((line || "").padEnd(24, " "))}</div>
+          `).join("")}
+        </div>
+
+        <div class="cfds-lsk-col right">
+          ${['1R', '2R', '3R', '4R', '5R', '6R'].map(k => `
+            <button type="button" class="cfds-lsk-btn" data-key="${k}">
+              <span class="lsk-label">${k} &gt;</span>
+            </button>
+          `).join("")}
+        </div>
+      </div>
+
+      <!-- Right: Full MCDU Keypad Panel -->
+      <div class="cfds-keypad-panel">
+        <div class="keypad-title">MCDU KEYPAD</div>
+
+        <!-- Function Keys Row -->
+        <div class="cfds-func-keys-grid">
+          ${['PRV', 'NXT', 'MENU', 'CLR', 'SP', 'SHFT'].map(k => `
+            <button type="button" class="cfds-kpd-btn func" data-key="${k}">${k}</button>
+          `).join("")}
+        </div>
+
+        <!-- Alphanumeric 3x4 Keypad Grid -->
+        <div class="cfds-num-keys-grid">
+          <button type="button" class="cfds-kpd-btn" data-key="1">1 / I</button>
+          <button type="button" class="cfds-kpd-btn" data-key="2">2 / J</button>
+          <button type="button" class="cfds-kpd-btn" data-key="3">3 / K</button>
+
+          <button type="button" class="cfds-kpd-btn" data-key="4">4 / L</button>
+          <button type="button" class="cfds-kpd-btn" data-key="5">5 / M</button>
+          <button type="button" class="cfds-kpd-btn" data-key="6">6 / N</button>
+
+          <button type="button" class="cfds-kpd-btn" data-key="7">7 / O</button>
+          <button type="button" class="cfds-kpd-btn" data-key="8">8 / P</button>
+          <button type="button" class="cfds-kpd-btn" data-key="9">9 / Q</button>
+
+          <button type="button" class="cfds-kpd-btn" data-key=".">. / S</button>
+          <button type="button" class="cfds-kpd-btn" data-key="0">0 / R</button>
+          <button type="button" class="cfds-kpd-btn" data-key="+/-">+/-</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Telemetry status strip -->
+    <div class="cfds-telemetry-box" id="cfds-last-tx-box">
+      ${cfdsState.lastTxCommand ? `
+        <span class="mono">LAST TX: KEY <strong>${escAttr(cfdsState.lastTxCommand.key)}</strong> &nbsp;|&nbsp; LBL 227: <strong>${escAttr(cfdsState.lastTxCommand.hex_32)}</strong> &nbsp;|&nbsp; TIME: ${escAttr(cfdsState.lastTxCommand.time_str || '')}</span>
+      ` : `
+        <span class="mono">AWAITING KEYPAD INTERACTION · LABEL 227 READY</span>
+      `}
+    </div>
+
+    <div class="cfds-slide-nav-bar">
+      <button type="button" class="btn btn-sm btn-ghost" id="cfds-inter-back">&lt; Operation Mode</button>
+    </div>
+  `;
+  c.appendChild(p);
+
+  // Key event listeners
+  p.querySelectorAll("button[data-key]").forEach(btn => {
+    btn.onclick = async () => {
+      const k = btn.getAttribute("data-key");
+      btn.classList.add("pressed");
+      setTimeout(() => btn.classList.remove("pressed"), 180);
+      try {
+        const res = await api("/api/arinc/cfds/key", {
+          method: "POST",
+          body: JSON.stringify({ key: k, lru_code: lru.code }),
+        });
+        if (res && res.last_tx_command) {
+          cfdsState.lastTxCommand = res.last_tx_command;
+          const box = p.querySelector("#cfds-last-tx-box");
+          if (box) {
+            box.innerHTML = `<span class="mono">LAST TX: KEY <strong>${escAttr(res.last_tx_command.key)}</strong> &nbsp;|&nbsp; LBL 227: <strong>${escAttr(res.last_tx_command.hex_32)}</strong> &nbsp;|&nbsp; TIME: ${escAttr(res.last_tx_command.time_str || '')}</span>`;
+          }
+        }
+      } catch (e) {
+        alert("Key transmission error: " + e.message);
+      }
+    };
+  });
+
+  // Simulate Interactive Mode
+  p.querySelector("#cfds-inter-sim-btn").onclick = async () => {
+    try {
+      const res = await api("/api/arinc/cfds/simulate", {
+        method: "POST",
+        body: JSON.stringify({ mode: "INTERACTIVE", lru_code: lru.code }),
+      });
+      if (res && res.mcdu_lines) cfdsState.mcduLines = res.mcdu_lines;
+      if (res && res.mcdu_status) cfdsState.mcduStatus = res.mcdu_status;
+      renderCfdsHub(r, s);
+    } catch (e) {
+      alert("Simulate error: " + e.message);
+    }
+  };
+
+  // Clear Screen
+  p.querySelector("#cfds-inter-clear-btn").onclick = async () => {
+    cfdsState.mcduLines = Array(14).fill("".padEnd(24, " "));
+    cfdsState.mcduStatus = "MCDU SCREEN CLEARED";
+    try {
+      await api("/api/arinc/cfds/clear", {
+        method: "POST",
+        body: JSON.stringify({ mode: "interactive" }),
+      });
+    } catch (e) {}
+    renderCfdsHub(r, s);
+  };
+
+  p.querySelector("#cfds-inter-back").onclick = () => {
+    cfdsState.currentSlide = "op_mode_hub";
+    renderCfdsHub(r, s);
+  };
+}
+
+// --------------------------------------------------------------------
+// SLIDE 10: DISCRETE MODE ABD0048 (Figure 56)
+// --------------------------------------------------------------------
+function renderCfdsSlide10Discrete0048(c, r, s) {
+  const p = el("div", "cfds-card-box");
+  const lru = cfdsState.selectedLru;
+  const df = cfdsState.discreteFields;
+
+  p.innerHTML = `
+    <div class="cfds-header-title" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap">
+      <div>
+        <h2>DISCRETE MODE FOR ${escAttr(lru.short)}</h2>
+        <p class="muted">ARINC 429 DISCRETE FAULT FIELD MONITORING · 11 FIELDS (SLIDE 10)</p>
+      </div>
+      <div style="display:flex;gap:10px;align-items:center">
+        <button type="button" class="btn btn-sm primary" id="cfds-disc-sim-btn">Simulate Discrete Fault</button>
+        <button type="button" class="btn btn-sm btn-ghost" id="cfds-disc-clear-btn">Clear Discretes</button>
+      </div>
+    </div>
+
+    <!-- 11 Failure Fields Box -->
+    <div class="cfds-discrete-card" id="cfds-discrete-container">
+      ${cfdsState.discreteHasData ? `
+        <div class="cfds-discrete-grid">
+          <div class="disc-field">
+            <span class="disc-label">FAILURE NUMBER:</span>
+            <span class="disc-val mono">${escAttr(df.failure_number || '--')}</span>
+          </div>
+          <div class="disc-field">
+            <span class="disc-label">FAILURE TYPE CODE:</span>
+            <span class="disc-val mono">${escAttr(df.failure_type_code || '--')}</span>
+          </div>
+          <div class="disc-field full-width">
+            <span class="disc-label">FAILURE TYPE STRING:</span>
+            <span class="disc-val mono">${escAttr(df.failure_type_string || '--')}</span>
+          </div>
+          <div class="disc-field">
+            <span class="disc-label">WITNESS POSITION:</span>
+            <span class="disc-val mono">${escAttr(df.witness_position || '--')}</span>
+          </div>
+          <div class="disc-field">
+            <span class="disc-label">WITNESS SIDE:</span>
+            <span class="disc-val mono">${escAttr(df.witness_side || '--')}</span>
+          </div>
+          <div class="disc-field">
+            <span class="disc-label">SUSPECT 1 POSITION:</span>
+            <span class="disc-val mono">${escAttr(df.suspect1_position || '--')}</span>
+          </div>
+          <div class="disc-field">
+            <span class="disc-label">SUSPECT 1 SIDE:</span>
+            <span class="disc-val mono">${escAttr(df.suspect1_side || '--')}</span>
+          </div>
+          <div class="disc-field">
+            <span class="disc-label">SUSPECT 2 POSITION:</span>
+            <span class="disc-val mono">${escAttr(df.suspect2_position || '--')}</span>
+          </div>
+          <div class="disc-field">
+            <span class="disc-label">SUSPECT 2 SIDE:</span>
+            <span class="disc-val mono">${escAttr(df.suspect2_side || '--')}</span>
+          </div>
+          <div class="disc-field">
+            <span class="disc-label">SUSPECT 3 POSITION:</span>
+            <span class="disc-val mono">${escAttr(df.suspect3_position || '--')}</span>
+          </div>
+          <div class="disc-field">
+            <span class="disc-label">SUSPECT 3 SIDE:</span>
+            <span class="disc-val mono">${escAttr(df.suspect3_side || '--')}</span>
+          </div>
+        </div>
+      ` : `
+        <div class="cfds-empty-msg">NO MAINTENANCE DATA RECEIVED</div>
+      `}
+    </div>
+
+    <div class="cfds-slide-nav-bar">
+      <button type="button" class="btn btn-sm btn-ghost" id="cfds-disc-back">&lt; Operation Mode</button>
+    </div>
+  `;
+  c.appendChild(p);
+
+  // Simulate Discrete Fault
+  p.querySelector("#cfds-disc-sim-btn").onclick = async () => {
+    try {
+      const res = await api("/api/arinc/cfds/simulate", {
+        method: "POST",
+        body: JSON.stringify({ mode: "DISCRETE", lru_code: lru.code }),
+      });
+      if (res && res.discrete_fields) {
+        cfdsState.discreteFields = res.discrete_fields;
+        cfdsState.discreteHasData = true;
+      }
+      renderCfdsHub(r, s);
+    } catch (e) {
+      alert("Simulate error: " + e.message);
+    }
+  };
+
+  // Clear
+  p.querySelector("#cfds-disc-clear-btn").onclick = async () => {
+    cfdsState.discreteHasData = false;
+    cfdsState.discreteFields = {
+      failure_number: "",
+      failure_type_code: "",
+      failure_type_string: "",
+      witness_position: "",
+      witness_side: "",
+      suspect1_position: "",
+      suspect1_side: "",
+      suspect2_position: "",
+      suspect2_side: "",
+      suspect3_position: "",
+      suspect3_side: "",
+    };
+    try {
+      await api("/api/arinc/cfds/clear", {
+        method: "POST",
+        body: JSON.stringify({ mode: "discrete" }),
+      });
+    } catch (e) {}
+    renderCfdsHub(r, s);
+  };
+
+  p.querySelector("#cfds-disc-back").onclick = () => {
+    cfdsState.currentSlide = "op_mode_hub";
+    renderCfdsHub(r, s);
+  };
+}
+
+// --------------------------------------------------------------------
+// POLLING IMMUNITY PATCH FOR CFDS (ZERO FLICKER / ZERO INPUT RESET)
+// --------------------------------------------------------------------
+function patchCfdsRx(s) {
+  if (!s || !s.cfds) return;
+  const cf = s.cfds;
+
+  // 1. Update Normal Mode log in-place
+  if (cf.normal_messages && cfdsState.currentSlide.startsWith("normal")) {
+    cfdsState.normalMessages = cf.normal_messages;
+    const logEl = document.getElementById("cfds-normal-log");
+    if (logEl) {
+      if (!cf.normal_messages.length) {
+        logEl.innerHTML = '<div class="cfds-empty-msg">NO MAINTENANCE DATA RECEIVED</div>';
+      } else {
+        logEl.innerHTML = `
+          <div class="cfds-msg-lines">
+            ${cf.normal_messages.map(m => `
+              <div class="cfds-log-line mono">${escAttr(m.text || m.chars || '')}</div>
+            `).join("")}
+          </div>
+        `;
+      }
+    }
+  }
+
+  // 2. Update MCDU lines in-place
+  if (cf.mcdu_lines && (cfdsState.currentSlide === "menu_0018" || cfdsState.currentSlide === "interactive_0048")) {
+    cfdsState.mcduLines = cf.mcdu_lines;
+    const screen = document.getElementById("cfds-mcdu-screen");
+    if (screen) {
+      const rows = screen.querySelectorAll(".mcdu-row");
+      cf.mcdu_lines.forEach((line, idx) => {
+        if (rows[idx]) {
+          const txt = (line || "").padEnd(24, " ");
+          if (rows[idx].textContent !== txt) {
+            rows[idx].textContent = txt;
+          }
+        }
+      });
+    }
+  }
+
+  // 3. Update MCDU status in-place
+  if (cf.mcdu_status) {
+    cfdsState.mcduStatus = cf.mcdu_status;
+    const st = document.getElementById("cfds-mcdu-status");
+    if (st && st.textContent !== cf.mcdu_status) {
+      st.textContent = cf.mcdu_status;
+    }
+  }
+
+  // 4. Update Discrete fields in-place
+  if (cf.discrete_has_data !== undefined && cfdsState.currentSlide === "discrete_0048") {
+    cfdsState.discreteHasData = cf.discrete_has_data;
+    cfdsState.discreteFields = cf.discrete_fields || cfdsState.discreteFields;
+    const discEl = document.getElementById("cfds-discrete-container");
+    if (discEl) {
+      if (!cf.discrete_has_data) {
+        discEl.innerHTML = '<div class="cfds-empty-msg">NO MAINTENANCE DATA RECEIVED</div>';
+      } else {
+        const df = cf.discrete_fields;
+        discEl.innerHTML = `
+          <div class="cfds-discrete-grid">
+            <div class="disc-field"><span class="disc-label">FAILURE NUMBER:</span><span class="disc-val mono">${escAttr(df.failure_number || '--')}</span></div>
+            <div class="disc-field"><span class="disc-label">FAILURE TYPE CODE:</span><span class="disc-val mono">${escAttr(df.failure_type_code || '--')}</span></div>
+            <div class="disc-field full-width"><span class="disc-label">FAILURE TYPE STRING:</span><span class="disc-val mono">${escAttr(df.failure_type_string || '--')}</span></div>
+            <div class="disc-field"><span class="disc-label">WITNESS POSITION:</span><span class="disc-val mono">${escAttr(df.witness_position || '--')}</span></div>
+            <div class="disc-field"><span class="disc-label">WITNESS SIDE:</span><span class="disc-val mono">${escAttr(df.witness_side || '--')}</span></div>
+            <div class="disc-field"><span class="disc-label">SUSPECT 1 POSITION:</span><span class="disc-val mono">${escAttr(df.suspect1_position || '--')}</span></div>
+            <div class="disc-field"><span class="disc-label">SUSPECT 1 SIDE:</span><span class="disc-val mono">${escAttr(df.suspect1_side || '--')}</span></div>
+            <div class="disc-field"><span class="disc-label">SUSPECT 2 POSITION:</span><span class="disc-val mono">${escAttr(df.suspect2_position || '--')}</span></div>
+            <div class="disc-field"><span class="disc-label">SUSPECT 2 SIDE:</span><span class="disc-val mono">${escAttr(df.suspect2_side || '--')}</span></div>
+            <div class="disc-field"><span class="disc-label">SUSPECT 3 POSITION:</span><span class="disc-val mono">${escAttr(df.suspect3_position || '--')}</span></div>
+            <div class="disc-field"><span class="disc-label">SUSPECT 3 SIDE:</span><span class="disc-val mono">${escAttr(df.suspect3_side || '--')}</span></div>
+          </div>
+        `;
+      }
+    }
+  }
+
+  // 5. Update last command telemetry in-place
+  if (cf.last_tx_command && cfdsState.currentSlide === "interactive_0048") {
+    cfdsState.lastTxCommand = cf.last_tx_command;
+    const box = document.getElementById("cfds-last-tx-box");
+    if (box) {
+      box.innerHTML = `<span class="mono">LAST TX: KEY <strong>${escAttr(cf.last_tx_command.key)}</strong> &nbsp;|&nbsp; LBL 227: <strong>${escAttr(cf.last_tx_command.hex_32)}</strong> &nbsp;|&nbsp; TIME: ${escAttr(cf.last_tx_command.time_str || '')}</span>`;
+    }
+  }
+}
+
+
 
 // ====================================================================
 // BOEING CMC MODE IMPLEMENTATION (ARINC 604-1 / AEROFLEX T1200B)
@@ -3751,17 +3695,6 @@ function renderCmcChannelsTab(c, r, s) {
 
   function render(s, opts) {
     const force = !(opts && opts.live);
-    if (s && s.lru_connection) {
-      const prevReal = cfdsState.realDeviceConnected;
-      cfdsState.realDeviceConnected = !!s.lru_connection.connected;
-      cfdsState.deviceStatusDetail = s.lru_connection.detail || "";
-      if (!cfdsState.simulationMode && prevReal !== cfdsState.realDeviceConnected) {
-        if (cfdsState.currentView === "LRU_CONSOLE") {
-          const rootEl = root();
-          if (rootEl) renderCfdsHub(rootEl, s);
-        }
-      }
-    }
     if (snap && s && s !== snap) s = Object.assign({}, snap, s);
     snap = s;
     renderTopbar(s);
@@ -3791,6 +3724,10 @@ function renderCmcChannelsTab(c, r, s) {
       }
       if (view === "vhf_align" || (view === "lru_format" && s.active_profile === "vhf_align")) {
         patchVhfAlignRx(s);
+        return;
+      }
+      if (view === "cfds") {
+        patchCfdsRx(s);
         return;
       }
       if (isWorkbench(view)) patchRxTable(s);
