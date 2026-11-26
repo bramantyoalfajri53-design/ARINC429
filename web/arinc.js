@@ -2218,8 +2218,7 @@ function renderCfdsSlide6_8Normal(c, r, s, is48) {
         <button type="button" class="cfds-phase-btn ${cfdsState.flightPhase === 'AIR' ? 'air' : 'ground'}" id="cfds-norm-phase-btn">
           FLIGHT PHASE: <strong>${escAttr(cfdsState.flightPhase)}</strong>
         </button>
-        <button type="button" class="btn btn-sm primary" id="cfds-norm-sim-btn">Simulate Normal Burst</button>
-        <button type="button" class="btn btn-sm btn-ghost" id="cfds-norm-clear-btn">Clear Log</button>
+        <button type="button" class="btn btn-sm btn-ghost cfds-refresh-btn" id="cfds-refresh-btn">Refresh</button>
       </div>
     </div>
 
@@ -2255,34 +2254,34 @@ function renderCfdsSlide6_8Normal(c, r, s, is48) {
     renderCfdsHub(r, s);
   };
 
-  // Simulate Burst
-  p.querySelector("#cfds-norm-sim-btn").onclick = async () => {
+  bindCfdsRefreshButton(p, s);
+  p.querySelector("#cfds-norm-back").onclick = () => switchCfdsSlide("op_mode_hub", r, s);
+}
+
+function bindCfdsRefreshButton(p, s) {
+  const btn = p.querySelector("#cfds-refresh-btn");
+  if (!btn) return;
+  btn.onclick = async () => {
+    btn.classList.add("momentary-press");
+    btn.textContent = "Refreshing...";
+    btn.disabled = true;
     try {
-      const res = await api("/api/arinc/cfds/simulate", {
+      const res = await api("/api/arinc/cfds/refresh", {
         method: "POST",
-        body: JSON.stringify({ mode: "NORMAL", lru_code: lru.code }),
+        body: JSON.stringify({}),
       });
-      syncCfdsFromResponse(res, s);
-      renderCfdsHub(r, s);
+      if (res) {
+        syncCfdsFromResponse(res, s, false);
+        patchCfdsRx({ cfds: res });
+      }
     } catch (e) {
-      alert("Simulate error: " + e.message);
+      console.warn("CFDS refresh error:", e);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "Refresh";
+      setTimeout(() => btn.classList.remove("momentary-press"), 150);
     }
   };
-
-  // Clear Log
-  p.querySelector("#cfds-norm-clear-btn").onclick = async () => {
-    cfdsState.normalMessages = [];
-    try {
-      const res = await api("/api/arinc/cfds/clear", {
-        method: "POST",
-        body: JSON.stringify({ mode: "normal" }),
-      });
-      syncCfdsFromResponse(res, s);
-    } catch (e) {}
-    renderCfdsHub(r, s);
-  };
-
-  p.querySelector("#cfds-norm-back").onclick = () => switchCfdsSlide("op_mode_hub", r, s);
 }
 
 function attachCfdsMcduDelegation(p, r, s, lru) {
@@ -2336,8 +2335,7 @@ function renderCfdsSlide7Menu0018(c, r, s) {
         <p class="muted">MCDU INTERFACE · ${escAttr(lru.name)} (${escAttr(lru.short)})</p>
       </div>
       <div style="display:flex;gap:10px;align-items:center">
-        <button type="button" class="btn btn-sm primary" id="cfds-menu-sim-btn">Simulate Menu</button>
-        <button type="button" class="btn btn-sm btn-ghost" id="cfds-menu-clear-btn">Clear Screen</button>
+        <button type="button" class="btn btn-sm btn-ghost cfds-refresh-btn" id="cfds-refresh-btn">Refresh</button>
       </div>
     </div>
 
@@ -2387,37 +2385,9 @@ function renderCfdsSlide7Menu0018(c, r, s) {
   `;
   c.appendChild(p);
 
-  // Event delegation for all LSK buttons
+  // Event delegation for all LSK buttons & Refresh
   attachCfdsMcduDelegation(p, r, s, lru);
-
-  // Simulate Menu Mode
-  p.querySelector("#cfds-menu-sim-btn").onclick = async () => {
-    try {
-      const res = await api("/api/arinc/cfds/simulate", {
-        method: "POST",
-        body: JSON.stringify({ mode: "MENU", lru_code: lru.code }),
-      });
-      syncCfdsFromResponse(res, s);
-      renderCfdsHub(r, s);
-    } catch (e) {
-      alert("Simulate error: " + e.message);
-    }
-  };
-
-  // Clear Screen
-  p.querySelector("#cfds-menu-clear-btn").onclick = async () => {
-    cfdsState.mcduLines = Array(14).fill("".padEnd(24, " "));
-    cfdsState.mcduHasData = false;
-    cfdsState.mcduStatus = "WAITING FOR LRU MENU DATA (LABEL 356)...";
-    try {
-      const res = await api("/api/arinc/cfds/clear", {
-        method: "POST",
-        body: JSON.stringify({ mode: "menu" }),
-      });
-      syncCfdsFromResponse(res, s);
-    } catch (e) {}
-    renderCfdsHub(r, s);
-  };
+  bindCfdsRefreshButton(p, s);
 
   p.querySelector("#cfds-menu-back").onclick = () => switchCfdsSlide("op_mode_hub", r, s);
 }
@@ -2436,8 +2406,7 @@ function renderCfdsSlide9Interactive0048(c, r, s) {
         <p class="muted">COMPLETE MCDU PANEL &amp; KEYPAD · ${escAttr(lru.name)} (${escAttr(lru.short)})</p>
       </div>
       <div style="display:flex;gap:10px;align-items:center">
-        <button type="button" class="btn btn-sm primary" id="cfds-inter-sim-btn">Simulate Test</button>
-        <button type="button" class="btn btn-sm btn-ghost" id="cfds-inter-clear-btn">Clear Screen</button>
+        <button type="button" class="btn btn-sm btn-ghost cfds-refresh-btn" id="cfds-refresh-btn">Refresh</button>
       </div>
     </div>
 
@@ -2518,37 +2487,9 @@ function renderCfdsSlide9Interactive0048(c, r, s) {
   `;
   c.appendChild(p);
 
-  // Event delegation for LSKs, Function Keys, and Keypad
+  // Event delegation for LSKs, Function Keys, Keypad & Refresh
   attachCfdsMcduDelegation(p, r, s, lru);
-
-  // Simulate Interactive Mode
-  p.querySelector("#cfds-inter-sim-btn").onclick = async () => {
-    try {
-      const res = await api("/api/arinc/cfds/simulate", {
-        method: "POST",
-        body: JSON.stringify({ mode: "INTERACTIVE", lru_code: lru.code }),
-      });
-      syncCfdsFromResponse(res, s);
-      renderCfdsHub(r, s);
-    } catch (e) {
-      alert("Simulate error: " + e.message);
-    }
-  };
-
-  // Clear Screen
-  p.querySelector("#cfds-inter-clear-btn").onclick = async () => {
-    cfdsState.mcduLines = Array(14).fill("".padEnd(24, " "));
-    cfdsState.mcduHasData = false;
-    cfdsState.mcduStatus = "WAITING FOR LRU MENU DATA (LABEL 356)...";
-    try {
-      const res = await api("/api/arinc/cfds/clear", {
-        method: "POST",
-        body: JSON.stringify({ mode: "interactive" }),
-      });
-      syncCfdsFromResponse(res, s);
-    } catch (e) {}
-    renderCfdsHub(r, s);
-  };
+  bindCfdsRefreshButton(p, s);
 
   p.querySelector("#cfds-inter-back").onclick = () => switchCfdsSlide("op_mode_hub", r, s);
 }
@@ -2568,8 +2509,7 @@ function renderCfdsSlide10Discrete0048(c, r, s) {
         <p class="muted">ARINC 429 DISCRETE FAULT FIELD MONITORING · 11 FIELDS (SLIDE 10)</p>
       </div>
       <div style="display:flex;gap:10px;align-items:center">
-        <button type="button" class="btn btn-sm primary" id="cfds-disc-sim-btn">Simulate Discrete Fault</button>
-        <button type="button" class="btn btn-sm btn-ghost" id="cfds-disc-clear-btn">Clear Discretes</button>
+        <button type="button" class="btn btn-sm btn-ghost cfds-refresh-btn" id="cfds-refresh-btn">Refresh</button>
       </div>
     </div>
 
@@ -2633,46 +2573,7 @@ function renderCfdsSlide10Discrete0048(c, r, s) {
   `;
   c.appendChild(p);
 
-  // Simulate Discrete Fault
-  p.querySelector("#cfds-disc-sim-btn").onclick = async () => {
-    try {
-      const res = await api("/api/arinc/cfds/simulate", {
-        method: "POST",
-        body: JSON.stringify({ mode: "DISCRETE", lru_code: lru.code }),
-      });
-      syncCfdsFromResponse(res, s);
-      renderCfdsHub(r, s);
-    } catch (e) {
-      alert("Simulate error: " + e.message);
-    }
-  };
-
-  // Clear
-  p.querySelector("#cfds-disc-clear-btn").onclick = async () => {
-    cfdsState.discreteHasData = false;
-    cfdsState.discreteFields = {
-      failure_number: "",
-      failure_type_code: "",
-      failure_type_string: "",
-      witness_position: "",
-      witness_side: "",
-      suspect1_position: "",
-      suspect1_side: "",
-      suspect2_position: "",
-      suspect2_side: "",
-      suspect3_position: "",
-      suspect3_side: "",
-    };
-    try {
-      const res = await api("/api/arinc/cfds/clear", {
-        method: "POST",
-        body: JSON.stringify({ mode: "discrete" }),
-      });
-      syncCfdsFromResponse(res, s);
-    } catch (e) {}
-    renderCfdsHub(r, s);
-  };
-
+  bindCfdsRefreshButton(p, s);
   p.querySelector("#cfds-disc-back").onclick = () => switchCfdsSlide("op_mode_hub", r, s);
 }
 

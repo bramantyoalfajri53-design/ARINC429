@@ -937,6 +937,10 @@ def create_app(
     def api_arinc_cfds_clear(body: CfdsClearBody, _sid: str = Depends(require_session)):
         return get_arinc().clear_cfds_rx(body.mode)
 
+    @app.post("/api/arinc/cfds/refresh")
+    def api_arinc_cfds_refresh(_sid: str = Depends(require_session)):
+        return get_arinc().refresh_cfds()
+
     @app.post("/api/arinc/cfds/simulate")
     def api_arinc_cfds_simulate(body: CfdsSimulateBody, _sid: str = Depends(require_session)):
         return get_arinc().simulate_cfds_scenario(body.mode, body.lru_code)

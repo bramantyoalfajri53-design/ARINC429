@@ -527,3 +527,33 @@ def test_cfds_sim_mode_toggle_on_real_hw_and_local_sim(
     assert "34-51-33" in "\n".join(client.post("/api/arinc/cfds/key", json={"key": "1"}).json()["lines"])
     assert "<LAST LEG REPORT" in "\n".join(client.post("/api/arinc/cfds/key", json={"key": "6"}).json()["lines"])
 
+
+def test_cfds_refresh_endpoint_sim_on_and_sim_off(client: TestClient):
+    """Verify POST /api/arinc/cfds/refresh behavior in both SIM: ON and SIM: OFF modes."""
+    # Select 709 DME and navigate into shop_data sub-screen
+    assert client.post("/api/arinc/cfds/select-lru", json={"code": "009"}).status_code == 200
+    assert client.post("/api/arinc/cfds/op-mode", json={"slide": "menu_0018"}).status_code == 200
+    assert client.post("/api/arinc/cfds/sim-mode", json={"enabled": True}).status_code == 200
+    assert client.post("/api/arinc/cfds/key", json={"key": "5"}).json()["current_screen"] == "shop_data"
+
+    # Refresh while SIM: ON keeps active screen (shop_data) and re-emits clean lines
+    r_sim_on = client.post("/api/arinc/cfds/refresh")
+    assert r_sim_on.status_code == 200
+    d_on = r_sim_on.json()
+    assert d_on["is_simulation"] is True
+    assert d_on["has_data"] is True
+    assert d_on["current_screen"] == "shop_data"
+    assert "<ENTER SHOP VISIT" in "\n".join(d_on["lines"])
+
+    # Switch SIM: OFF and verify refresh clears buffer & sends Label 227 re-request word
+    assert client.post("/api/arinc/cfds/sim-mode", json={"enabled": False}).status_code == 200
+    r_sim_off = client.post("/api/arinc/cfds/refresh")
+    assert r_sim_off.status_code == 200
+    d_off = r_sim_off.json()
+    assert d_off["is_simulation"] is False
+    assert d_off["has_data"] is False
+    assert all(line.strip() == "" for line in d_off["lines"])
+    assert d_off["last_tx_command"]["key"] == "REFRESH"
+    assert d_off["last_tx_command"]["equipment_code"] == "009"
+    assert d_off["last_tx_command"]["hex_32"].startswith("0x")
+

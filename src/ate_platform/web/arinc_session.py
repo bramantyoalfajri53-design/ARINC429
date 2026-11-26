@@ -2267,6 +2267,10 @@ class ArincSession:
             self.cfds.simulation_mode = self.is_cfds_simulation_active()
             return self.cfds.clear_rx_data(mode)
 
+    def refresh_cfds(self) -> dict[str, Any]:
+        with self._lock:
+            return self.cfds.refresh_screen(self.is_cfds_simulation_active())
+
     def simulate_cfds_scenario(self, mode: str, lru_code: str | None = None) -> dict[str, Any]:
         with self._lock:
             self.cfds.simulation_mode = self.is_cfds_simulation_active()

@@ -1255,6 +1255,53 @@ class CfdsProtocolManager:
                 self.discrete_fields = dict(DEFAULT_DISCRETE_FIELDS)
             return self.get_state()
 
+    def refresh_screen(self, is_simulation: bool) -> dict[str, Any]:
+        """Refresh active CFDS screen: re-render active screen in SIM:ON, or clear & re-request Label 227 in SIM:OFF."""
+        with self._lock:
+            self.simulation_mode = bool(is_simulation)
+            slide = str(self.current_slide).lower()
+            eq = self.selected_lru.get("code", "009")
+
+            if self.simulation_mode:
+                if slide in ("menu_0018", "interactive_0048"):
+                    if eq == "009":
+                        self.load_dme_screen(self.dme_current_screen or "root")
+                    else:
+                        self.load_generic_lru_screen(self.generic_current_screen or "root")
+                elif slide in ("normal_0018", "normal_0048"):
+                    self.normal_messages.clear()
+                    self.simulate_test_scenario("NORMAL", eq)
+                elif slide == "discrete_0048":
+                    self.simulate_test_scenario("DISCRETE", eq)
+                return self.get_state()
+
+            # Real hardware mode (SIM: OFF): clear stale buffer & re-transmit Label 227 activation/request word
+            self.mcdu_lines = ["" for _ in range(14)]
+            self.mcdu_has_data = False
+            self.normal_messages.clear()
+            self.discrete_has_data = False
+            self.discrete_fields = dict(DEFAULT_DISCRETE_FIELDS)
+
+            cmd_code = 0x11 if slide in ("menu_0018", "interactive_0048") else 0x01
+            raw_word, hex_str = encode_label227_word(
+                equipment_code=eq,
+                command_code=cmd_code,
+                sdi=0,
+                ready=True,
+                bit12=False,
+            )
+            self.last_tx_command = {
+                "key": "REFRESH",
+                "command_code": cmd_code,
+                "equipment_code": eq,
+                "raw_word": raw_word,
+                "hex_32": hex_str,
+                "timestamp": time.time(),
+                "time_str": datetime.now(timezone.utc).strftime("%H:%M:%S.%f")[:12],
+            }
+            self.mcdu_status = "WAITING FOR LRU MENU DATA (LABEL 356)..."
+            return self.get_state()
+
     def simulate_test_scenario(self, mode: str, lru_code: str | None = None) -> dict[str, Any]:
         """Simulate realistic test burst for demonstration/verification of any LRU."""
         with self._lock:
