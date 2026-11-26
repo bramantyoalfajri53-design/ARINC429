@@ -1521,16 +1521,29 @@ let cfdsState = {
     suspect3_side: "",
   },
   lastTxCommand: null,
+  isSimulation: false,
+  simToggleGuardUntil: 0,
 };
 
 // ====================================================================
 // CFDS 10 SLIDES ENGINE (AEROFLEX JcAIR T1200B / ABD0018 & ABD0048)
 // ====================================================================
 
-function syncCfdsFromResponse(res, s) {
+function updateCfdsSimToggleBtn(btn, isSim) {
+  if (!btn) return;
+  btn.textContent = isSim ? "SIM: ON" : "SIM: OFF";
+  btn.classList.toggle("active", Boolean(isSim));
+  btn.setAttribute("aria-pressed", isSim ? "true" : "false");
+}
+
+function syncCfdsFromResponse(res, s, fromPoll = false) {
   if (!res) return;
   if (s) s.cfds = res;
   if (snap) snap.cfds = res;
+  if (!fromPoll || Date.now() >= (cfdsState.simToggleGuardUntil || 0)) {
+    const simFlag = res.is_simulation !== undefined ? res.is_simulation : res.simulation_mode;
+    if (simFlag !== undefined) cfdsState.isSimulation = Boolean(simFlag);
+  }
   const lines = res.lines || res.mcdu_lines;
   const hasNonEmptyLine = Array.isArray(lines) && lines.some((l) => l && l.trim().length > 0);
   const hasData = res.has_data !== undefined
@@ -1594,7 +1607,7 @@ function renderCfdsHub(r, s) {
 
   // Sync state from snapshot if available
   if (s && s.cfds) {
-    syncCfdsFromResponse(s.cfds, null);
+    syncCfdsFromResponse(s.cfds, null, false);
   }
 
   // Top header status bar
@@ -1613,17 +1626,42 @@ function renderCfdsHub(r, s) {
   }[cfdsState.currentSlide] || "CFDS MODE";
 
   topStrip.innerHTML = `
-    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
-      <span class="cfds-status-pill hw">CFDS CENTRALIZED FAULT DISPLAY SYSTEM</span>
-      <span style="font-weight:700;color:var(--text, #1e293b)">${escAttr(currentSlideName)}</span>
-      <span style="color:var(--teal-primary, #0d9488);font-weight:600">LRU: ${escAttr(cfdsState.selectedLru.name)} (${escAttr(cfdsState.selectedLru.short)} - 0x${escAttr(cfdsState.selectedLru.code)})</span>
+    <div style="display:flex;align-items:center;gap:10px;min-width:0;overflow:hidden;white-space:nowrap">
+      <span class="cfds-status-pill hw" style="flex-shrink:0">CFDS CENTRALIZED FAULT DISPLAY SYSTEM</span>
+      <span style="font-weight:700;color:var(--text, #1e293b);flex-shrink:0">${escAttr(currentSlideName)}</span>
+      <span style="color:var(--teal-primary, #0d9488);font-weight:600;overflow:hidden;text-overflow:ellipsis">LRU: ${escAttr(cfdsState.selectedLru.name)} (${escAttr(cfdsState.selectedLru.short)} - 0x${escAttr(cfdsState.selectedLru.code)})</span>
     </div>
-    <div style="display:flex;align-items:center;gap:8px">
+    <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;white-space:nowrap">
+      <button type="button" class="cfds-sim-toggle-btn ${cfdsState.isSimulation ? 'active' : ''}" id="cfds-btn-sim-toggle" aria-pressed="${cfdsState.isSimulation ? 'true' : 'false'}">${cfdsState.isSimulation ? 'SIM: ON' : 'SIM: OFF'}</button>
       ${cfdsState.currentSlide !== "menu" ? '<button type="button" class="btn btn-sm btn-ghost" id="cfds-btn-top-menu">CFDS Menu</button>' : ''}
       <button type="button" class="btn btn-sm btn-ghost" id="cfds-btn-top-exit">Mode Select</button>
     </div>
   `;
   wb.appendChild(topStrip);
+
+  const btnSimToggle = topStrip.querySelector("#cfds-btn-sim-toggle");
+  if (btnSimToggle) {
+    btnSimToggle.onclick = async () => {
+      const nextState = !cfdsState.isSimulation;
+      cfdsState.isSimulation = nextState;
+      cfdsState.simToggleGuardUntil = Date.now() + 700;
+      updateCfdsSimToggleBtn(btnSimToggle, nextState);
+      try {
+        const res = await api("/api/arinc/cfds/sim-mode", {
+          method: "POST",
+          body: JSON.stringify({ enabled: nextState }),
+        });
+        if (res) {
+          cfdsState.simToggleGuardUntil = Date.now() + 700;
+          syncCfdsFromResponse(res, s, false);
+          updateCfdsSimToggleBtn(document.getElementById("cfds-btn-sim-toggle"), cfdsState.isSimulation);
+          patchCfdsRx({ cfds: res });
+        }
+      } catch (e) {
+        console.warn("CFDS sim toggle error:", e);
+      }
+    };
+  }
 
   const btnTopMenu = topStrip.querySelector("#cfds-btn-top-menu");
   if (btnTopMenu) {
@@ -2644,6 +2682,15 @@ function renderCfdsSlide10Discrete0048(c, r, s) {
 function patchCfdsRx(s) {
   if (!s || !s.cfds) return;
   const cf = s.cfds;
+
+  // 0. Sync SIM toggle state unless within optimistic guard window
+  if (Date.now() >= (cfdsState.simToggleGuardUntil || 0)) {
+    const simFlag = cf.is_simulation !== undefined ? cf.is_simulation : cf.simulation_mode;
+    if (simFlag !== undefined) {
+      cfdsState.isSimulation = Boolean(simFlag);
+      updateCfdsSimToggleBtn(document.getElementById("cfds-btn-sim-toggle"), cfdsState.isSimulation);
+    }
+  }
 
   // 1. Update Normal Mode log in-place
   if (cf.normal_messages && cfdsState.currentSlide.startsWith("normal")) {

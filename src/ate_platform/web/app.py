@@ -297,6 +297,11 @@ class CfdsOpModeBody(BaseModel):
     slide: str | None = None
 
 
+class CfdsSimModeBody(BaseModel):
+    enabled: bool | None = None
+    sim: bool | None = None
+
+
 class CfdsChannelsBody(BaseModel):
     bit_rate: str | None = None
     xmtr_select: str | None = None
@@ -499,6 +504,7 @@ def create_app(
         return {"ok": True, "action": "estop"}
 
     @app.get("/api/arinc/status")
+    @app.get("/api/arinc/snapshot")
     def api_arinc_status(_sid: str = Depends(require_session)):
         return get_arinc().snapshot()
 
@@ -903,6 +909,11 @@ def create_app(
     def api_arinc_cfds_op_mode(body: CfdsOpModeBody, _sid: str = Depends(require_session)):
         target = body.slide or body.op_mode or body.mode or "op_mode_hub"
         return get_arinc().set_cfds_slide(target)
+
+    @app.post("/api/arinc/cfds/sim-mode")
+    def api_arinc_cfds_sim_mode(body: CfdsSimModeBody, _sid: str = Depends(require_session)):
+        enabled = body.enabled if body.enabled is not None else bool(body.sim)
+        return get_arinc().set_cfds_sim_mode(enabled)
 
     @app.post("/api/arinc/cfds/tx-data")
     def api_arinc_cfds_tx_data(body: CfdsTxParamsBody, _sid: str = Depends(require_session)):

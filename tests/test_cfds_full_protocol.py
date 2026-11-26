@@ -436,3 +436,94 @@ def test_cfds_hardware_mode_pure_dynamic_rx():
     assert res_rx["has_data"] is True
     assert "BIT" in res_rx["lines"][0]
 
+
+def test_cfds_sim_mode_toggle_on_real_hw_and_local_sim(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, client: TestClient
+):
+    """Verify POST /api/arinc/cfds/sim-mode toggle both when hardware_connected=True and local sim."""
+    import ate_platform.web.arinc_session as sess_mod
+    from ate_platform.web.arinc_session import ArincSession
+
+    # --- A. Simulate real Ballard hardware server (like 10.11.11.2) ---
+    sess = ArincSession(simulation=True)
+    sess.simulation_mode = False
+    sess._sim_override = False
+    sess.hardware_info = {
+        "simulated": False,
+        "cores": [{"core": 0, "open_ok": True, "count": 16}],
+    }
+    orig_bti = sess_mod.HAS_BTIDRIVER
+    orig_force = sess_mod.force_simulation
+    try:
+        sess_mod.HAS_BTIDRIVER = True
+        sess_mod.force_simulation = lambda: False
+
+        # Default: False when physical Ballard hardware is active
+        assert sess.is_cfds_simulation_active() is False
+
+        # Enter DME-0 Menu Mode while SIM is OFF -> empty waiting screen
+        sess.select_cfds_lru("009")
+        r_off = sess.set_cfds_slide("menu_0018")
+        assert r_off["is_simulation"] is False
+        assert r_off["has_data"] is False
+
+        # Enable CFDS SIM ON -> immediately populates DME-0 root screen
+        r_on = sess.set_cfds_sim_mode(True)
+        assert r_on["is_simulation"] is True
+        assert r_on["has_data"] is True
+        assert "DME-0" in r_on["lines"][0]
+        assert "<LAST LEG REPORT" in r_on["lines"][2]
+
+        # Navigate keys 1 -> 5 -> 6 while SIM ON
+        assert "34-51-33" in "\n".join(sess.send_cfds_key("1")["lines"])
+        assert sess.send_cfds_key("6")["current_screen"] == "root"
+        assert "shop data" in "\n".join(sess.send_cfds_key("5")["lines"]).lower()
+        assert sess.send_cfds_key("6")["current_screen"] == "root"
+
+        # Test 707 LRA as well
+        sess.select_cfds_lru("007")
+        r_lra = sess.set_cfds_slide("menu_0018")
+        assert r_lra["has_data"] is True
+        assert "RALT-1" in r_lra["lines"][0]
+
+        # Disable CFDS SIM OFF -> clears buffer, returns to hardware listen mode
+        r_back_off = sess.set_cfds_sim_mode(False)
+        assert r_back_off["is_simulation"] is False
+        assert r_back_off["has_data"] is False
+        assert all(line.strip() == "" for line in r_back_off["lines"])
+        # Physical hardware mode for other ARINC modes stays intact
+        assert sess._sim_override is False
+    finally:
+        sess_mod.HAS_BTIDRIVER = orig_bti
+        sess_mod.force_simulation = orig_force
+
+    # --- B. End-to-end REST endpoint toggle on local sim TestClient (True -> False -> True) ---
+    assert client.post("/api/arinc/cfds/select-lru", json={"code": "009"}).status_code == 200
+    assert client.post("/api/arinc/cfds/op-mode", json={"slide": "menu_0018"}).status_code == 200
+
+    res1 = client.post("/api/arinc/cfds/sim-mode", json={"enabled": True})
+    assert res1.status_code == 200
+    assert res1.json()["is_simulation"] is True
+    assert res1.json()["has_data"] is True
+    assert "DME-0" in res1.json()["lines"][0]
+
+    # Toggle OFF via API -> clears simulated MCDU buffer
+    res2 = client.post("/api/arinc/cfds/sim-mode", json={"enabled": False})
+    assert res2.status_code == 200
+    assert res2.json()["is_simulation"] is False
+    assert res2.json()["has_data"] is False
+
+    # Snapshot (/api/arinc/status & /api/arinc/snapshot) reflects cfds.is_simulation == False
+    snap_res = client.get("/api/arinc/snapshot")
+    assert snap_res.status_code == 200
+    assert snap_res.json()["cfds"]["is_simulation"] is False
+
+    # Toggle back ON -> repopulates active screen + keys navigate
+    res3 = client.post("/api/arinc/cfds/sim-mode", json={"enabled": True})
+    assert res3.status_code == 200
+    assert res3.json()["is_simulation"] is True
+    assert res3.json()["has_data"] is True
+    assert "DME-0" in res3.json()["lines"][0]
+    assert "34-51-33" in "\n".join(client.post("/api/arinc/cfds/key", json={"key": "1"}).json()["lines"])
+    assert "<LAST LEG REPORT" in "\n".join(client.post("/api/arinc/cfds/key", json={"key": "6"}).json()["lines"])
+

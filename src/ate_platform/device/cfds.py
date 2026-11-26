@@ -751,6 +751,35 @@ class CfdsProtocolManager:
                     self.load_generic_lru_screen(self.generic_current_screen or "root")
             return self.get_state()
 
+    def apply_sim_mode(self, enabled: bool) -> dict[str, Any]:
+        """Apply explicit CFDS simulation toggle ON/OFF without altering other subsystems."""
+        with self._lock:
+            self.simulation_mode = bool(enabled)
+            slide = str(self.current_slide).lower()
+            eq = self.selected_lru.get("code", "009")
+
+            if self.simulation_mode:
+                if slide in ("menu_0018", "interactive_0048"):
+                    if eq == "009":
+                        self.load_dme_screen(self.dme_current_screen or "root")
+                    else:
+                        self.load_generic_lru_screen(self.generic_current_screen or "root")
+                elif slide in ("normal_0018", "normal_0048"):
+                    if not self.normal_messages:
+                        self.simulate_test_scenario("NORMAL", eq)
+                elif slide == "discrete_0048":
+                    self.simulate_test_scenario("DISCRETE", eq)
+            else:
+                # Disable simulation: clear simulated buffers so display returns to live hardware bus waiting state
+                self.mcdu_lines = ["" for _ in range(14)]
+                self.mcdu_has_data = False
+                self.mcdu_status = "WAITING FOR LRU MENU DATA (LABEL 356)..."
+                self.normal_messages.clear()
+                self.discrete_has_data = False
+                self.discrete_fields = dict(DEFAULT_DISCRETE_FIELDS)
+
+            return self.get_state()
+
     def _encode_and_commit_mcdu_lines(self, rendered_lines: list[str], status_text: str) -> None:
         """Encode 14x24 lines through ARINC 429 Label 356 ISO #5 and decode back to MCDU buffer."""
         words = encode_screen_to_label356_words(rendered_lines, self.dme_agc_val)

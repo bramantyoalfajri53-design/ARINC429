@@ -319,6 +319,7 @@ class ArincSession:
         self.tx_profile: dict[str, str | None] = {b: None for b in BUSES}
         self.rx_profile: dict[str, str | None] = {b: None for b in BUSES}
         self._sim_override: bool = False
+        self._cfds_sim_override: bool | None = None
         self.active_lru_code: str = "709"
         self.time_constant_s: float = 0.0
         self.ln1: dict[str, str] = {"kind": "tx", "bus": "A"}
@@ -2197,6 +2198,8 @@ class ArincSession:
 
     def is_cfds_simulation_active(self) -> bool:
         """Return True whenever running in mock/simulation mode or without physical Ballard hardware."""
+        if self._cfds_sim_override is not None:
+            return bool(self._cfds_sim_override)
         if self.simulation_mode or bool(self._sim_override) or force_simulation():
             return True
         if not HAS_BTIDRIVER:
@@ -2207,6 +2210,13 @@ class ArincSession:
         cores = hw.get("cores") or []
         hardware_connected = any(c.get("open_ok") and c.get("count", 0) > 0 for c in cores)
         return not hardware_connected
+
+    def set_cfds_sim_mode(self, enabled: bool) -> dict[str, Any]:
+        """Explicitly enable/disable CFDS simulation mode without affecting physical hardware sessions."""
+        with self._lock:
+            self._cfds_sim_override = bool(enabled)
+            active = self.is_cfds_simulation_active()
+            return self.cfds.apply_sim_mode(active)
 
     def get_cfds_state(self) -> dict[str, Any]:
         with self._lock:
