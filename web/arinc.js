@@ -1527,21 +1527,60 @@ let cfdsState = {
 // CFDS 10 SLIDES ENGINE (AEROFLEX JcAIR T1200B / ABD0018 & ABD0048)
 // ====================================================================
 
+function syncCfdsFromResponse(res, s) {
+  if (!res) return;
+  if (s) s.cfds = res;
+  if (snap) snap.cfds = res;
+  const lines = res.lines || res.mcdu_lines;
+  const hasNonEmptyLine = Array.isArray(lines) && lines.some((l) => l && l.trim().length > 0);
+  const hasData = res.has_data !== undefined
+    ? Boolean(res.has_data || hasNonEmptyLine)
+    : (res.mcdu_has_data !== undefined ? Boolean(res.mcdu_has_data || hasNonEmptyLine) : hasNonEmptyLine);
+  cfdsState.mcduHasData = hasData;
+  if (lines) cfdsState.mcduLines = lines;
+  if (res.mcdu_status) cfdsState.mcduStatus = res.mcdu_status;
+  if (res.normal_messages) cfdsState.normalMessages = res.normal_messages;
+  if (res.discrete_has_data !== undefined) cfdsState.discreteHasData = res.discrete_has_data;
+  if (res.discrete_fields) cfdsState.discreteFields = res.discrete_fields;
+  if (res.last_tx_command !== undefined) cfdsState.lastTxCommand = res.last_tx_command;
+  if (res.flight_phase_mode) cfdsState.flightPhase = res.flight_phase_mode;
+  if (res.selected_lru) cfdsState.selectedLru = res.selected_lru;
+}
+
+function renderMcduScreenRows(screenEl, lines, hasData) {
+  if (!screenEl) return;
+  if (!hasData) {
+    if (!screenEl.querySelector(".cfds-empty-msg")) {
+      screenEl.innerHTML = '<div class="cfds-empty-msg" style="height:100%;display:flex;align-items:center;justify-content:center;text-align:center;padding:16px;">WAITING FOR LRU MENU DATA (LABEL 356)...</div>';
+    }
+    return;
+  }
+  const safeLines = Array.isArray(lines) && lines.length ? lines : Array(14).fill("");
+  const rows = screenEl.querySelectorAll(".mcdu-row");
+  if (rows.length === 14) {
+    safeLines.forEach((line, idx) => {
+      if (rows[idx]) {
+        const txt = (line || "").padEnd(24, " ");
+        if (rows[idx].textContent !== txt) rows[idx].textContent = txt;
+      }
+    });
+  } else {
+    screenEl.innerHTML = safeLines.map((line, idx) => `
+      <div class="mcdu-row mono" data-row="${idx}">${escAttr((line || "").padEnd(24, " "))}</div>
+    `).join("");
+  }
+}
+
 async function switchCfdsSlide(slide, r, s) {
   cfdsState.currentSlide = slide;
+  const isOpModeSlide = ["normal_0018", "menu_0018", "normal_0048", "interactive_0048", "discrete_0048"].includes(slide);
   try {
-    const res = await api("/api/arinc/cfds/slide", {
+    const endpoint = isOpModeSlide ? "/api/arinc/cfds/op-mode" : "/api/arinc/cfds/slide";
+    const res = await api(endpoint, {
       method: "POST",
       body: JSON.stringify({ slide }),
     });
-    if (res) {
-      if (res.mcdu_has_data !== undefined) cfdsState.mcduHasData = res.mcdu_has_data;
-      if (res.mcdu_lines) cfdsState.mcduLines = res.mcdu_lines;
-      if (res.mcdu_status) cfdsState.mcduStatus = res.mcdu_status;
-      if (res.normal_messages) cfdsState.normalMessages = res.normal_messages;
-      if (res.discrete_has_data !== undefined) cfdsState.discreteHasData = res.discrete_has_data;
-      if (res.discrete_fields) cfdsState.discreteFields = res.discrete_fields;
-    }
+    if (res) syncCfdsFromResponse(res, s);
   } catch (e) {
     console.warn("switchCfdsSlide error:", e);
   }
@@ -1555,15 +1594,7 @@ function renderCfdsHub(r, s) {
 
   // Sync state from snapshot if available
   if (s && s.cfds) {
-    if (s.cfds.normal_messages) cfdsState.normalMessages = s.cfds.normal_messages;
-    if (s.cfds.mcdu_lines) cfdsState.mcduLines = s.cfds.mcdu_lines;
-    if (s.cfds.mcdu_status) cfdsState.mcduStatus = s.cfds.mcdu_status;
-    if (s.cfds.mcdu_has_data !== undefined) cfdsState.mcduHasData = s.cfds.mcdu_has_data;
-    if (s.cfds.discrete_has_data !== undefined) cfdsState.discreteHasData = s.cfds.discrete_has_data;
-    if (s.cfds.discrete_fields) cfdsState.discreteFields = s.cfds.discrete_fields;
-    if (s.cfds.last_tx_command) cfdsState.lastTxCommand = s.cfds.last_tx_command;
-    if (s.cfds.flight_phase_mode) cfdsState.flightPhase = s.cfds.flight_phase_mode;
-    if (s.cfds.selected_lru && !cfdsState.selectedLru) cfdsState.selectedLru = s.cfds.selected_lru;
+    syncCfdsFromResponse(s.cfds, null);
   }
 
   // Top header status bar
@@ -1596,10 +1627,7 @@ function renderCfdsHub(r, s) {
 
   const btnTopMenu = topStrip.querySelector("#cfds-btn-top-menu");
   if (btnTopMenu) {
-    btnTopMenu.onclick = () => {
-      cfdsState.currentSlide = "menu";
-      renderCfdsHub(r, s);
-    };
+    btnTopMenu.onclick = () => switchCfdsSlide("menu", r, s);
   }
   topStrip.querySelector("#cfds-btn-top-exit").onclick = () => {
     pushScreen("mode_select");
@@ -1695,24 +1723,25 @@ function renderCfdsSlide1Menu(c, r, s) {
   `;
   c.appendChild(p);
 
-  // LRU selection handlers
-  p.querySelectorAll(".cfds-lru-btn[data-row]").forEach(btn => {
-    btn.onclick = async () => {
-      const rIdx = parseInt(btn.getAttribute("data-row"), 10);
-      const cIdx = parseInt(btn.getAttribute("data-col"), 10);
-      const lru = CFDS_SLIDE1_LRUS[rIdx][cIdx];
-      cfdsState.selectedLru = lru;
-      cfdsState.currentSlide = "desired_mode";
-      cfdsState.mcduHasData = false;
-      cfdsState.mcduLines = Array(14).fill("".padEnd(24, " "));
-      try {
-        await api("/api/arinc/cfds/select-lru", {
-          method: "POST",
-          body: JSON.stringify({ code: lru.code, name: lru.name, short: lru.short }),
-        });
-      } catch (e) {}
-      renderCfdsHub(r, s);
-    };
+  // LRU selection handlers (event delegation)
+  p.addEventListener("click", async (ev) => {
+    const btn = ev.target.closest(".cfds-lru-btn[data-row]");
+    if (!btn) return;
+    const rIdx = parseInt(btn.getAttribute("data-row"), 10);
+    const cIdx = parseInt(btn.getAttribute("data-col"), 10);
+    const lru = CFDS_SLIDE1_LRUS[rIdx][cIdx];
+    cfdsState.selectedLru = lru;
+    cfdsState.currentSlide = "desired_mode";
+    cfdsState.mcduHasData = false;
+    cfdsState.mcduLines = Array(14).fill("".padEnd(24, " "));
+    try {
+      const res = await api("/api/arinc/cfds/select-lru", {
+        method: "POST",
+        body: JSON.stringify({ code: lru.code, name: lru.name, short: lru.short }),
+      });
+      syncCfdsFromResponse(res, s);
+    } catch (e) {}
+    renderCfdsHub(r, s);
   });
 
   // Manual Entry Modal
@@ -1792,10 +1821,11 @@ function openCfdsManualEntryModal(r, s) {
     cfdsState.selectedLru = customLru;
     cfdsState.currentSlide = "desired_mode";
     try {
-      await api("/api/arinc/cfds/select-lru", {
+      const res = await api("/api/arinc/cfds/select-lru", {
         method: "POST",
         body: JSON.stringify({ code: customLru.code, name: customLru.name, short: customLru.short }),
       });
+      syncCfdsFromResponse(res, s);
     } catch (e) {}
     renderCfdsHub(r, s);
   };
@@ -1842,22 +1872,10 @@ function renderCfdsSlide2DesiredMode(c, r, s) {
   `;
   c.appendChild(p);
 
-  p.querySelector("#btn-go-edit-tx").onclick = () => {
-    cfdsState.currentSlide = "edit_tx";
-    renderCfdsHub(r, s);
-  };
-  p.querySelector("#btn-go-op-mode").onclick = () => {
-    cfdsState.currentSlide = "op_mode_hub";
-    renderCfdsHub(r, s);
-  };
-  p.querySelector("#btn-go-channels").onclick = () => {
-    cfdsState.currentSlide = "channels";
-    renderCfdsHub(r, s);
-  };
-  p.querySelector("#cfds-slide2-back").onclick = () => {
-    cfdsState.currentSlide = "menu";
-    renderCfdsHub(r, s);
-  };
+  p.querySelector("#btn-go-edit-tx").onclick = () => switchCfdsSlide("edit_tx", r, s);
+  p.querySelector("#btn-go-op-mode").onclick = () => switchCfdsSlide("op_mode_hub", r, s);
+  p.querySelector("#btn-go-channels").onclick = () => switchCfdsSlide("channels", r, s);
+  p.querySelector("#cfds-slide2-back").onclick = () => switchCfdsSlide("menu", r, s);
 }
 
 // --------------------------------------------------------------------
@@ -1962,23 +1980,21 @@ function renderCfdsSlide3EditTx(c, r, s) {
     cfdsState.txParams.aircraft_id = p.querySelector("#tx-aircraft-id").value.trim();
 
     try {
-      await api("/api/arinc/cfds/tx-data", {
+      const res = await api("/api/arinc/cfds/tx-data", {
         method: "POST",
         body: JSON.stringify({
           params: cfdsState.txParams,
           config: cfdsState.aircraftConfig,
         }),
       });
+      syncCfdsFromResponse(res, s);
       alert("CFDS TX Data & Configuration Word successfully saved and loaded!");
     } catch (e) {
       alert("Save error: " + e.message);
     }
   };
 
-  p.querySelector("#cfds-slide3-back").onclick = () => {
-    cfdsState.currentSlide = "desired_mode";
-    renderCfdsHub(r, s);
-  };
+  p.querySelector("#cfds-slide3-back").onclick = () => switchCfdsSlide("desired_mode", r, s);
 }
 
 // --------------------------------------------------------------------
@@ -2133,20 +2149,18 @@ function renderCfdsSlide5Channels(c, r, s) {
   // Apply button
   p.querySelector("#cfds-slide5-apply").onclick = async () => {
     try {
-      await api("/api/arinc/cfds/channels", {
+      const res = await api("/api/arinc/cfds/channels", {
         method: "POST",
         body: JSON.stringify(cfdsState.channelConfig),
       });
+      syncCfdsFromResponse(res, s);
       alert("Channel configuration successfully applied!");
     } catch (e) {
       alert("Apply error: " + e.message);
     }
   };
 
-  p.querySelector("#cfds-slide5-back").onclick = () => {
-    cfdsState.currentSlide = "desired_mode";
-    renderCfdsHub(r, s);
-  };
+  p.querySelector("#cfds-slide5-back").onclick = () => switchCfdsSlide("desired_mode", r, s);
 }
 
 // --------------------------------------------------------------------
@@ -2198,11 +2212,7 @@ function renderCfdsSlide6_8Normal(c, r, s, is48) {
         method: "POST",
         body: JSON.stringify({ phase: cfdsState.flightPhase }),
       });
-      if (res) {
-        if (res.normal_messages) cfdsState.normalMessages = res.normal_messages;
-        if (res.discrete_fields) cfdsState.discreteFields = res.discrete_fields;
-        if (res.discrete_has_data !== undefined) cfdsState.discreteHasData = res.discrete_has_data;
-      }
+      syncCfdsFromResponse(res, s);
     } catch (e) {}
     renderCfdsHub(r, s);
   };
@@ -2214,7 +2224,7 @@ function renderCfdsSlide6_8Normal(c, r, s, is48) {
         method: "POST",
         body: JSON.stringify({ mode: "NORMAL", lru_code: lru.code }),
       });
-      if (res && res.normal_messages) cfdsState.normalMessages = res.normal_messages;
+      syncCfdsFromResponse(res, s);
       renderCfdsHub(r, s);
     } catch (e) {
       alert("Simulate error: " + e.message);
@@ -2225,18 +2235,53 @@ function renderCfdsSlide6_8Normal(c, r, s, is48) {
   p.querySelector("#cfds-norm-clear-btn").onclick = async () => {
     cfdsState.normalMessages = [];
     try {
-      await api("/api/arinc/cfds/clear", {
+      const res = await api("/api/arinc/cfds/clear", {
         method: "POST",
         body: JSON.stringify({ mode: "normal" }),
       });
+      syncCfdsFromResponse(res, s);
     } catch (e) {}
     renderCfdsHub(r, s);
   };
 
-  p.querySelector("#cfds-norm-back").onclick = () => {
-    cfdsState.currentSlide = "op_mode_hub";
-    renderCfdsHub(r, s);
-  };
+  p.querySelector("#cfds-norm-back").onclick = () => switchCfdsSlide("op_mode_hub", r, s);
+}
+
+function attachCfdsMcduDelegation(p, r, s, lru) {
+  p.addEventListener("click", async (ev) => {
+    const btn = ev.target.closest("button[data-key]");
+    if (!btn) return;
+    const k = btn.getAttribute("data-key");
+    btn.classList.add("pressed", "momentary-press");
+    setTimeout(() => btn.classList.remove("pressed", "momentary-press"), 180);
+    try {
+      const res = await api("/api/arinc/cfds/key", {
+        method: "POST",
+        body: JSON.stringify({ key: k, lru_code: lru.code }),
+      });
+      if (res) {
+        syncCfdsFromResponse(res, s);
+        if (res.current_slide && res.current_slide !== cfdsState.currentSlide) {
+          cfdsState.currentSlide = res.current_slide;
+          renderCfdsHub(r, s);
+          return;
+        }
+        renderMcduScreenRows(
+          document.getElementById("cfds-mcdu-screen"),
+          cfdsState.mcduLines,
+          cfdsState.mcduHasData
+        );
+        const st = document.getElementById("cfds-mcdu-status");
+        if (st && cfdsState.mcduStatus) st.textContent = cfdsState.mcduStatus;
+        const box = document.getElementById("cfds-last-tx-box");
+        if (box && res.last_tx_command) {
+          box.innerHTML = `<span class="mono">LAST TX: KEY <strong>${escAttr(res.last_tx_command.key)}</strong> &nbsp;|&nbsp; LBL 227: <strong>${escAttr(res.last_tx_command.hex_32)}</strong> &nbsp;|&nbsp; TIME: ${escAttr(res.last_tx_command.time_str || '')}</span>`;
+        }
+      }
+    } catch (e) {
+      alert("Key transmission error: " + e.message);
+    }
+  });
 }
 
 // --------------------------------------------------------------------
@@ -2304,54 +2349,8 @@ function renderCfdsSlide7Menu0018(c, r, s) {
   `;
   c.appendChild(p);
 
-  // LSK button handlers: call /api/arinc/cfds/key
-  p.querySelectorAll(".cfds-lsk-btn[data-key]").forEach(btn => {
-    btn.onclick = async () => {
-      const k = btn.getAttribute("data-key");
-      btn.classList.add("pressed");
-      setTimeout(() => btn.classList.remove("pressed"), 180);
-      try {
-        const res = await api("/api/arinc/cfds/key", {
-          method: "POST",
-          body: JSON.stringify({ key: k, lru_code: lru.code }),
-        });
-        if (res) {
-          if (res.current_slide && res.current_slide !== cfdsState.currentSlide) {
-            cfdsState.currentSlide = res.current_slide;
-            renderCfdsHub(r, s);
-            return;
-          }
-          if (res.mcdu_has_data !== undefined) cfdsState.mcduHasData = res.mcdu_has_data;
-          if (res.mcdu_lines) cfdsState.mcduLines = res.mcdu_lines;
-          if (res.mcdu_status) cfdsState.mcduStatus = res.mcdu_status;
-          if (res.last_tx_command) cfdsState.lastTxCommand = res.last_tx_command;
-
-          // Optimistic instant update of MCDU screen rows
-          const screen = document.getElementById("cfds-mcdu-screen");
-          if (screen) {
-            if (!cfdsState.mcduHasData) {
-              screen.innerHTML = '<div class="cfds-empty-msg" style="height:100%;display:flex;align-items:center;justify-content:center;text-align:center;padding:16px;">WAITING FOR LRU MENU DATA (LABEL 356)...</div>';
-            } else {
-              const rows = screen.querySelectorAll(".mcdu-row");
-              if (rows.length === 14) {
-                cfdsState.mcduLines.forEach((line, idx) => {
-                  if (rows[idx]) rows[idx].textContent = (line || "").padEnd(24, " ");
-                });
-              } else {
-                screen.innerHTML = cfdsState.mcduLines.map((line, idx) => `
-                  <div class="mcdu-row mono" data-row="${idx}">${escAttr((line || "").padEnd(24, " "))}</div>
-                `).join("");
-              }
-            }
-          }
-          const st = document.getElementById("cfds-mcdu-status");
-          if (st && cfdsState.mcduStatus) st.textContent = cfdsState.mcduStatus;
-        }
-      } catch (e) {
-        alert("Key transmission error: " + e.message);
-      }
-    };
-  });
+  // Event delegation for all LSK buttons
+  attachCfdsMcduDelegation(p, r, s, lru);
 
   // Simulate Menu Mode
   p.querySelector("#cfds-menu-sim-btn").onclick = async () => {
@@ -2360,11 +2359,7 @@ function renderCfdsSlide7Menu0018(c, r, s) {
         method: "POST",
         body: JSON.stringify({ mode: "MENU", lru_code: lru.code }),
       });
-      if (res && res.mcdu_lines) {
-        cfdsState.mcduLines = res.mcdu_lines;
-        cfdsState.mcduHasData = true;
-      }
-      if (res && res.mcdu_status) cfdsState.mcduStatus = res.mcdu_status;
+      syncCfdsFromResponse(res, s);
       renderCfdsHub(r, s);
     } catch (e) {
       alert("Simulate error: " + e.message);
@@ -2375,12 +2370,13 @@ function renderCfdsSlide7Menu0018(c, r, s) {
   p.querySelector("#cfds-menu-clear-btn").onclick = async () => {
     cfdsState.mcduLines = Array(14).fill("".padEnd(24, " "));
     cfdsState.mcduHasData = false;
-    cfdsState.mcduStatus = "MCDU SCREEN CLEARED";
+    cfdsState.mcduStatus = "WAITING FOR LRU MENU DATA (LABEL 356)...";
     try {
-      await api("/api/arinc/cfds/clear", {
+      const res = await api("/api/arinc/cfds/clear", {
         method: "POST",
         body: JSON.stringify({ mode: "menu" }),
       });
+      syncCfdsFromResponse(res, s);
     } catch (e) {}
     renderCfdsHub(r, s);
   };
@@ -2484,56 +2480,8 @@ function renderCfdsSlide9Interactive0048(c, r, s) {
   `;
   c.appendChild(p);
 
-  // Key event listeners
-  p.querySelectorAll("button[data-key]").forEach(btn => {
-    btn.onclick = async () => {
-      const k = btn.getAttribute("data-key");
-      btn.classList.add("pressed");
-      setTimeout(() => btn.classList.remove("pressed"), 180);
-      try {
-        const res = await api("/api/arinc/cfds/key", {
-          method: "POST",
-          body: JSON.stringify({ key: k, lru_code: lru.code }),
-        });
-        if (res) {
-          if (res.current_slide && res.current_slide !== cfdsState.currentSlide) {
-            cfdsState.currentSlide = res.current_slide;
-            renderCfdsHub(r, s);
-            return;
-          }
-          if (res.mcdu_has_data !== undefined) cfdsState.mcduHasData = res.mcdu_has_data;
-          if (res.mcdu_lines) cfdsState.mcduLines = res.mcdu_lines;
-          if (res.mcdu_status) cfdsState.mcduStatus = res.mcdu_status;
-          if (res.last_tx_command) cfdsState.lastTxCommand = res.last_tx_command;
-
-          // Optimistic instant update of MCDU screen rows
-          const screen = document.getElementById("cfds-mcdu-screen");
-          if (screen) {
-            if (!cfdsState.mcduHasData) {
-              screen.innerHTML = '<div class="cfds-empty-msg" style="height:100%;display:flex;align-items:center;justify-content:center;text-align:center;padding:16px;">WAITING FOR LRU MENU DATA (LABEL 356)...</div>';
-            } else {
-              const rows = screen.querySelectorAll(".mcdu-row");
-              if (rows.length === 14) {
-                cfdsState.mcduLines.forEach((line, idx) => {
-                  if (rows[idx]) rows[idx].textContent = (line || "").padEnd(24, " ");
-                });
-              } else {
-                screen.innerHTML = cfdsState.mcduLines.map((line, idx) => `
-                  <div class="mcdu-row mono" data-row="${idx}">${escAttr((line || "").padEnd(24, " "))}</div>
-                `).join("");
-              }
-            }
-          }
-          const box = p.querySelector("#cfds-last-tx-box");
-          if (box && res.last_tx_command) {
-            box.innerHTML = `<span class="mono">LAST TX: KEY <strong>${escAttr(res.last_tx_command.key)}</strong> &nbsp;|&nbsp; LBL 227: <strong>${escAttr(res.last_tx_command.hex_32)}</strong> &nbsp;|&nbsp; TIME: ${escAttr(res.last_tx_command.time_str || '')}</span>`;
-          }
-        }
-      } catch (e) {
-        alert("Key transmission error: " + e.message);
-      }
-    };
-  });
+  // Event delegation for LSKs, Function Keys, and Keypad
+  attachCfdsMcduDelegation(p, r, s, lru);
 
   // Simulate Interactive Mode
   p.querySelector("#cfds-inter-sim-btn").onclick = async () => {
@@ -2542,11 +2490,7 @@ function renderCfdsSlide9Interactive0048(c, r, s) {
         method: "POST",
         body: JSON.stringify({ mode: "INTERACTIVE", lru_code: lru.code }),
       });
-      if (res && res.mcdu_lines) {
-        cfdsState.mcduLines = res.mcdu_lines;
-        cfdsState.mcduHasData = true;
-      }
-      if (res && res.mcdu_status) cfdsState.mcduStatus = res.mcdu_status;
+      syncCfdsFromResponse(res, s);
       renderCfdsHub(r, s);
     } catch (e) {
       alert("Simulate error: " + e.message);
@@ -2557,12 +2501,13 @@ function renderCfdsSlide9Interactive0048(c, r, s) {
   p.querySelector("#cfds-inter-clear-btn").onclick = async () => {
     cfdsState.mcduLines = Array(14).fill("".padEnd(24, " "));
     cfdsState.mcduHasData = false;
-    cfdsState.mcduStatus = "MCDU SCREEN CLEARED";
+    cfdsState.mcduStatus = "WAITING FOR LRU MENU DATA (LABEL 356)...";
     try {
-      await api("/api/arinc/cfds/clear", {
+      const res = await api("/api/arinc/cfds/clear", {
         method: "POST",
         body: JSON.stringify({ mode: "interactive" }),
       });
+      syncCfdsFromResponse(res, s);
     } catch (e) {}
     renderCfdsHub(r, s);
   };
@@ -2657,10 +2602,7 @@ function renderCfdsSlide10Discrete0048(c, r, s) {
         method: "POST",
         body: JSON.stringify({ mode: "DISCRETE", lru_code: lru.code }),
       });
-      if (res && res.discrete_fields) {
-        cfdsState.discreteFields = res.discrete_fields;
-        cfdsState.discreteHasData = true;
-      }
+      syncCfdsFromResponse(res, s);
       renderCfdsHub(r, s);
     } catch (e) {
       alert("Simulate error: " + e.message);
@@ -2684,10 +2626,11 @@ function renderCfdsSlide10Discrete0048(c, r, s) {
       suspect3_side: "",
     };
     try {
-      await api("/api/arinc/cfds/clear", {
+      const res = await api("/api/arinc/cfds/clear", {
         method: "POST",
         body: JSON.stringify({ mode: "discrete" }),
       });
+      syncCfdsFromResponse(res, s);
     } catch (e) {}
     renderCfdsHub(r, s);
   };
@@ -2722,33 +2665,16 @@ function patchCfdsRx(s) {
   }
 
   // 2. Update MCDU lines in-place
-  if ((cfdsState.currentSlide === "menu_0018" || cfdsState.currentSlide === "interactive_0048")) {
-    if (cf.mcdu_has_data !== undefined) cfdsState.mcduHasData = cf.mcdu_has_data;
-    if (cf.mcdu_lines) cfdsState.mcduLines = cf.mcdu_lines;
+  if (cfdsState.currentSlide === "menu_0018" || cfdsState.currentSlide === "interactive_0048") {
+    const lines = cf.lines || cf.mcdu_lines || [];
+    const hasNonEmpty = Array.isArray(lines) && lines.some((l) => l && l.trim().length > 0);
+    const hasData = cf.has_data !== undefined
+      ? Boolean(cf.has_data || hasNonEmpty)
+      : (cf.mcdu_has_data !== undefined ? Boolean(cf.mcdu_has_data || hasNonEmpty) : hasNonEmpty);
+    cfdsState.mcduHasData = hasData;
+    if (lines.length) cfdsState.mcduLines = lines;
     const screen = document.getElementById("cfds-mcdu-screen");
-    if (screen) {
-      if (!cfdsState.mcduHasData) {
-        if (!screen.querySelector(".cfds-empty-msg")) {
-          screen.innerHTML = '<div class="cfds-empty-msg" style="height:100%;display:flex;align-items:center;justify-content:center;text-align:center;padding:16px;">WAITING FOR LRU MENU DATA (LABEL 356)...</div>';
-        }
-      } else {
-        const rows = screen.querySelectorAll(".mcdu-row");
-        if (rows.length === 14) {
-          (cf.mcdu_lines || cfdsState.mcduLines).forEach((line, idx) => {
-            if (rows[idx]) {
-              const txt = (line || "").padEnd(24, " ");
-              if (rows[idx].textContent !== txt) {
-                rows[idx].textContent = txt;
-              }
-            }
-          });
-        } else {
-          screen.innerHTML = (cf.mcdu_lines || cfdsState.mcduLines || Array(14).fill("")).map((line, idx) => `
-            <div class="mcdu-row mono" data-row="${idx}">${escAttr((line || "").padEnd(24, " "))}</div>
-          `).join("");
-        }
-      }
-    }
+    renderMcduScreenRows(screen, cfdsState.mcduLines, hasData);
   }
 
   // 3. Update MCDU status in-place

@@ -58,7 +58,7 @@ from ate_platform.device.arinc_profile import (
 from ate_platform.device.label_dict import decode_received, format_display, library_catalog, lookup_label
 from ate_platform.device.vhf900_align import Vhf900AlignManager
 from ate_platform.device.cfds import CfdsProtocolManager
-from ate_platform.paths import REPO_ROOT
+from ate_platform.paths import REPO_ROOT, force_simulation
 
 try:
     from btidriver import bticard, bti429, DriverError
@@ -248,7 +248,7 @@ class ArincSession:
         simulation: bool | None = None,
     ) -> None:
         if simulation is None:
-            self.simulation_mode = not HAS_BTIDRIVER
+            self.simulation_mode = (not HAS_BTIDRIVER) or force_simulation()
         else:
             self.simulation_mode = bool(simulation) or (not HAS_BTIDRIVER)
         self.cardnum = card
@@ -2195,14 +2195,27 @@ class ArincSession:
 
     # --- CFDS protocol control ------------------------------------------
 
+    def is_cfds_simulation_active(self) -> bool:
+        """Return True whenever running in mock/simulation mode or without physical Ballard hardware."""
+        if self.simulation_mode or bool(self._sim_override) or force_simulation():
+            return True
+        if not HAS_BTIDRIVER:
+            return True
+        hw = self.hardware_info or {}
+        if hw.get("simulated", False) or hw.get("open_error"):
+            return True
+        cores = hw.get("cores") or []
+        hardware_connected = any(c.get("open_ok") and c.get("count", 0) > 0 for c in cores)
+        return not hardware_connected
+
     def get_cfds_state(self) -> dict[str, Any]:
         with self._lock:
-            self.cfds.simulation_mode = self.simulation_mode or bool(self._sim_override)
+            self.cfds.simulation_mode = self.is_cfds_simulation_active()
             return self.cfds.get_state(rx_bus=self.rx_ch or "A")
 
     def select_cfds_lru(self, code: str, name: str | None = None, short: str | None = None) -> dict[str, Any]:
         with self._lock:
-            self.cfds.simulation_mode = self.simulation_mode or bool(self._sim_override)
+            self.cfds.simulation_mode = self.is_cfds_simulation_active()
             res = self.cfds.select_lru(code, name, short)
             if self.cfds.selected_lru.get("code") == "050":
                 self.channel["C"].high_speed = True
@@ -2213,25 +2226,27 @@ class ArincSession:
 
     def set_cfds_slide(self, slide: str) -> dict[str, Any]:
         with self._lock:
-            self.cfds.simulation_mode = self.simulation_mode or bool(self._sim_override)
+            self.cfds.simulation_mode = self.is_cfds_simulation_active()
             return self.cfds.set_slide(slide)
 
     def update_cfds_tx_params(self, params: dict[str, Any], config: dict[str, bool] | None = None) -> dict[str, Any]:
         with self._lock:
+            self.cfds.simulation_mode = self.is_cfds_simulation_active()
             return self.cfds.update_tx_params(params, config)
 
     def set_cfds_flight_phase(self, phase: str) -> dict[str, Any]:
         with self._lock:
-            self.cfds.simulation_mode = self.simulation_mode or bool(self._sim_override)
+            self.cfds.simulation_mode = self.is_cfds_simulation_active()
             return self.cfds.set_flight_phase(phase)
 
     def send_cfds_key(self, key: str, lru_code: str | None = None) -> dict[str, Any]:
         with self._lock:
-            self.cfds.simulation_mode = self.simulation_mode or bool(self._sim_override)
+            self.cfds.simulation_mode = self.is_cfds_simulation_active()
             return self.cfds.send_key_command(key, lru_code)
 
     def set_cfds_channels(self, **kwargs: Any) -> dict[str, Any]:
         with self._lock:
+            self.cfds.simulation_mode = self.is_cfds_simulation_active()
             for k, v in kwargs.items():
                 if k in self.cfds.channel_config and v is not None:
                     self.cfds.channel_config[k] = v
@@ -2239,12 +2254,17 @@ class ArincSession:
 
     def clear_cfds_rx(self, mode: str | None = None) -> dict[str, Any]:
         with self._lock:
+            self.cfds.simulation_mode = self.is_cfds_simulation_active()
             return self.cfds.clear_rx_data(mode)
 
     def simulate_cfds_scenario(self, mode: str, lru_code: str | None = None) -> dict[str, Any]:
         with self._lock:
-            self.cfds.simulation_mode = self.simulation_mode or bool(self._sim_override)
+            self.cfds.simulation_mode = self.is_cfds_simulation_active()
             return self.cfds.simulate_test_scenario(mode, lru_code)
+
+    def _get_cfds_snapshot_locked(self) -> dict[str, Any]:
+        self.cfds.simulation_mode = self.is_cfds_simulation_active()
+        return self.cfds.get_state(rx_bus=self.rx_ch or "A")
 
     # --- snapshot + run control -----------------------------------------
 
@@ -2465,7 +2485,7 @@ class ArincSession:
                 "lru_connection": self.check_lru_connected(self.active_lru_code or "709", bus="A"),
                 "simulation_override": self._sim_override,
                 "vhf_align": self.vhf900.get_state(rx_bus_c=self.rx["C"], lightweight=(self.active_profile != "vhf_align")),
-                "cfds": self.cfds.get_state(rx_bus=self.rx_ch or "A"),
+                "cfds": self._get_cfds_snapshot_locked(),
             }
 
     def start(self) -> None:

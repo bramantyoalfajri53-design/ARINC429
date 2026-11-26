@@ -285,8 +285,16 @@ class CfdsFlightPhaseBody(BaseModel):
 
 
 class CfdsKeyBody(BaseModel):
-    key: str
+    key: str | None = None
+    button: str | None = None
+    lsk: str | None = None
     lru_code: str | None = None
+
+
+class CfdsOpModeBody(BaseModel):
+    mode: str | None = None
+    op_mode: str | None = None
+    slide: str | None = None
 
 
 class CfdsChannelsBody(BaseModel):
@@ -891,6 +899,11 @@ def create_app(
     def api_arinc_cfds_slide(body: CfdsSlideBody, _sid: str = Depends(require_session)):
         return get_arinc().set_cfds_slide(body.slide)
 
+    @app.post("/api/arinc/cfds/op-mode")
+    def api_arinc_cfds_op_mode(body: CfdsOpModeBody, _sid: str = Depends(require_session)):
+        target = body.slide or body.op_mode or body.mode or "op_mode_hub"
+        return get_arinc().set_cfds_slide(target)
+
     @app.post("/api/arinc/cfds/tx-data")
     def api_arinc_cfds_tx_data(body: CfdsTxParamsBody, _sid: str = Depends(require_session)):
         return get_arinc().update_cfds_tx_params(body.params, body.config)
@@ -901,7 +914,8 @@ def create_app(
 
     @app.post("/api/arinc/cfds/key")
     def api_arinc_cfds_key(body: CfdsKeyBody, _sid: str = Depends(require_session)):
-        return get_arinc().send_cfds_key(body.key, body.lru_code)
+        k = body.key or body.button or body.lsk or ""
+        return get_arinc().send_cfds_key(k, body.lru_code)
 
     @app.post("/api/arinc/cfds/channels")
     def api_arinc_cfds_channels(body: CfdsChannelsBody, _sid: str = Depends(require_session)):

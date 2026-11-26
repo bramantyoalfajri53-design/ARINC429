@@ -3317,7 +3317,8 @@ tr.slot-off td { color: var(--muted); }
   background: var(--teal-bg, #f0fdfa);
 }
 
-.cfds-lsk-btn.pressed {
+.cfds-lsk-btn.pressed,
+.cfds-lsk-btn.momentary-press {
   background: var(--teal-primary, #0d9488);
   color: #ffffff;
 }
@@ -3422,7 +3423,8 @@ tr.slot-off td { color: var(--muted); }
   font-size: 11px;
 }
 
-.cfds-kpd-btn.pressed {
+.cfds-kpd-btn.pressed,
+.cfds-kpd-btn.momentary-press {
   background: var(--teal-primary, #0d9488);
   color: #ffffff;
 }

@@ -210,88 +210,220 @@ def test_cfds_rest_api_endpoints(client: TestClient):
 
 
 def test_cfds_dme_authentic_menu_navigation_simulation():
-    """Verify authentic 709 DME CFDS menu simulation tree and interactive key navigation."""
+    """Verify authentic 16-screen 709 DME CFDS menu simulation tree and interactive key navigation."""
     mgr = CfdsProtocolManager(simulation_mode=True)
     mgr.select_lru("009")  # 709 DME
 
-    # 1. Entering Menu Mode ABD0018 immediately loads DME main menu via Label 356
+    # 1. Entering Menu Mode ABD0018 immediately loads DME root menu via Label 356
     res = mgr.set_slide("menu_0018")
     assert res["current_slide"] == "menu_0018"
     assert res["mcdu_has_data"] is True
-    assert "DME-0" in res["mcdu_lines"][0]
-    assert "<LAST LEG REPORT" in res["mcdu_lines"][2]
-    assert "<PREVIOUS LEGS REPORT" in res["mcdu_lines"][4]
-    assert "<LRU IDENTIFICATION" in res["mcdu_lines"][6]
-    assert "<TEST" in res["mcdu_lines"][8]
-    assert "<SHOP DATA" in res["mcdu_lines"][10]
-    assert "<RETURN" in res["mcdu_lines"][12]
+    assert res["has_data"] is True
+    assert "DME-0" in res["lines"][0]
+    assert "<LAST LEG REPORT" in res["lines"][2]
+    assert "<PREVIOUS LEGS REPORT" in res["lines"][4]
+    assert "<LRU IDENTIFICATION" in res["lines"][6]
+    assert "<TEST" in res["lines"][8]
+    assert "<SHOP DATA" in res["lines"][10]
+    assert "<RETURN" in res["lines"][12]
 
-    # 2. Press 1 / 1L -> navigates to LAST LEG REPORT
+    # 2. Press 1 -> last_leg, 6 -> root
     res1 = mgr.send_key_command("1")
     assert res1["dme_current_screen"] == "last_leg"
-    assert "LAST LEG REPORT" in res1["mcdu_lines"][1]
-    assert "34-51-33" in res1["mcdu_lines"][6]
+    assert "34-51-33" in "\n".join(res1["lines"])
+    assert mgr.send_key_command("6")["dme_current_screen"] == "root"
 
-    # 3. Press 6 -> returns to main menu
-    res_ret = mgr.send_key_command("6")
-    assert res_ret["dme_current_screen"] == "main"
-    assert "<LAST LEG REPORT" in res_ret["mcdu_lines"][2]
+    # 3. Press 2 -> prev_legs, 6 -> root
+    res2 = mgr.send_key_command("2")
+    assert res2["dme_current_screen"] == "prev_legs"
+    assert "-01 jan00 0000 34-51-33" in "\n".join(res2["lines"])
+    assert mgr.send_key_command("6")["dme_current_screen"] == "root"
 
-    # 4. Press NXT -> navigates to menu_2
-    res_nxt = mgr.send_key_command("NXT")
-    assert res_nxt["dme_current_screen"] == "menu_2"
-    assert "MENU 2" in res_nxt["mcdu_lines"][1]
-    assert "<FORMAT NON-VOLATILE" in res_nxt["mcdu_lines"][4]
-    assert "<ERASE NON-VOLATILE" in res_nxt["mcdu_lines"][6]
+    # 4. Press 3 -> lru_id, 6 -> root; 4 -> test, 6 -> root
+    res3 = mgr.send_key_command("3")
+    assert res3["dme_current_screen"] == "lru_id"
+    assert "822-0329-001" in "\n".join(res3["lines"])
+    assert mgr.send_key_command("6")["dme_current_screen"] == "root"
 
-    # 5. In menu_2, press 2 -> navigates to format_nvm
-    res_fmt = mgr.send_key_command("2")
-    assert res_fmt["dme_current_screen"] == "format_nvm"
-    assert "NVM FORMATTED OK" in res_fmt["mcdu_lines"][6]
+    res4 = mgr.send_key_command("4")
+    assert res4["dme_current_screen"] == "test"
+    assert "34-51-23" in "\n".join(res4["lines"])
+    assert mgr.send_key_command("6")["dme_current_screen"] == "root"
 
-    # 6. Press 6 -> returns to menu_2
-    res_m2 = mgr.send_key_command("6")
-    assert res_m2["dme_current_screen"] == "menu_2"
-
-    # 7. Press PRV or MENU -> returns to main menu
-    res_main2 = mgr.send_key_command("MENU")
-    assert res_main2["dme_current_screen"] == "main"
-
-    # 8. Press 5 -> navigates to shop_data
+    # 5. Shop Data -> Enter Shop Visit -> confirm -> Return -> Display Fault -> Last Leg -> Return to Display Fault
     res_shop = mgr.send_key_command("5")
     assert res_shop["dme_current_screen"] == "shop_data"
-    assert "SHOP DATA" in res_shop["mcdu_lines"][1]
-    assert "<SPECIAL FUNCTIONS" in res_shop["mcdu_lines"][10]
+    assert mgr.send_key_command("2")["dme_current_screen"] == "shop_visit"
+    res_sv = mgr.send_key_command("2")
+    assert "SHOP VISIT ENTERED" in "\n".join(res_sv["lines"])
+    assert mgr.send_key_command("6")["dme_current_screen"] == "shop_data"
 
-    # 9. In shop_data, press 5 -> navigates to special_func_agc
-    res_agc = mgr.send_key_command("5")
-    assert res_agc["dme_current_screen"] == "special_func_agc"
-    assert "CURRENT VALUE AGC: A0" in res_agc["mcdu_lines"][2]
+    assert mgr.send_key_command("3")["dme_current_screen"] == "display_fault"
+    assert mgr.send_key_command("2")["dme_current_screen"] == "last_leg"
+    assert mgr.send_key_command("6")["dme_current_screen"] == "display_fault"
+    assert mgr.send_key_command("6")["dme_current_screen"] == "shop_data"
 
-    # 10. Change AGC gain: press 3 -> Full Gain FF
-    res_ff = mgr.send_key_command("3")
-    assert "CURRENT VALUE AGC: FF" in res_ff["mcdu_lines"][2]
+    # 6. Software ID & Special Functions
+    res_sw = mgr.send_key_command("4")
+    assert res_sw["dme_current_screen"] == "software_id"
+    assert "829-4471-013" in "\n".join(res_sw["lines"])
+    assert mgr.send_key_command("6")["dme_current_screen"] == "shop_data"
+
+    res_sf = mgr.send_key_command("5")
+    assert res_sf["dme_current_screen"] == "special_func"
+    assert "FIXED XMIT RATE-OFF" in "\n".join(res_sf["lines"])
+    res_sf_on = mgr.send_key_command("4")
+    assert "FIXED XMIT RATE-ON" in "\n".join(res_sf_on["lines"])
+
+    # Set RCVR
+    assert mgr.send_key_command("2")["dme_current_screen"] == "set_rcvr"
+    res_rcvr = mgr.send_key_command("C")
+    assert "*75X>" in "\n".join(res_rcvr["lines"])
+    assert mgr.send_key_command("6")["dme_current_screen"] == "special_func"
+
+    # AGC Test (default 00 -> FF -> A0 -> 00)
+    res_agc = mgr.send_key_command("B")
+    assert res_agc["dme_current_screen"] == "agc_test"
+    assert "current value  agc [00]" in res_agc["lines"][4]
+    assert "current value  agc [FF]" in mgr.send_key_command("3")["lines"][4]
+    assert "current value  agc [A0]" in mgr.send_key_command("4")["lines"][4]
+    assert "current value  agc [00]" in mgr.send_key_command("5")["lines"][4]
+    assert mgr.send_key_command("6")["dme_current_screen"] == "special_func"
+
+    # Bus In & Self-Test TGT & Menu 2 -> NVM Result
+    assert mgr.send_key_command("3")["dme_current_screen"] == "bus_in"
+    assert "bus a   66" in "\n".join(mgr.send_key_command("5")["lines"])
+    assert mgr.send_key_command("6")["dme_current_screen"] == "special_func"
+
+    res_tgt = mgr.send_key_command("5")
+    assert res_tgt["dme_current_screen"] == "self_test_tgt"
+    assert "826b" in "\n".join(res_tgt["lines"])
+    assert mgr.send_key_command("6")["dme_current_screen"] == "special_func"
+
+    assert mgr.send_key_command("E")["dme_current_screen"] == "menu_2"
+    res_nvm = mgr.send_key_command("2")
+    assert res_nvm["dme_current_screen"] == "nvm_result"
+    assert "0000 bytes bad" in "\n".join(res_nvm["lines"])
+
+
+def test_cfds_e2e_api_dme_16_screens_and_other_lrus(client: TestClient):
+    """End-to-end TestClient flow simulating exact browser clicks on 709 DME & other LRUs."""
+    # --- A. 709 DME complete sequence ---
+    r = client.post("/api/arinc/cfds/select-lru", json={"code": "009"})
+    assert r.status_code == 200
+    r = client.post("/api/arinc/cfds/op-mode", json={"slide": "menu_0018"})
+    assert r.status_code == 200
+    d = r.json()
+    assert d["has_data"] is True
+    txt = "\n".join(d["lines"])
+    assert "DME-0" in txt
+    assert "<LAST LEG REPORT" in txt
+    assert "<SHOP DATA" in txt
+
+    steps = [
+        ("1", "34-51-33"),
+        ("6", "<LAST LEG REPORT"),
+        ("3", "822-0329-001"),
+        ("6", "<LRU IDENTIFICATION"),
+        ("4", "34-51-23"),
+        ("6", "<TEST"),
+        ("5", "<SOFTWARE ID"),
+        ("4", "829-4471-013"),
+        ("6", "<SPECIAL FUNCTIONS"),
+        ("5", "special function menu"),
+        ("4", "FIXED XMIT RATE-ON"),
+        ("B", "current value  agc [00]"),
+        ("3", "current value  agc [FF]"),
+        ("4", "current value  agc [A0]"),
+        ("5", "current value  agc [00]"),
+        ("6", "MENU 2>"),
+        ("E", "FORMAT NON VOLATILE"),
+        ("2", "0000 bytes bad"),
+    ]
+    for key, expected in steps:
+        kr = client.post("/api/arinc/cfds/key", json={"key": key})
+        assert kr.status_code == 200
+        kd = kr.json()
+        assert kd["has_data"] is True
+        assert expected in "\n".join(kd["lines"]), f"Expected {expected!r} after key {key!r}"
+
+    # --- B. Other LRUs + MANUAL ENTRY across menu_0018 & interactive_0048 ---
+    targets = [
+        ("007", None, None, "RALT-1"),
+        ("011", None, None, "VOR-1"),
+        ("050", None, None, "VDR-1"),
+        ("02A", None, None, "LRU-02A"),
+    ]
+    for code, name, short, expected_hdr in targets:
+        sr = client.post("/api/arinc/cfds/select-lru", json={"code": code, "name": name, "short": short})
+        assert sr.status_code == 200
+
+        for slide in ("menu_0018", "interactive_0048"):
+            om = client.post("/api/arinc/cfds/op-mode", json={"slide": slide})
+            assert om.status_code == 200
+            od = om.json()
+            assert od["has_data"] is True
+            assert expected_hdr in od["lines"][0]
+
+            r1 = client.post("/api/arinc/cfds/key", json={"key": "1"})
+            assert r1.status_code == 200
+            assert "LAST LEG REPORT" in "\n".join(r1.json()["lines"])
+
+            assert client.post("/api/arinc/cfds/key", json={"key": "6"}).status_code == 200
+            r3 = client.post("/api/arinc/cfds/key", json={"key": "3"})
+            assert r3.status_code == 200
+            assert f"EQ CODE: {code}" in "\n".join(r3.json()["lines"])
+
+            assert client.post("/api/arinc/cfds/key", json={"key": "6"}).status_code == 200
+            r4 = client.post("/api/arinc/cfds/key", json={"key": "4"})
+            assert r4.status_code == 200
+            assert "TEST OK" in "\n".join(r4.json()["lines"])
+
+            r6 = client.post("/api/arinc/cfds/key", json={"key": "6"})
+            assert r6.status_code == 200
+            assert "<GROUND SCANNING" in "\n".join(r6.json()["lines"])
 
 
 def test_cfds_hardware_mode_pure_dynamic_rx():
-    """Verify hardware mode (simulation_mode=False) does not generate simulated pages;
-
-    relies 100% on physical Label 356 packets arriving from RX bus.
+    """Verify hardware mode (simulation_mode=False / is_cfds_simulation_active()==False)
+    does not generate simulated pages; relies 100% on physical Label 356 packets arriving.
     """
+    from ate_platform.web.arinc_session import ArincSession
+
+    sess = ArincSession(simulation=True)
+    # Force connected physical Ballard state with simulation disabled
+    sess.simulation_mode = False
+    sess._sim_override = False
+    sess.hardware_info = {
+        "simulated": False,
+        "cores": [{"core": 0, "open_ok": True, "count": 16}],
+    }
+    import ate_platform.web.arinc_session as sess_mod
+    orig_bti = sess_mod.HAS_BTIDRIVER
+    orig_force = sess_mod.force_simulation
+    try:
+        sess_mod.HAS_BTIDRIVER = True
+        sess_mod.force_simulation = lambda: False
+        assert sess.is_cfds_simulation_active() is False
+    finally:
+        sess_mod.HAS_BTIDRIVER = orig_bti
+        sess_mod.force_simulation = orig_force
+
     mgr = CfdsProtocolManager(simulation_mode=False)
     mgr.select_lru("009")
 
     # In hardware mode, entering menu does not auto-populate simulated data
     res = mgr.set_slide("menu_0018")
     assert res["mcdu_has_data"] is False
+    assert res["has_data"] is False
     assert all(line.strip() == "" for line in res["mcdu_lines"])
 
     # Transmitting a key sends Label 227 without changing MCDU screen
     res_key = mgr.send_key_command("1")
     assert res_key["last_tx_command"]["key"] == "1"
-    assert res_key["mcdu_has_data"] is False
+    assert res_key["has_data"] is False
 
-    # Once physical Label 356 arrives on bus, mcdu_has_data becomes True
+    # Once physical Label 356 arrives on bus, has_data becomes True
     c1, c2, c3 = "B", "I", "T"
     b1, b2, b3 = ord(c1) & 0x7F, ord(c2) & 0x7F, ord(c3) & 0x7F
     data_19 = b1 | (b2 << 7) | ((b3 & 0x1F) << 14)
@@ -301,5 +433,6 @@ def test_cfds_hardware_mode_pure_dynamic_rx():
     mgr.ingest_rx_word(lbl356_word, "356")
     res_rx = mgr.get_state()
     assert res_rx["mcdu_has_data"] is True
-    assert "BIT" in res_rx["mcdu_lines"][0]
+    assert res_rx["has_data"] is True
+    assert "BIT" in res_rx["lines"][0]
 
