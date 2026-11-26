@@ -3774,3 +3774,185 @@ tr.slot-off td { color: var(--muted); }
   color: var(--teal-primary, #0d9488);
   box-shadow: inset 0 0 0 1px var(--teal-primary, #0d9488);
 }
+
+/* ====================================================================
+   LABEL LIBRARY (Aeroflex JcAIR T1200B Reference, Light Console Theme)
+   Fit-to-screen 1-page layout with internal scroll + Bit-Layout Pane
+   ==================================================================== */
+
+.lib-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  height: calc(100vh - 102px);
+  max-height: calc(100vh - 102px);
+  background: #ffffff;
+  border: 1px solid var(--border, #cbd5e1);
+  border-radius: 8px;
+  padding: 12px 16px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  overflow: hidden;
+}
+
+.lib-top-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.lib-controls-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border-light, #e2e8f0);
+}
+
+.lib-cat-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.lib-cat-btn {
+  background: #ffffff;
+  border: 1px solid var(--border, #cbd5e1);
+  border-radius: 5px;
+  padding: 4px 9px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-2, #475569);
+  cursor: pointer;
+}
+
+.lib-cat-btn:hover {
+  border-color: var(--teal-primary, #0d9488);
+  background: #f0fdfa;
+}
+
+.lib-cat-btn.active {
+  background: var(--teal-primary, #0d9488);
+  border-color: var(--teal-primary, #0d9488);
+  color: #ffffff;
+}
+
+.lib-body-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: 12px;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.lib-table-scroll {
+  overflow: auto;
+  border: 1px solid var(--border, #cbd5e1);
+  border-radius: 6px;
+  background: #ffffff;
+}
+
+.lib-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.lib-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: #f8fafc;
+  border-bottom: 1px solid var(--border, #cbd5e1);
+  padding: 6px 8px;
+  text-align: left;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted, #64748b);
+  white-space: nowrap;
+}
+
+.lib-table tbody td {
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--border-light, #f1f5f9);
+  vertical-align: middle;
+}
+
+.lib-table tbody tr {
+  cursor: pointer;
+}
+
+.lib-table tbody tr.active {
+  background: #f0fdfa;
+  box-shadow: inset 3px 0 0 var(--teal-primary, #0d9488);
+}
+
+.lib-fmt-badge {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-family: var(--mono, monospace);
+  font-size: 10.5px;
+  font-weight: 700;
+  background: #f1f5f9;
+  color: #0f172a;
+}
+
+.lib-detail-pane {
+  border: 1px solid var(--border, #cbd5e1);
+  border-radius: 6px;
+  background: #f8fafc;
+  padding: 12px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font-size: 12px;
+}
+
+.lib-word-diagram {
+  display: grid;
+  grid-template-columns: 38px 54px 1fr 48px 66px;
+  gap: 4px;
+  font-family: var(--mono, monospace);
+  font-size: 10px;
+  text-align: center;
+}
+
+.lib-bit-seg {
+  background: #ffffff;
+  border: 1px solid var(--border, #cbd5e1);
+  border-radius: 4px;
+  padding: 5px 3px;
+}
+
+.lib-bit-seg strong {
+  display: block;
+  font-size: 10.5px;
+  color: var(--teal-primary, #0d9488);
+}
+
+.lib-detail-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border-bottom: 1px dashed var(--border, #cbd5e1);
+  padding-bottom: 6px;
+}
+
+.lib-detail-row .lbl {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--muted, #64748b);
+  text-transform: uppercase;
+}
+
+.breadcrumb .crumb.current {
+  font-weight: 700;
+  color: var(--text, #0f172a);
+  cursor: default;
+}

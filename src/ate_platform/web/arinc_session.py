@@ -557,6 +557,10 @@ class ArincSession:
 
     def set_mode(self, mode: str) -> str:
         mode = mode.lower()
+        if mode == "mode_select":
+            with self._lock:
+                self.screen_stack = ["mode_select"]
+                return "mode_select"
         if mode not in MODES:
             raise ValueError(f"mode must be {MODES}")
         with self._lock:
@@ -566,7 +570,18 @@ class ArincSession:
 
     def push_screen(self, screen: str) -> list[str]:
         with self._lock:
-            self.screen_stack.append(screen)
+            scr = str(screen or "").strip()
+            if scr == "mode_select":
+                self.screen_stack = ["mode_select"]
+                return list(self.screen_stack)
+            if scr == "label_library":
+                self.screen_stack = ["mode_select", "label_library"]
+                return list(self.screen_stack)
+            if scr in self.screen_stack:
+                idx = self.screen_stack.index(scr)
+                self.screen_stack = self.screen_stack[: idx + 1]
+            elif scr:
+                self.screen_stack.append(scr)
             return list(self.screen_stack)
 
     def pop_screen(self) -> list[str]:

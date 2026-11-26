@@ -1680,6 +1680,7 @@ function renderCfdsHub(r, s) {
   if (s && s.cfds) {
     syncCfdsFromResponse(s.cfds, null, false);
   }
+  renderBreadcrumb(s || snap);
 
   // Top header status bar
   const topStrip = el("div", "cfds-status-strip");
@@ -1739,7 +1740,7 @@ function renderCfdsHub(r, s) {
     btnTopMenu.onclick = () => switchCfdsSlide("menu", r, s);
   }
   topStrip.querySelector("#cfds-btn-top-exit").onclick = () => {
-    pushScreen("mode_select");
+    goModeSelect();
   };
 
   // Body container for current slide
@@ -1863,7 +1864,7 @@ function renderCfdsSlide1Menu(c, r, s) {
 
   // Back button
   p.querySelector("#cfds-slide1-back").onclick = () => {
-    pushScreen("mode_select");
+    goModeSelect();
   };
 
   // Time Constant Button
@@ -2742,6 +2743,7 @@ function patchCfdsRx(s) {
       box.innerHTML = `<span class="mono">LAST TX: KEY <strong>${escAttr(cf.last_tx_command.key)}</strong> &nbsp;|&nbsp; LBL 227: <strong>${escAttr(cf.last_tx_command.hex_32)}</strong> &nbsp;|&nbsp; TIME: ${escAttr(cf.last_tx_command.time_str || '')}</span>`;
     }
   }
+  renderBreadcrumb(s);
 }
 
 
@@ -2886,6 +2888,7 @@ function patchCmcRx(s) {
       lblBox.textContent = `LBL ${cmcState.cmdSummary.label}: ${cmcState.lastCmdWord.hex_32}`;
     }
   }
+  renderBreadcrumb(s);
 }
 
 async function switchCmcSlide(slide, r, s) {
@@ -2910,6 +2913,7 @@ function renderCmcHub(r, s) {
   if (s && s.cmc) {
     syncCmcFromResponse(s.cmc, null, false);
   }
+  renderBreadcrumb(s || snap);
 
   const slideTitles = {
     "menu": "LRU SELECT (SLIDE 1)",
@@ -2963,7 +2967,7 @@ function renderCmcHub(r, s) {
 
   const btnTopMenu = topStrip.querySelector("#cmc-btn-top-menu");
   if (btnTopMenu) btnTopMenu.onclick = () => switchCmcSlide("menu", r, s);
-  topStrip.querySelector("#cmc-btn-top-exit").onclick = () => pushScreen("mode_select");
+  topStrip.querySelector("#cmc-btn-top-exit").onclick = () => goModeSelect();
 
   const body = el("div", "cfds-slide-container");
   wb.appendChild(body);
@@ -3074,7 +3078,7 @@ function renderCmcSlide1Menu(container, r, s) {
     }
   });
 
-  card.querySelector("#cmc-s1-back").onclick = () => pushScreen("mode_select");
+  card.querySelector("#cmc-s1-back").onclick = () => goModeSelect();
   card.querySelector("#cmc-btn-time-const").onclick = async () => {
     cmcState.timeConstantIdx = (cmcState.timeConstantIdx + 1) % CFDS_TIME_CONSTANTS.length;
     const tc = CFDS_TIME_CONSTANTS[cmcState.timeConstantIdx];
@@ -3641,21 +3645,146 @@ function renderCmcSlide6Channels(container, r, s) {
   }
 
   // ---- breadcrumb ----
-  function renderBreadcrumb(stack) {
-    const bc = $("breadcrumb");
-    bc.innerHTML = "";
-    (stack || ["mode_select"]).forEach((s, i) => {
-      if (i > 0) {
-        const sep = el("span", "sep"); sep.textContent = "/"; bc.appendChild(sep);
+  function goModeSelect() {
+    if (snap) snap.screen_stack = ["mode_select"];
+    return pushScreen("mode_select");
+  }
+
+  function formatCfdsBreadLru() {
+    const lru = cfdsState.selectedLru || {};
+    if (lru.name === "MANUAL ENTRY" || lru.isManual) {
+      return `Manual (${lru.code || "000"})`;
+    }
+    return lru.name || "709 DME";
+  }
+
+  function formatCmcBreadLru() {
+    const lru = cmcState.selectedLru || {};
+    if (lru.name === "MANUAL ENTRY" || lru.isManual) {
+      return `Manual (${lru.code || "000"})`;
+    }
+    return lru.name || "707 LRA";
+  }
+
+  function buildBreadcrumbSegments(stateOrStack) {
+    const sObj = Array.isArray(stateOrStack)
+      ? { ...(snap || {}), screen_stack: stateOrStack }
+      : (stateOrStack || snap || { screen_stack: ["mode_select"] });
+    const rawStack = Array.isArray(sObj.screen_stack) && sObj.screen_stack.length
+      ? sObj.screen_stack
+      : ["mode_select"];
+    const view = rawStack[rawStack.length - 1] || "mode_select";
+
+    if (view === "mode_select") {
+      return [{ label: "Mode Select", onClick: () => goModeSelect() }];
+    }
+    if (view === "label_library") {
+      return [
+        { label: "Mode Select", onClick: () => goModeSelect() },
+        { label: "Label Library", onClick: null },
+      ];
+    }
+    if (view === "cfds") {
+      const rEl = root();
+      const sRef = snap || sObj;
+      const slide = cfdsState.currentSlide || "menu";
+      const lruLbl = formatCfdsBreadLru();
+      const segs = [
+        { label: "Mode Select", onClick: () => goModeSelect() },
+        { label: "CFDS", onClick: () => switchCfdsSlide("menu", rEl, sRef) },
+      ];
+      if (slide === "menu") return segs;
+      segs.push({ label: lruLbl, onClick: () => switchCfdsSlide("desired_mode", rEl, sRef) });
+      if (slide === "desired_mode") return segs;
+      if (slide === "edit_tx") {
+        segs.push({ label: "Edit TX Data", onClick: null });
+        return segs;
       }
-      const c = el("span", "crumb");
-      c.textContent = labelScreen(s);
-      c.addEventListener("click", () => navTo(s));
+      if (slide === "channels") {
+        segs.push({ label: "Configure Channels", onClick: null });
+        return segs;
+      }
+      if (slide === "op_mode_hub") {
+        segs.push({ label: "Operation Mode", onClick: null });
+        return segs;
+      }
+      const opLabels = {
+        normal_0018: "Normal (ABD0018)",
+        menu_0018: "Menu (ABD0018)",
+        normal_0048: "Normal (ABD0048)",
+        interactive_0048: "Interactive (ABD0048)",
+        discrete_0048: "Discrete (ABD0048)",
+      };
+      segs.push({ label: "Operation Mode", onClick: () => switchCfdsSlide("op_mode_hub", rEl, sRef) });
+      segs.push({ label: opLabels[slide] || slide, onClick: null });
+      return segs;
+    }
+    if (view === "cmc") {
+      const rEl = root();
+      const sRef = snap || sObj;
+      const slide = cmcState.currentSlide || "menu";
+      const lruLbl = formatCmcBreadLru();
+      const segs = [
+        { label: "Mode Select", onClick: () => goModeSelect() },
+        { label: "CMC", onClick: () => switchCmcSlide("menu", rEl, sRef) },
+      ];
+      if (slide === "menu") return segs;
+      segs.push({ label: lruLbl, onClick: () => switchCmcSlide("desired_mode", rEl, sRef) });
+      if (slide === "desired_mode") return segs;
+      const cmcSlideLabels = {
+        edit_tx: "Edit TX Words",
+        fault_summary: "Fault Summary",
+        command_summary: "Command Summary",
+        channels: "Configure Channels",
+      };
+      segs.push({ label: cmcSlideLabels[slide] || slide, onClick: null });
+      return segs;
+    }
+
+    // Standard Mode & legacy stack: deduplicate repeated mode_select entries
+    const cleanStack = [];
+    rawStack.forEach((scr) => {
+      if (scr === "mode_select" && cleanStack.length > 0) return;
+      if (cleanStack[cleanStack.length - 1] !== scr) cleanStack.push(scr);
+    });
+    if (!cleanStack.length) cleanStack.push("mode_select");
+    return cleanStack.map((scr, idx) => ({
+      label: labelScreen(scr),
+      onClick: idx < cleanStack.length - 1
+        ? (scr === "mode_select" ? () => goModeSelect() : () => navTo(scr))
+        : null,
+    }));
+  }
+
+  function renderBreadcrumb(stateOrStack) {
+    const bc = $("breadcrumb");
+    if (!bc) return;
+    const segs = buildBreadcrumbSegments(stateOrStack);
+    const sig = segs.map((seg) => seg.label).join(" / ");
+    if (bc.dataset.sig === sig && bc.children.length > 0) return;
+    bc.dataset.sig = sig;
+    bc.innerHTML = "";
+    segs.forEach((seg, i) => {
+      if (i > 0) {
+        const sep = el("span", "sep");
+        sep.textContent = "/";
+        bc.appendChild(sep);
+      }
+      const isLast = i === segs.length - 1;
+      const c = el("span", isLast ? "crumb current" : "crumb");
+      c.textContent = seg.label;
+      if (seg.onClick && !isLast) {
+        c.addEventListener("click", seg.onClick);
+      }
       bc.appendChild(c);
     });
   }
 
   async function navTo(screen) {
+    if (screen === "mode_select") {
+      await goModeSelect();
+      return;
+    }
     const stack = (snap && snap.screen_stack) || ["mode_select"];
     const idx = stack.indexOf(screen);
     if (idx >= 0) {
@@ -3760,7 +3889,7 @@ function renderCmcSlide6Channels(container, r, s) {
       if (!catEmpty) return;
     }
     lastViewKey = key;
-    renderBreadcrumb(s.screen_stack);
+    renderBreadcrumb(s);
     if (view !== "dme_diagnostic") {
       stopDmeDiagTimer();
     }
@@ -3817,47 +3946,176 @@ function renderCmcSlide6Channels(container, r, s) {
   }
 
   function renderLabelLibrary(r, s) {
-    const p = el("div", "panel");
-    p.innerHTML = `<div class="panel-title">Label Library</div>
-      <p class="muted">Aeroflex T1200 default-data dictionary. Avionics LRU can pick these labels or add custom rows.</p>
-      <div class="ln-bar"><input id="lib-filter" placeholder="Filter octal or name" style="min-width:16rem"/></div>`;
-    const wrap = el("div", "table-wrap");
-    const tbl = document.createElement("table");
-    tbl.className = "lib-table";
-    tbl.innerHTML = `<thead><tr>
-      <th class="mono">LABEL</th><th>NAME</th><th class="mono">DEFAULT</th><th>UNITS</th>
-      <th class="mono">SDI</th><th class="mono">PADS</th><th>SSM</th><th class="mono">RATE</th><th>FORMAT</th>
-    </tr></thead><tbody id="lib-tbody"></tbody>`;
-    wrap.appendChild(tbl);
-    p.appendChild(wrap);
-    r.appendChild(p);
+    const CATEGORIES = [
+      "All",
+      "Nav (DME/VOR/ILS/ADF)",
+      "LRA",
+      "Comm (VHF/HF/VDR)",
+      "ATC/MMR",
+      "VHF Align",
+      "CFDS / CMC",
+    ];
+    let activeCat = "All";
+    let selectedOctal = null;
+    let allRows = [];
 
-    const paint = (rows) => {
-      const q = (($("lib-filter") && $("lib-filter").value) || "").trim().toLowerCase();
-      const filtered = !q ? rows : rows.filter((row) =>
-        String(row.label || "").toLowerCase().includes(q) ||
-        String(row.funct || row.name || "").toLowerCase().includes(q));
-      const tb = $("lib-tbody");
-      if (!filtered.length) {
-        tb.innerHTML = `<tr><td colspan="9" class="muted" style="text-align:center">No labels</td></tr>`;
+    const card = el("div", "lib-card");
+    card.innerHTML = `
+      <div class="lib-top-head">
+        <div>
+          <h2 style="margin:0;font-size:1.1rem;font-weight:700">Label Library — Aeroflex JcAIR T1200B Reference</h2>
+          <p class="muted" style="margin:2px 0 0;font-size:12px">ARINC 429 Octal Labels, Data Formats (BCD/BNR/ISO #5/DISC/HEX), Bit Layouts &amp; LRU Specifications</p>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span id="lib-count-badge" class="pill mono" style="font-size:11.5px">Loading...</span>
+          <button type="button" class="btn btn-sm btn-ghost" id="lib-btn-back">← Mode Select</button>
+        </div>
+      </div>
+
+      <div class="lib-controls-bar">
+        <input id="lib-filter" class="category-select" placeholder="Search label (e.g. 032), function (VOR), format (BCD), or LRU (709)..." style="min-width:20rem;flex:1;max-width:360px" />
+        <div class="lib-cat-pills" id="lib-cats">
+          ${CATEGORIES.map(c => `<button type="button" class="lib-cat-btn ${c === 'All' ? 'active' : ''}" data-cat="${escAttr(c)}">${escAttr(c)}</button>`).join("")}
+        </div>
+      </div>
+
+      <div class="lib-body-split">
+        <div class="lib-table-scroll">
+          <table class="lib-table">
+            <thead>
+              <tr>
+                <th class="mono">Label (Oct)</th>
+                <th>Function</th>
+                <th>Format</th>
+                <th>LRU / System</th>
+                <th class="mono">Default &amp; Units</th>
+                <th class="mono">Rate (ms)</th>
+                <th>Range / Bit Spec</th>
+              </tr>
+            </thead>
+            <tbody id="lib-tbody"></tbody>
+          </table>
+        </div>
+
+        <aside class="lib-detail-pane" id="lib-detail-pane">
+          <div class="muted" style="text-align:center;margin-top:24px">Click any label row to inspect its 32-bit ARINC 429 word structure and T1200B specification.</div>
+        </aside>
+      </div>
+    `;
+    r.appendChild(card);
+
+    card.querySelector("#lib-btn-back").onclick = () => goModeSelect();
+
+    const renderDetail = (row) => {
+      const pane = card.querySelector("#lib-detail-pane");
+      if (!pane) return;
+      if (!row) {
+        pane.innerHTML = `<div class="muted" style="text-align:center;margin-top:24px">No label selected.</div>`;
         return;
       }
-      tb.innerHTML = filtered.map((row) => `<tr>
-        <td class="mono">${escAttr(row.label)}</td>
-        <td>${escAttr(row.funct || row.name || "")}</td>
-        <td class="mono">${escAttr(row.eng_default == null ? "" : row.eng_default)}</td>
-        <td>${escAttr(row.units || "")}</td>
-        <td class="mono">${String(row.sdi ?? 0).padStart(2, "0")}</td>
-        <td class="mono">${escAttr(row.pads || "-")}</td>
-        <td>${escAttr(row.ssm || "NML")}</td>
-        <td class="mono">${row.rate_ms || ""}</td>
-        <td class="mono">${escAttr(row.encoding || "raw")}</td>
-      </tr>`).join("");
+      const bl = row.bit_layout || {};
+      pane.innerHTML = `
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <strong class="mono" style="font-size:15px;color:var(--teal-primary,#0d9488)">LABEL ${escAttr(row.label)} · ${escAttr(row.funct || row.name || '')}</strong>
+          <span class="lib-fmt-badge">${escAttr(row.format || String(row.encoding || 'raw').toUpperCase())}</span>
+        </div>
+
+        <div>
+          <div style="font-size:10.5px;font-weight:700;color:var(--muted,#64748b);margin-bottom:4px">32-BIT ARINC 429 WORD STRUCTURE</div>
+          <div class="lib-word-diagram">
+            <div class="lib-bit-seg"><strong>32</strong>PAR<br/>${escAttr(row.parity || 'ODD')}</div>
+            <div class="lib-bit-seg"><strong>31–30</strong>SSM<br/>${escAttr(row.ssm || 'NML')}</div>
+            <div class="lib-bit-seg"><strong>29–11 (19b Data)</strong>${escAttr(row.sig_bits || '-')}<br/>PAD: ${escAttr(row.pads || '-')}</div>
+            <div class="lib-bit-seg"><strong>10–9</strong>SDI<br/>${String(row.sdi ?? 0).padStart(2, '0')}</div>
+            <div class="lib-bit-seg"><strong>8–1</strong>LABEL<br/>${escAttr(row.label)}</div>
+          </div>
+        </div>
+
+        <div class="lib-detail-row"><span class="lbl">LRU / System Group</span><span>${escAttr(row.lru_systems || row.lru_group || '-')}</span></div>
+        <div class="lib-detail-row"><span class="lbl">Default &amp; Units</span><span class="mono">${escAttr(row.default_value ?? row.eng_default ?? '0')} ${escAttr(row.units || '')} · Rate ${escAttr(row.rate_ms || '-')} ms</span></div>
+        <div class="lib-detail-row"><span class="lbl">Range &amp; Resolution</span><span>${escAttr(row.range_text || '-')} · ${escAttr(row.resolution || '-')}</span></div>
+        <div class="lib-detail-row"><span class="lbl">SSM Coding (Bits 30–31)</span><span>${escAttr(row.ssm_type || bl.bits_30_31 || '-')}</span></div>
+        <div class="lib-detail-row" style="border-bottom:none"><span class="lbl">T1200B Reference Notes</span><span>${escAttr(row.notes || '-')}</span></div>
+      `;
     };
+
+    const paint = (rows) => {
+      allRows = rows || [];
+      const q = (($("lib-filter") && $("lib-filter").value) || "").trim().toLowerCase();
+      const filtered = allRows.filter((row) => {
+        if (activeCat !== "All" && (row.lru_group || "") !== activeCat) return false;
+        if (!q) return true;
+        return [
+          row.label,
+          row.funct,
+          row.name,
+          row.format,
+          row.encoding,
+          row.lru_group,
+          row.lru_systems,
+          row.units,
+          row.notes,
+        ].some((val) => String(val || "").toLowerCase().includes(q));
+      });
+
+      const badge = card.querySelector("#lib-count-badge");
+      if (badge) badge.textContent = `Showing ${filtered.length} of ${allRows.length} labels`;
+
+      const tb = card.querySelector("#lib-tbody");
+      if (!filtered.length) {
+        tb.innerHTML = `<tr><td colspan="7" class="muted" style="text-align:center;padding:18px">No matching labels</td></tr>`;
+        renderDetail(null);
+        return;
+      }
+
+      if (!selectedOctal || !filtered.some((x) => x.label === selectedOctal)) {
+        selectedOctal = filtered[0].label;
+      }
+
+      tb.innerHTML = filtered.map((row) => {
+        const defStr = [row.default_value ?? row.eng_default ?? "", row.units || ""].filter(Boolean).join(" ");
+        const isSel = row.label === selectedOctal;
+        return `
+          <tr data-octal="${escAttr(row.label)}" class="${isSel ? 'active' : ''}">
+            <td class="mono"><strong>${escAttr(row.label)}</strong></td>
+            <td><strong>${escAttr(row.funct || row.name || "")}</strong></td>
+            <td><span class="lib-fmt-badge">${escAttr(row.format || String(row.encoding || "raw").toUpperCase())}</span></td>
+            <td>${escAttr(row.lru_systems || row.lru_group || "")}</td>
+            <td class="mono">${escAttr(defStr || "-")}</td>
+            <td class="mono">${escAttr(row.rate_ms || "")}</td>
+            <td>${escAttr(row.range_text || row.sig_bits || "")}</td>
+          </tr>
+        `;
+      }).join("");
+
+      const activeRow = filtered.find((x) => x.label === selectedOctal) || filtered[0];
+      renderDetail(activeRow);
+    };
+
+    card.querySelector("#lib-cats").addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-cat]");
+      if (!btn) return;
+      activeCat = btn.dataset.cat;
+      card.querySelectorAll("#lib-cats .lib-cat-btn").forEach((b) => {
+        b.classList.toggle("active", b.dataset.cat === activeCat);
+      });
+      paint(libraryCache || allRows);
+    });
+
+    card.querySelector("#lib-tbody").addEventListener("click", (e) => {
+      const tr = e.target.closest("tr[data-octal]");
+      if (!tr) return;
+      selectedOctal = tr.dataset.octal;
+      card.querySelectorAll("#lib-tbody tr").forEach((rEl) => {
+        rEl.classList.toggle("active", rEl.dataset.octal === selectedOctal);
+      });
+      const row = (libraryCache || allRows).find((x) => x.label === selectedOctal);
+      renderDetail(row);
+    });
 
     ensureLibrary().then((rows) => {
       paint(rows);
-      const inp = $("lib-filter");
+      const inp = card.querySelector("#lib-filter");
       if (inp) inp.addEventListener("input", () => paint(libraryCache || rows));
     }).catch((e) => { alert(e.message); });
   }

@@ -2197,3 +2197,274 @@ labels:
       units: HEX
       default: 0
     doc_page: Collins VHF-900 Memory Data
+  '074':
+    funct: GNSS STATUS
+    units: HEX
+    sdi: 0
+    ssm: NML
+    pads: '-'
+    rate_ms: 150
+    parity: ODD
+    encoding: raw
+    eng:
+      name: GNSS STATUS
+      units: HEX
+      default: 0
+    doc_page: 755 MMR / GNSS
+  '076':
+    funct: GPS ALTITUDE
+    units: FT
+    sdi: 0
+    ssm: NML
+    pads: '0'
+    rate_ms: 100
+    parity: ODD
+    encoding: bnr
+    eng:
+      name: GPS ALTITUDE
+      units: FT
+      default: 0.0
+    bnr:
+      lsb: 1.0
+      offset: 0.0
+      bits: 18
+    doc_page: 755 MMR / GNSS
+  '111':
+    funct: GPS LAT FINE
+    units: DG
+    sdi: 0
+    ssm: NML
+    pads: '00'
+    rate_ms: 100
+    parity: ODD
+    encoding: bnr
+    eng:
+      name: GPS LAT FINE
+      units: DG
+      default: 0.0
+    bnr:
+      lsb: 0.000171661
+      offset: 0.0
+      bits: 17
+    doc_page: 755 MMR / GNSS
+  '112':
+    funct: GPS LON FINE
+    units: DG
+    sdi: 0
+    ssm: NML
+    pads: '00'
+    rate_ms: 100
+    parity: ODD
+    encoding: bnr
+    eng:
+      name: GPS LON FINE
+      units: DG
+      default: 0.0
+    bnr:
+      lsb: 0.000171661
+      offset: 0.0
+      bits: 17
+    doc_page: 755 MMR / GNSS
+  '126':
+    funct: FLIGHT PHASE
+    units: PHASE
+    sdi: 0
+    ssm: NML
+    pads: '-'
+    rate_ms: 200
+    parity: ODD
+    encoding: raw
+    eng:
+      name: FLIGHT PHASE
+      units: PHASE
+      default: 1
+    doc_page: CFDS / Boeing CMC
+  '140':
+    funct: UTC TIME MMR
+    units: HHMM
+    sdi: 0
+    ssm: PLS
+    pads: '-'
+    rate_ms: 150
+    parity: ODD
+    encoding: bcd
+    bcd_scale: 1.0
+    bcd_digits: 4
+    eng:
+      name: UTC TIME MMR
+      units: HHMM
+      default: 0
+    doc_page: 755 MMR / UTC
+  '166':
+    funct: GLS VERT DEV
+    units: DDM
+    sdi: 0
+    ssm: NML
+    pads: '000000'
+    rate_ms: 50
+    parity: ODD
+    encoding: bnr
+    eng:
+      name: GLS VERT DEV
+      units: DDM
+      default: 0.0
+    bnr:
+      lsb: 0.0001953125
+      offset: 0.0
+      bits: 12
+    doc_page: 755 MMR / GLS
+  '170':
+    funct: A/C CONFIG WORD
+    units: HEX
+    sdi: 0
+    ssm: NML
+    pads: '-'
+    rate_ms: 500
+    parity: ODD
+    encoding: raw
+    eng:
+      name: A/C CONFIG WORD
+      units: HEX
+      default: 0
+    doc_page: CFDS / Boeing CMC 17-bit
+  '227':
+    funct: CFDS/CMC CMD
+    units: HEX
+    sdi: 0
+    ssm: NML
+    pads: '00'
+    rate_ms: 1000
+    parity: ODD
+    encoding: raw
+    eng:
+      name: CFDS/CMC CMD
+      units: HEX
+      default: 0
+    doc_page: CFDS ABD0018/0048 & ARINC 604
+  '271':
+    funct: DSCR DAT2
+    units: HEX
+    sdi: 0
+    ssm: NML
+    pads: '-'
+    rate_ms: 100
+    parity: ODD
+    encoding: raw
+    eng:
+      name: DSCR DAT2
+      units: HEX
+      default: 0
+    doc_page: ARINC 429 Discrete Word 2
+  '272':
+    funct: DSCR DAT3
+    units: HEX
+    sdi: 0
+    ssm: NML
+    pads: '-'
+    rate_ms: 100
+    parity: ODD
+    encoding: raw
+    eng:
+      name: DSCR DAT3
+      units: HEX
+      default: 0
+    doc_page: ARINC 429 Discrete Word 3
+  '273':
+    funct: MMR DISCRETE
+    units: HEX
+    sdi: 0
+    ssm: NML
+    pads: '-'
+    rate_ms: 100
+    parity: ODD
+    encoding: raw
+    eng:
+      name: MMR DISCRETE
+      units: HEX
+      default: 0
+    doc_page: 755 MMR Mode & GNSS Status
+  '301':
+    funct: A/C CONFIG 1
+    units: HEX
+    sdi: 0
+    ssm: NML
+    pads: '-'
+    rate_ms: 500
+    parity: ODD
+    encoding: raw
+    eng:
+      name: A/C CONFIG 1
+      units: HEX
+      default: 0
+    doc_page: CFDS Aircraft Config Word 1
+  '302':
+    funct: A/C CONFIG 2
+    units: HEX
+    sdi: 0
+    ssm: NML
+    pads: '-'
+    rate_ms: 500
+    parity: ODD
+    encoding: raw
+    eng:
+      name: A/C CONFIG 2
+      units: HEX
+      default: 0
+    doc_page: CFDS Aircraft Config Word 2
+  '303':
+    funct: A/C CONFIG 3
+    units: HEX
+    sdi: 0
+    ssm: NML
+    pads: '-'
+    rate_ms: 500
+    parity: ODD
+    encoding: raw
+    eng:
+      name: A/C CONFIG 3
+      units: HEX
+      default: 0
+    doc_page: CFDS Aircraft Config Word 3
+  '355':
+    funct: DISCRETE FAULT
+    units: HEX
+    sdi: 0
+    ssm: NML
+    pads: '-'
+    rate_ms: 100
+    parity: ODD
+    encoding: raw
+    eng:
+      name: DISCRETE FAULT
+      units: HEX
+      default: 0
+    doc_page: CFDS ABD0048 Discrete Mode
+  '356':
+    funct: ISO #5 MAINT
+    units: TEXT
+    sdi: 0
+    ssm: NML
+    pads: '-'
+    rate_ms: 100
+    parity: ODD
+    encoding: iso5
+    iso5_chars: 3
+    eng:
+      name: ISO #5 MAINT
+      units: TEXT
+      default: ''
+    doc_page: CFDS ABD0018/0048 MCDU Message
+  '377':
+    funct: EQUIPMENT ID
+    units: HEX
+    sdi: 0
+    ssm: NML
+    pads: '-'
+    rate_ms: 500
+    parity: ODD
+    encoding: raw
+    eng:
+      name: EQUIPMENT ID
+      units: HEX
+      default: 0
+    doc_page: ARINC 429 Equipment Identification
