@@ -341,21 +341,21 @@ def decode_iso5_hex(data_hex: str) -> str:
 
 
 def encode_chars_to_label356(c1: str, c2: str, c3: str) -> int:
-    """Encode 3 ASCII characters into 32-bit ARINC 429 Label 356 word."""
+    """Encode 3 ASCII characters into 32-bit ARINC 429 Label 356 word (bits 11..31)."""
     b1 = ord(c1) & 0x7F
     b2 = ord(c2) & 0x7F
     b3 = ord(c3) & 0x7F
-    # Bits 11..17: Char 1, Bits 18..24: Char 2, Bits 25..29: low 5 bits of Char 3
-    data_19 = b1 | (b2 << 7) | ((b3 & 0x1F) << 14)
-    # SSM Bits 30..31: high 2 bits of Char 3
-    ssm_val = (b3 >> 5) & 0x03
-    return encode_raw_word(
-        label="356",
-        data=data_19,
-        sdi=0,
-        ssm=ssm_val,
-        odd_parity=True,
-    )
+    # Wire label 356 octal is 0xEE (bits 1..8)
+    # SDI bits 9..10 are 00
+    # Bit 11..17: Char 1 (shift 10)
+    # Bit 18..24: Char 2 (shift 17)
+    # Bit 25..31: Char 3 (shift 24)
+    raw = 0xEE | (b1 << 10) | (b2 << 17) | (b3 << 24)
+    # Odd parity on bit 32
+    cnt = bin(raw & 0x7FFFFFFF).count("1")
+    if cnt % 2 == 0:
+        raw |= 1 << 31
+    return raw
 
 
 def encode_screen_to_label356_words(lines: list[str], agc_val: str = "A0") -> list[int]:
