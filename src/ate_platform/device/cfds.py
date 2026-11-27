@@ -20,7 +20,13 @@ import time
 from datetime import datetime, timezone
 from typing import Any
 
-from ate_platform.device.arinc_encode import encode_raw_word
+from ate_platform.device.arinc_encode import (
+    DATA_MASK19,
+    encode_raw_word,
+    parse_label,
+    put_data19,
+    put_ssm_bits,
+)
 
 # 19 CFDS LRUs defined per JcAIR T1200B Hardware Slide 1
 CFDS_LRU_TABLE = [
@@ -315,17 +321,83 @@ DME_709_MENU_SCREENS: dict[str, list[str]] = {
 }
 
 
+def _encode_cfds_word(
+    label: str,
+    data19: int,
+    *,
+    sdi: int = 0,
+    ssm: int = 0,
+    odd_parity: bool = True,
+) -> int:
+    """Encode ARINC 429 word preserving bits 9-10 SDI and exact bits 11-29 data19 on real Ballard & sim."""
+    base = encode_raw_word(label, 0, sdi=int(sdi) & 0x3, ssm=int(ssm) & 0x3, odd_parity=True)
+    word = put_data19(base, int(data19) & DATA_MASK19)
+    word = put_ssm_bits(word, int(ssm) & 0x3)
+    low31 = word & 0x7FFFFFFF
+    ones = bin(low31).count("1")
+    want_par = ((ones & 1) == 0) if odd_parity else ((ones & 1) == 1)
+    return (low31 | ((1 if want_par else 0) << 31)) & 0xFFFFFFFF
+
+
+def decode_label356_word(raw_word: int) -> dict[str, Any]:
+    """Decode one ARINC 429 Label 356 word (supports both 8-bit hardware framing & 7-bit packed sim).
+
+    Per Aeroflex JcAIR T1200B Manual Page 1-4-100:
+    - Real hardware ISO #5 words place 3 x 7-bit ASCII bytes on 8-bit boundaries:
+      Char 1: bits 9..15  ((raw >> 8) & 0x7F)
+      Char 2: bits 17..23 ((raw >> 16) & 0x7F)
+      Char 3: bits 25..31 ((raw >> 24) & 0x7F; bit 32 is odd parity)
+    - Framing words: STX (high byte 0x02, e.g. 0x02720A) and EOT (high byte 0x04, e.g. 0x040000).
+    - 7-bit packed words (bits 11..17, 18..24, 25..31 with SDI=00) are also supported seamlessly.
+    """
+    w = int(raw_word) & 0xFFFFFFFF
+    b1 = (w >> 8) & 0x7F
+    b2 = (w >> 16) & 0x7F
+    b3 = (w >> 24) & 0x7F
+
+    # 1. Detect real hardware STX / EOT framing words
+    if b3 == 0x02 and (b1 > 0 or b2 > 0):
+        return {"kind": "stx", "packet_type": b2, "word_count": b1, "text": ""}
+    if b3 == 0x04 and b1 == 0 and b2 == 0:
+        return {"kind": "eot", "text": ""}
+
+    # 2. Compare 8-bit aligned (hardware) vs 7-bit packed (internal sim / unit tests)
+    c1_7 = (w >> 10) & 0x7F
+    c2_7 = (w >> 17) & 0x7F
+    c3_7 = (w >> 24) & 0x7F
+    sdi_zero = ((w >> 8) & 0x3) == 0
+
+    def _is_text_byte(v: int) -> bool:
+        return (32 <= v <= 126) or v in (0x0A, 0x0D)
+
+    p8_all = all(32 <= v <= 126 for v in (b1, b2, b3))
+    p7_all = sdi_zero and all(32 <= v <= 126 for v in (c1_7, c2_7, c3_7))
+
+    # Prefer 8-bit aligned whenever it decodes cleanly and 7-bit does not (or SDI != 0)
+    if p8_all and not p7_all:
+        return {"kind": "data", "text": chr(b1) + chr(b2) + chr(b3)}
+    if p7_all and not p8_all:
+        return {"kind": "data", "text": chr(c1_7) + chr(c2_7) + chr(c3_7)}
+    if p8_all:
+        # Both happen to look printable (rare, e.g. spaces 0x20); check hardware space pattern 0x202020
+        if (b1, b2, b3) == (0x20, 0x20, 0x20):
+            return {"kind": "data", "text": "   "}
+        return {"kind": "data", "text": chr(c1_7) + chr(c2_7) + chr(c3_7)}
+
+    # Partial printable / control bytes (e.g. CR/LF or trailing NUL padding)
+    chars_8 = [chr(v) for v in (b1, b2, b3) if _is_text_byte(v)]
+    if chars_8:
+        return {"kind": "data", "text": "".join(chars_8)}
+    chars_7 = [chr(v) for v in (c1_7, c2_7, c3_7) if 32 <= v <= 126]
+    if chars_7:
+        return {"kind": "data", "text": "".join(chars_7)}
+    return {"kind": "empty", "text": ""}
+
+
 def decode_iso5_ascii(raw_word: int) -> str:
-    """Decode up to 3 7-bit ASCII characters from ARINC 429 word (bits 11..31)."""
-    # Bits 11-17: Char 1, Bits 18-24: Char 2, Bits 25-31: Char 3
-    c1 = (raw_word >> 10) & 0x7F
-    c2 = (raw_word >> 17) & 0x7F
-    c3 = (raw_word >> 24) & 0x7F
-    chars = []
-    for c in (c1, c2, c3):
-        if 32 <= c <= 126:
-            chars.append(chr(c))
-    return "".join(chars)
+    """Decode up to 3 ASCII characters from ARINC 429 Label 356 word (hardware 8-bit or 7-bit packed)."""
+    res = decode_label356_word(raw_word)
+    return str(res.get("text") or "")
 
 
 def decode_iso5_hex(data_hex: str) -> str:
@@ -553,7 +625,7 @@ def encode_label227_word(
     ready: bool = False,
     bit12: bool = False,
 ) -> tuple[int, str]:
-    """Encode ARINC 429 Label 227 CFDIU BITE Command Word."""
+    """Encode ARINC 429 Label 227 CFDIU BITE Command Word per T1200B Manual Page 1-4-96."""
     try:
         eq_val = int(str(equipment_code), 16) & 0xFFF
     except ValueError:
@@ -561,11 +633,11 @@ def encode_label227_word(
     cmd_val = int(command_code) & 0x7F
     sdi_val = int(sdi) & 0b11
 
-    # Data 19 bits:
-    # bit 0 (bit 11 on wire): ready
-    # bit 1 (bit 12 on wire): bit12 / clr
-    # bits 2..13 (bits 13..24): Equipment Code 12-bit
-    # bits 14..18 (bits 25..29): Command Code low 5 bits
+    # Data 19 bits (ARINC bits 11..29):
+    # bit 0  (ARINC bit 11): ready / CTS
+    # bit 1  (ARINC bit 12): spare / bit12
+    # bits 2..13 (ARINC bits 13..24): Hexadecimal Equipment Code (12-bit, e.g. 007 for 707 LRA)
+    # bits 14..18 (ARINC bits 25..29): Command Code low 5 bits
     data_19bit = (
         ((cmd_val & 0x1F) << 14)
         | (eq_val << 2)
@@ -575,15 +647,74 @@ def encode_label227_word(
     # SSM bits 30..31: Command Code high bits 5..6
     ssm_val = (cmd_val >> 5) & 0b11
 
-    # Label 227 octal is wire 0xE9
-    raw_word = encode_raw_word(
-        label="227",
-        data=data_19bit,
+    raw_word = _encode_cfds_word(
+        "227",
+        data_19bit,
         sdi=sdi_val,
         ssm=ssm_val,
         odd_parity=True,
     )
     return raw_word, f"0x{raw_word:08X}"
+
+
+def encode_cfds_tx_bundle(
+    tx_params: dict[str, Any],
+    aircraft_config: dict[str, bool],
+    *,
+    equipment_code: str = "007",
+    command_code: int = 0x00,
+    sdi: int = 0,
+    ready: bool = False,
+) -> list[dict[str, Any]]:
+    """Build hardware TX words for CFDS Channel A/C per T1200B Manual Page 1-4-87 & 1-4-96."""
+    words: list[dict[str, Any]] = []
+
+    # 1. Label 227 - BITE Command Word (100 ms)
+    raw227, hex227 = encode_label227_word(
+        equipment_code=equipment_code,
+        command_code=command_code,
+        sdi=sdi,
+        ready=ready,
+    )
+    words.append({"label": "227", "funct": "CFDS CMD", "raw": raw227, "hex": hex227, "rate_ms": 100})
+
+    # 2. Label 156 - Aircraft Type (A320 = 00 in bits 23-24, 1000 ms)
+    raw156 = _encode_cfds_word("156", 0, sdi=sdi, ssm=0, odd_parity=True)
+    words.append({"label": "156", "funct": "A/C TYPE", "raw": raw156, "hex": f"0x{raw156:08X}", "rate_ms": 1000})
+
+    # 3. Label 125 - UTC Time (1000 ms)
+    t_digits = [int(c) for c in str(tx_params.get("time", "15:49.5")) if c.isdigit()]
+    t_digits = (t_digits + [0] * 5)[:5]
+    t_val = ((t_digits[0] * 10 + t_digits[1]) * 600 + (t_digits[2] * 10 + t_digits[3]) * 10 + t_digits[4]) & DATA_MASK19
+    raw125 = _encode_cfds_word("125", t_val, sdi=0, ssm=3, odd_parity=True)
+    words.append({"label": "125", "funct": "UTC TIME", "raw": raw125, "hex": f"0x{raw125:08X}", "rate_ms": 1000})
+
+    # 4. Label 126 - Flight Phase (1000 ms)
+    try:
+        fp = int(str(tx_params.get("flt_phase", 1)).strip()) & 0xF
+    except ValueError:
+        fp = 1
+    raw126 = _encode_cfds_word("126", fp, sdi=0, ssm=3, odd_parity=True)
+    words.append({"label": "126", "funct": "FLT PHASE", "raw": raw126, "hex": f"0x{raw126:08X}", "rate_ms": 1000})
+
+    # 5. Label 260 - Date (1000 ms)
+    d_digits = [int(c) for c in str(tx_params.get("date", "12/31/86")) if c.isdigit()]
+    d_digits = (d_digits + [0] * 6)[:6]
+    d_bcd = 0
+    for idx, digit in enumerate(d_digits):
+        d_bcd |= (digit & 0xF) << ((idx % 4) * 4)
+    raw260 = _encode_cfds_word("260", d_bcd & DATA_MASK19, sdi=0, ssm=0, odd_parity=True)
+    words.append({"label": "260", "funct": "DATE", "raw": raw260, "hex": f"0x{raw260:08X}", "rate_ms": 1000})
+
+    # 6. Label 155 - 17-bit Aircraft Configuration Word (1000 ms)
+    cfg_mask = 0
+    for idx, key in enumerate(DEFAULT_AIRCRAFT_CONFIG.keys()):
+        if aircraft_config.get(key, False):
+            cfg_mask |= 1 << idx
+    raw155 = _encode_cfds_word("155", cfg_mask & DATA_MASK19, sdi=0, ssm=3, odd_parity=True)
+    words.append({"label": "155", "funct": "A/C CONFIG", "raw": raw155, "hex": f"0x{raw155:08X}", "rate_ms": 1000})
+
+    return words
 
 
 class CfdsProtocolManager:
@@ -650,6 +781,14 @@ class CfdsProtocolManager:
         # Last TX Word Command record
         self.last_tx_command: dict[str, Any] | None = None
 
+        # Live hardware RX framing & peer telemetry
+        self._rx_frame_active: bool = False
+        self._rx_frame_buf: list[str] = []
+        self._rx_mcdu_row: int = 0
+        self.rx_bus_labels: dict[str, dict[str, Any]] = {}
+        self.rx_peer_227: dict[str, Any] | None = None
+        self.rx_total_count: int = 0
+
     def get_state(self, rx_bus: str = "A") -> dict[str, Any]:
         """Return snapshot of CFDS protocol state for web client."""
         with self._lock:
@@ -683,6 +822,9 @@ class CfdsProtocolManager:
                 "discrete_has_data": self.discrete_has_data,
                 "discrete_fields": dict(self.discrete_fields),
                 "last_tx_command": self.last_tx_command,
+                "rx_bus_labels": dict(self.rx_bus_labels),
+                "rx_peer_227": dict(self.rx_peer_227) if self.rx_peer_227 else None,
+                "rx_total_count": self.rx_total_count,
             }
 
     def select_lru(self, code: str, name: str | None = None, short: str | None = None) -> dict[str, Any]:
@@ -1092,50 +1234,49 @@ class CfdsProtocolManager:
             k = str(key).strip().upper()
             eq = lru_code or self.selected_lru["code"]
 
-            # Map key identifier to command code
+            # Map key identifier to logical command code and ABD0018/0048 wire command code
             cmd_code = 0x01
+            wire_cmd = 0x11
             if k in ("1", "1L"):
-                cmd_code = 1
+                cmd_code, wire_cmd = 1, 0x70
             elif k in ("2", "2L"):
-                cmd_code = 2
+                cmd_code, wire_cmd = 2, 0x71
             elif k in ("3", "3L"):
-                cmd_code = 3
+                cmd_code, wire_cmd = 3, 0x72
             elif k in ("4", "4L"):
-                cmd_code = 4
+                cmd_code, wire_cmd = 4, 0x73
             elif k in ("5", "5L"):
-                cmd_code = 5
+                cmd_code, wire_cmd = 5, 0x74
             elif k in ("6", "6L"):
-                cmd_code = 6
-            elif k == "1R":
-                cmd_code = 7
-            elif k == "2R":
-                cmd_code = 8
-            elif k == "3R":
-                cmd_code = 9
-            elif k == "4R":
-                cmd_code = 10
-            elif k == "5R":
-                cmd_code = 11
-            elif k == "6R":
-                cmd_code = 12
-            elif k in ("A", "B", "C", "D", "E", "F"):
-                cmd_code = ord(k)
+                cmd_code, wire_cmd = 6, 0x75
+            elif k in ("A", "1R"):
+                cmd_code, wire_cmd = (ord(k) if k == "A" else 7), 0x78
+            elif k in ("B", "2R"):
+                cmd_code, wire_cmd = (ord(k) if k == "B" else 8), 0x79
+            elif k in ("C", "3R"):
+                cmd_code, wire_cmd = (ord(k) if k == "C" else 9), 0x7A
+            elif k in ("D", "4R"):
+                cmd_code, wire_cmd = (ord(k) if k == "D" else 10), 0x7B
+            elif k in ("E", "5R"):
+                cmd_code, wire_cmd = (ord(k) if k == "E" else 11), 0x7C
+            elif k in ("F", "6R"):
+                cmd_code, wire_cmd = (ord(k) if k == "F" else 12), 0x7D
             elif k == "NXT":
-                cmd_code = 0x1E
+                cmd_code, wire_cmd = 0x1E, 0x77
             elif k == "PRV":
-                cmd_code = 0x1D
+                cmd_code, wire_cmd = 0x1D, 0x76
             elif k == "MENU":
-                cmd_code = 0x11
+                cmd_code, wire_cmd = 0x11, 0x11
             elif k == "CLR":
-                cmd_code = 0x12
+                cmd_code, wire_cmd = 0x12, 0x12
             elif k == "SP":
-                cmd_code = 0x20
+                cmd_code, wire_cmd = 0x20, 0x20
             elif len(k) == 1:
-                cmd_code = ord(k)
+                cmd_code = wire_cmd = ord(k) & 0x7F
 
             raw_word, hex_str = encode_label227_word(
                 equipment_code=eq,
-                command_code=cmd_code,
+                command_code=wire_cmd,
                 sdi=0,
                 ready=True,
                 bit12=False,
@@ -1144,6 +1285,7 @@ class CfdsProtocolManager:
             self.last_tx_command = {
                 "key": k,
                 "command_code": cmd_code,
+                "wire_command_code": wire_cmd,
                 "equipment_code": eq,
                 "raw_word": raw_word,
                 "hex_32": hex_str,
@@ -1191,31 +1333,73 @@ class CfdsProtocolManager:
             return self.get_state()
 
     def ingest_rx_word(self, raw_word: int, label_octal: str) -> bool:
-        """Ingest incoming ARINC 429 word from hardware or bus, decoding Label 356 or 350/355."""
+        """Ingest incoming ARINC 429 word from hardware or bus (Label 356, 350/355, 227, & CFDS bus)."""
         with self._lock:
-            # 1. Label 356 ISO #5 Characters
-            if label_octal == "356":
-                chars = decode_iso5_ascii(raw_word)
+            w = int(raw_word) & 0xFFFFFFFF
+            lbl = str(label_octal).strip().zfill(3)
+            ts = datetime.now(timezone.utc).strftime("%H:%M:%S")
+            self.rx_total_count += 1
+            prev = self.rx_bus_labels.get(lbl)
+            self.rx_bus_labels[lbl] = {
+                "label": lbl,
+                "hex_32": f"0x{w:08X}",
+                "count": (prev["count"] + 1) if prev else 1,
+                "ts": ts,
+            }
+
+            # 1. Label 356 ISO #5 Maintenance / MCDU Characters (hardware 8-bit framing OR 7-bit packed)
+            if lbl == "356":
+                pkt = decode_label356_word(w)
+                kind = pkt.get("kind")
+                if kind == "stx":
+                    self._rx_frame_active = True
+                    self._rx_frame_buf = []
+                    return True
+                if kind == "eot":
+                    if self._rx_frame_buf:
+                        block_text = "".join(self._rx_frame_buf).strip()
+                        if block_text:
+                            self.mcdu_has_data = True
+                            msg = f"[{ts}] {self.selected_lru['short']} {self.flight_phase_mode}: {block_text}"
+                            self.normal_messages.append({"text": msg, "chars": block_text, "ts": ts})
+                            if len(self.normal_messages) > 100:
+                                self.normal_messages = self.normal_messages[-100:]
+                            # Write framed message lines into MCDU screen
+                            self.mcdu_lines = ["" for _ in range(14)]
+                            self._rx_mcdu_row = 0
+                            for ch in block_text:
+                                self._write_mcdu_char(ch)
+                            self.mcdu_status = f"LIVE LBL 356: {block_text[:32]}"
+                    self._rx_frame_active = False
+                    self._rx_frame_buf = []
+                    return True
+
+                chars = str(pkt.get("text") or "")
                 if chars:
+                    if self._rx_frame_active:
+                        self._rx_frame_buf.append(chars)
+                        # Also reflect live incoming data immediately in MCDU & status
+                        self.mcdu_has_data = True
+                        for ch in chars:
+                            self._write_mcdu_char(ch)
+                        self.mcdu_status = f"LIVE LBL 356 RX: {''.join(self._rx_frame_buf).strip()[:32]}"
+                        return True
+
                     self.mcdu_has_data = True
-                    # Update Normal Mode log
-                    ts = datetime.now(timezone.utc).strftime("%H:%M:%S")
                     msg = f"[{ts}] {self.selected_lru['short']} {self.flight_phase_mode}: {chars}"
                     self.normal_messages.append({"text": msg, "chars": chars, "ts": ts})
                     if len(self.normal_messages) > 100:
                         self.normal_messages = self.normal_messages[-100:]
-
-                    # Update MCDU Screen: write into current line
                     for ch in chars:
                         self._write_mcdu_char(ch)
                     self.mcdu_status = f"LIVE DATA: {chars}"
                     return True
 
-            # 2. Discrete Fault Word (Label 350 / 355 / 356 type 3)
-            elif label_octal in ("350", "355"):
+            # 2. Discrete Fault Word (Label 350 / 355)
+            elif lbl in ("350", "355"):
                 self.discrete_has_data = True
-                fn = str((raw_word >> 8) & 0x0F or 1)
-                ft_code = f"{(raw_word >> 12) & 0x3F:02X}"
+                fn = str((w >> 8) & 0x0F or 1)
+                ft_code = f"{(w >> 12) & 0x3F:02X}"
                 self.discrete_fields["failure_number"] = fn
                 self.discrete_fields["failure_type_code"] = ft_code
                 self.discrete_fields["failure_type_string"] = f"{self.selected_lru['short']} FAULT TYPE {ft_code}"
@@ -1229,16 +1413,45 @@ class CfdsProtocolManager:
                 self.discrete_fields["suspect3_side"] = "CENTER"
                 return True
 
+            # 3. Incoming Label 227 from peer CFDIU / JcAIR tester (cross-connected bench verification)
+            elif lbl == "227":
+                eq_code = f"{(w >> 12) & 0xFFF:03X}"
+                cmd_code = (w >> 24) & 0x7F
+                sdi = (w >> 8) & 0x3
+                matched = next((x for x in CFDS_LRU_TABLE if x["code"].upper() == eq_code), None)
+                peer_name = matched["name"] if matched else f"EQ {eq_code}"
+                prev_cnt = self.rx_peer_227["count"] if self.rx_peer_227 else 0
+                self.rx_peer_227 = {
+                    "eq_code": eq_code,
+                    "lru_name": peer_name,
+                    "command_code": cmd_code,
+                    "sdi": sdi,
+                    "hex_32": f"0x{w:08X}",
+                    "count": prev_cnt + 1,
+                    "ts": ts,
+                }
+                if not self.mcdu_has_data:
+                    self.mcdu_status = (
+                        f"RX LBL 227 PEER ({peer_name} · EQ {eq_code} · CMD 0x{cmd_code:02X}) — "
+                        f"WAITING FOR LRU LBL 356..."
+                    )
+                return True
+
             return False
 
     def _write_mcdu_char(self, char: str) -> None:
         """Write single character to MCDU 14x24 buffer with CR/LF handling."""
-        for idx in range(14):
+        if char in ("\r", "\n"):
+            self._rx_mcdu_row = min(13, self._rx_mcdu_row + 1)
+            return
+        for idx in range(self._rx_mcdu_row, 14):
             if len(self.mcdu_lines[idx]) < 24:
                 self.mcdu_lines[idx] += char
+                self._rx_mcdu_row = idx
                 return
         self.mcdu_lines.pop(0)
         self.mcdu_lines.append(char)
+        self._rx_mcdu_row = 13
 
     def clear_rx_data(self, mode: str | None = None) -> dict[str, Any]:
         """Clear normal messages, MCDU screen, or discrete fields."""

@@ -557,3 +557,62 @@ def test_cfds_refresh_endpoint_sim_on_and_sim_off(client: TestClient):
     assert d_off["last_tx_command"]["equipment_code"] == "009"
     assert d_off["last_tx_command"]["hex_32"].startswith("0x")
 
+
+def test_cfds_hardware_tx_rx_lra_and_manual_label356_framing():
+    """Verify 707 LRA Figure 54 Label 227 bits, DME filter clearing, TX scheduling, and T1200B Label 356 framing."""
+    from ate_platform.web.arinc_session import ArincSession
+
+    # 1. Manual Page 1-4-96 Figure 54: 707 LRA (EQ 007), cmd 0x00, SDI 00, odd parity -> 0x80007097
+    raw_fig54, hex_fig54 = encode_label227_word("007", 0x00, sdi=0, ready=False)
+    assert raw_fig54 == 0x80007097
+    assert hex_fig54 == "0x80007097"
+
+    # 2. Entering CFDS -> 707 LRA clears stale DME RX filter & DME 035 TX slots, and schedules Label 227 + CFDS TX
+    sess = ArincSession(simulation=True)
+    sess.rx["A"].filter_labels = ["035", "201", "202", "246", "247"]
+    sess.set_mode("cfds")
+    sess.set_cfds_sim_mode(False)
+    sess.select_cfds_lru("007")
+    sess.set_cfds_slide("menu_0018")
+
+    assert sess.rx["A"].filter_labels == []
+    assert sess.rx["A"].enabled is True
+    assert sess.channel["A"].rx_enable is True
+    assert sess.channel["A"].tx_enable is True
+    active_tx = [sl for sl in sess.tx["A"] if sl.enabled]
+    assert active_tx[0].label_octal == "227"
+    assert active_tx[0].rate_ms == 100
+    assert ((active_tx[0].raw >> 12) & 0xFFF) == 0x007  # 707 LRA Equipment Code in bits 13..24
+    assert all(sl.label_octal != "035" for sl in active_tx)
+
+    # 3. Manual Page 1-4-100: real hardware 8-bit ISO #5 Label 356 sequence ("JcAIR - CFDS TEST")
+    lbl356 = parse_label("356")
+    manual_data_hex = [
+        0x02720A,  # STX
+        0x202020,
+        0x202020,
+        0x41634A,  # JcA
+        0x205249,  # IR 
+        0xC3202D,  # - C
+        0x534446,  # FDS
+        0x455420,  #  TE
+        0xA05453,  # ST 
+        0x040000,  # EOT
+    ]
+    for d24 in manual_data_hex:
+        sess.ingest_rx_word("A", (d24 << 8) | lbl356)
+
+    cf_state = sess.get_cfds_state()
+    assert cf_state["has_data"] is True
+    assert any("JcAIR - CFDS TEST" in m["text"] for m in cf_state["normal_messages"])
+    assert "JcAIR - CFDS TEST" in "\n".join(cf_state["lines"])
+
+    # 4. Incoming peer Label 227 from cross-connected JcAIR T1200B is decoded cleanly
+    sess.select_cfds_lru("007")
+    sess.ingest_rx_word("A", 0x80007097)
+    st_peer = sess.get_cfds_state()
+    assert st_peer["rx_peer_227"] is not None
+    assert st_peer["rx_peer_227"]["eq_code"] == "007"
+    assert st_peer["rx_peer_227"]["lru_name"] == "707 LRA"
+    assert "707 LRA" in st_peer["mcdu_status"]
+

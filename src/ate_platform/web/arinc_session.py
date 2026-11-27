@@ -57,8 +57,8 @@ from ate_platform.device.arinc_profile import (
 )
 from ate_platform.device.label_dict import decode_received, format_display, library_catalog, lookup_label
 from ate_platform.device.vhf900_align import Vhf900AlignManager
-from ate_platform.device.cfds import CfdsProtocolManager
-from ate_platform.device.cmc import CmcProtocolManager
+from ate_platform.device.cfds import CfdsProtocolManager, encode_cfds_tx_bundle
+from ate_platform.device.cmc import CmcProtocolManager, encode_cmc_label227, encode_cmc_transmit_words
 from ate_platform.paths import REPO_ROOT, force_simulation
 
 try:
@@ -566,6 +566,12 @@ class ArincSession:
         with self._lock:
             self.app_mode = mode
             self.screen_stack = ["mode_select", mode]
+            if mode == "cfds":
+                self.cfds.active = True
+                self._sync_cfds_bus_locked()
+            elif mode == "cmc":
+                self.cmc.active = True
+                self._sync_cmc_bus_locked()
             return self.app_mode
 
     def push_screen(self, screen: str) -> list[str]:
@@ -952,8 +958,9 @@ class ArincSession:
         rec = decode_received(int(raw), display_mode=dm)
         if filters and rec["label_octal"] not in filters:
             dme_active = (self.active_profile == "dme" or getattr(self, "dme_mode", "") in {"standard", "single", "multi"} or getattr(self, "screen", "") in {"dme_diagnostic", "dme_single", "dme_multi", "standard_dme"})
-            cmc_active = hasattr(self, "cmc") and self.cmc.active and rec["label_octal"] == "350"
-            if not cmc_active and not (dme_active and rec["label_octal"] in {"035", "201", "202", "246", "247"}):
+            cfds_active = hasattr(self, "cfds") and (self.cfds.active or self.app_mode == "cfds")
+            cmc_active = hasattr(self, "cmc") and (self.cmc.active or self.app_mode == "cmc") and rec["label_octal"] == "350"
+            if not cfds_active and not cmc_active and not (dme_active and rec["label_octal"] in {"035", "201", "202", "246", "247"}):
                 return None
         eng_val = rec.get("eng_value")
         if tc > 0 and rec["label_octal"] in FILTER_LABELS and isinstance(eng_val, (int, float)):
@@ -1005,7 +1012,7 @@ class ArincSession:
             for t in v.traps:
                 if t.label_octal == hit.label_octal and (t.sdi is None or t.sdi == hit.sdi):
                     t.triggered = True
-        if hasattr(self, "cfds") and self.cfds.active:
+        if hasattr(self, "cfds") and (self.cfds.active or self.app_mode == "cfds"):
             try:
                 self.cfds.ingest_rx_word(hit.raw, hit.label_octal)
             except Exception:
@@ -2247,36 +2254,142 @@ class ArincSession:
             self.cfds.simulation_mode = self.is_cfds_simulation_active()
             return self.cfds.get_state(rx_bus=self.rx_ch or "A")
 
+    def _sync_cfds_bus_locked(
+        self,
+        *,
+        command_code: int | None = None,
+        ready: bool | None = None,
+    ) -> None:
+        """Synchronize Ballard TX/RX channels with active CFDS LRU & command state.
+
+        Clears stale non-CFDS RX filters (e.g. DME 035/201/202/246/247) and DME TX slots,
+        configures bus speed (100 kbps CH-C for 750 VDR, 12.5 kbps CH-A for LRA/DME/etc.),
+        and schedules live CFDS Label 227 + 156/125/126/260/155 words onto the hardware bus.
+        """
+        eq = str(self.cfds.selected_lru.get("code") or "007")
+        is_vdr = eq == "050"
+        tx_bus = "C" if is_vdr else str(self.cfds.channel_config.get("xmtr_select") or "A").upper()
+        rx_bus = "C" if is_vdr else str(self.cfds.channel_config.get("rcvr_select") or "A").upper()
+        if tx_bus not in BUSES:
+            tx_bus = "A"
+        if rx_bus not in BUSES:
+            rx_bus = "A"
+
+        # Disarm leftover Standard/DME profiles so they never hijack RX filters or TX slots
+        self.active_profile = None
+        self.dme_mode = None
+        self.tx_ch = tx_bus
+        self.rx_ch = rx_bus
+
+        # Open RX cleanly with zero stale label filter so all CFDS RX (356/350/355/227/377) pass
+        self.rx[rx_bus].filter_labels = []
+        self.rx[rx_bus].filter_sdi = None
+        self.rx[rx_bus].enabled = True
+        self.channel[rx_bus].rx_enable = True
+
+        # Configure TX bus bit rate & enable
+        rate_kbps = 100.0 if is_vdr else 12.5
+        self.channel[tx_bus].high_speed = is_vdr
+        self.channel[tx_bus].bit_rate_kbps = rate_kbps
+        self.channel[tx_bus].tx_enable = True
+
+        # Determine Label 227 command code & ready bit
+        slide = str(self.cfds.current_slide or "menu").lower()
+        if command_code is None:
+            if slide in ("menu_0018", "interactive_0048"):
+                last_cmd = self.cfds.last_tx_command or {}
+                if last_cmd.get("equipment_code") == eq and "wire_command_code" in last_cmd:
+                    command_code = int(last_cmd["wire_command_code"])
+                else:
+                    command_code = 0x11
+                if ready is None:
+                    ready = True
+            elif slide in ("normal_0018", "normal_0048"):
+                command_code = 0x01 if self.cfds.flight_phase_mode == "AIR" else 0x00
+                if ready is None:
+                    ready = False
+            else:
+                command_code = 0x00
+                if ready is None:
+                    ready = False
+        if ready is None:
+            ready = slide in ("menu_0018", "interactive_0048")
+
+        bundle = encode_cfds_tx_bundle(
+            self.cfds.tx_params,
+            self.cfds.aircraft_config,
+            equipment_code=eq,
+            command_code=int(command_code),
+            sdi=0,
+            ready=bool(ready),
+        )
+        new_slots = _new_slots()
+        for idx, item in enumerate(bundle[:SLOTS_PER_BUS]):
+            raw = int(item["raw"]) & 0xFFFFFFFF
+            d19 = (raw >> 10) & 0x7FFFF
+            new_slots[idx] = TxSlot(
+                index=idx,
+                mode="raw",
+                enabled=True,
+                funct=str(item["funct"]),
+                label_octal=str(item["label"]).zfill(3),
+                data19=d19,
+                pad3=d19 & 0x7,
+                data16=(d19 >> 3) & 0xFFFF,
+                sdi=(raw >> 8) & 0x3,
+                ssm="NML",
+                parity="ODD",
+                rate_ms=int(item["rate_ms"]),
+                raw=raw,
+                data_text=str(item["hex"]),
+                encoding="raw",
+            )
+        self.tx[tx_bus] = new_slots
+
     def select_cfds_lru(self, code: str, name: str | None = None, short: str | None = None) -> dict[str, Any]:
         with self._lock:
             self.cfds.simulation_mode = self.is_cfds_simulation_active()
             res = self.cfds.select_lru(code, name, short)
-            if self.cfds.selected_lru.get("code") == "050":
-                self.channel["C"].high_speed = True
-                self.channel["C"].bit_rate_kbps = 100.0
-                self.channel["C"].tx_enable = True
-                self.tx_ch = "C"
+            self._sync_cfds_bus_locked(command_code=0x00, ready=False)
             return res
 
     def set_cfds_slide(self, slide: str) -> dict[str, Any]:
         with self._lock:
             self.cfds.simulation_mode = self.is_cfds_simulation_active()
-            return self.cfds.set_slide(slide)
+            res = self.cfds.set_slide(slide)
+            s = str(slide or "").strip().lower()
+            if s in ("menu_0018", "interactive_0048"):
+                self._sync_cfds_bus_locked(command_code=0x11, ready=True)
+            elif s in ("normal_0018", "normal_0048"):
+                cmd = 0x01 if self.cfds.flight_phase_mode == "AIR" else 0x00
+                self._sync_cfds_bus_locked(command_code=cmd, ready=False)
+            else:
+                self._sync_cfds_bus_locked()
+            return res
 
     def update_cfds_tx_params(self, params: dict[str, Any], config: dict[str, bool] | None = None) -> dict[str, Any]:
         with self._lock:
             self.cfds.simulation_mode = self.is_cfds_simulation_active()
-            return self.cfds.update_tx_params(params, config)
+            res = self.cfds.update_tx_params(params, config)
+            self._sync_cfds_bus_locked()
+            return res
 
     def set_cfds_flight_phase(self, phase: str) -> dict[str, Any]:
         with self._lock:
             self.cfds.simulation_mode = self.is_cfds_simulation_active()
-            return self.cfds.set_flight_phase(phase)
+            res = self.cfds.set_flight_phase(phase)
+            cmd = 0x01 if self.cfds.flight_phase_mode == "AIR" else 0x00
+            self._sync_cfds_bus_locked(command_code=cmd, ready=False)
+            return res
 
     def send_cfds_key(self, key: str, lru_code: str | None = None) -> dict[str, Any]:
         with self._lock:
             self.cfds.simulation_mode = self.is_cfds_simulation_active()
-            return self.cfds.send_key_command(key, lru_code)
+            res = self.cfds.send_key_command(key, lru_code)
+            last = self.cfds.last_tx_command or {}
+            wire_cmd = int(last.get("wire_command_code", last.get("command_code", 0x11)))
+            self._sync_cfds_bus_locked(command_code=wire_cmd, ready=True)
+            return res
 
     def set_cfds_channels(self, **kwargs: Any) -> dict[str, Any]:
         with self._lock:
@@ -2284,6 +2397,7 @@ class ArincSession:
             for k, v in kwargs.items():
                 if k in self.cfds.channel_config and v is not None:
                     self.cfds.channel_config[k] = v
+            self._sync_cfds_bus_locked()
             return self.cfds.get_state()
 
     def clear_cfds_rx(self, mode: str | None = None) -> dict[str, Any]:
@@ -2293,7 +2407,13 @@ class ArincSession:
 
     def refresh_cfds(self) -> dict[str, Any]:
         with self._lock:
-            return self.cfds.refresh_screen(self.is_cfds_simulation_active())
+            res = self.cfds.refresh_screen(self.is_cfds_simulation_active())
+            slide = str(self.cfds.current_slide or "").lower()
+            cmd = 0x11 if slide in ("menu_0018", "interactive_0048") else (
+                0x01 if self.cfds.flight_phase_mode == "AIR" else 0x00
+            )
+            self._sync_cfds_bus_locked(command_code=cmd, ready=(slide in ("menu_0018", "interactive_0048")))
+            return res
 
     def simulate_cfds_scenario(self, mode: str, lru_code: str | None = None) -> dict[str, Any]:
         with self._lock:
@@ -2336,6 +2456,80 @@ class ArincSession:
             self.cmc.simulation_mode = self.is_cmc_simulation_active()
             return self.cmc.get_state()
 
+    def _sync_cmc_bus_locked(self) -> None:
+        """Synchronize Ballard TX/RX channels with active Boeing CMC state."""
+        ch_cfg = self.cmc.channels
+        tx_bus = str(ch_cfg.get("xmtr_select") or "TX-A").replace("TX-", "").upper()
+        rx_bus = str(ch_cfg.get("rcvr_select") or "RX-A").replace("RX-", "").upper()
+        if tx_bus not in BUSES:
+            tx_bus = "A"
+        if rx_bus not in BUSES:
+            rx_bus = "A"
+        self.active_profile = None
+        self.dme_mode = None
+        self.tx_ch = tx_bus
+        self.rx_ch = rx_bus
+        self.rx[rx_bus].filter_labels = []
+        self.rx[rx_bus].filter_sdi = None
+        self.rx[rx_bus].enabled = True
+        self.channel[rx_bus].rx_enable = True
+
+        rate = 100.0 if str(ch_cfg.get("bit_rate_kbps", "12.5")) == "100" else 12.5
+        self.channel[tx_bus].bit_rate_kbps = rate
+        self.channel[tx_bus].high_speed = rate >= 50.0
+        self.channel[tx_bus].tx_enable = True
+
+        cs = self.cmc.cmd_summary
+        raw227, hex227 = encode_cmc_label227(
+            label=cs["label"],
+            eq_id=cs["eq_id"],
+            function_code=cs["function_code"],
+            pad=cs["pad"],
+            sdi=cs["sdi"],
+            parity=cs["parity"],
+        )
+        tx_words = encode_cmc_transmit_words(self.cmc.tx_params, self.cmc.aircraft_config)
+        new_slots = _new_slots()
+        d19_0 = (raw227 >> 10) & 0x7FFFF
+        new_slots[0] = TxSlot(
+            index=0,
+            mode="raw",
+            enabled=True,
+            funct="CMC CMD",
+            label_octal=str(cs["label"]).zfill(3),
+            data19=d19_0,
+            pad3=d19_0 & 0x7,
+            data16=(d19_0 >> 3) & 0xFFFF,
+            sdi=(raw227 >> 8) & 0x3,
+            ssm="NML",
+            parity=cs["parity"],
+            rate_ms=max(20, int(cs.get("rate_ms", 1000))),
+            raw=raw227,
+            data_text=hex227,
+            encoding="raw",
+        )
+        for idx, item in enumerate(tx_words[: SLOTS_PER_BUS - 1], start=1):
+            raw = int(item["raw"]) & 0xFFFFFFFF
+            d19 = (raw >> 10) & 0x7FFFF
+            new_slots[idx] = TxSlot(
+                index=idx,
+                mode="raw",
+                enabled=True,
+                funct=str(item["name"]),
+                label_octal=str(item["label"]).zfill(3),
+                data19=d19,
+                pad3=d19 & 0x7,
+                data16=(d19 >> 3) & 0xFFFF,
+                sdi=0,
+                ssm="NML",
+                parity="ODD",
+                rate_ms=1000,
+                raw=raw,
+                data_text=str(item["hex"]),
+                encoding="raw",
+            )
+        self.tx[tx_bus] = new_slots
+
     def select_cmc_lru(
         self,
         lru: str,
@@ -2352,27 +2546,15 @@ class ArincSession:
                 time_constant=time_constant,
                 advance_to_mode=advance_to_mode,
             )
-            if self.cmc.selected_lru.get("name") == "750 VDR":
-                self.channel["C"].high_speed = True
-                self.channel["C"].bit_rate_kbps = 100.0
-                self.channel["C"].tx_enable = True
-                self.channel["C"].rx_enable = True
-                self.rx["C"].enabled = True
-                self.tx_ch = "C"
-                self.rx_ch = "C"
-            else:
-                rx_bus = self.rx_ch or "A"
-                self.channel[rx_bus].rx_enable = True
-                self.rx[rx_bus].enabled = True
+            self._sync_cmc_bus_locked()
             return res
 
     def set_cmc_slide(self, slide: str) -> dict[str, Any]:
         with self._lock:
             self.cmc.simulation_mode = self.is_cmc_simulation_active()
-            rx_bus = self.rx_ch or "A"
-            self.channel[rx_bus].rx_enable = True
-            self.rx[rx_bus].enabled = True
-            return self.cmc.set_slide(slide, active=True)
+            res = self.cmc.set_slide(slide, active=True)
+            self._sync_cmc_bus_locked()
+            return res
 
     def update_cmc_tx_data(
         self,
@@ -2388,6 +2570,7 @@ class ArincSession:
                 time_constant=time_constant,
             )
             state["encoded_words"] = encoded
+            self._sync_cmc_bus_locked()
             return state
 
     def send_cmc_command(self, **kwargs: Any) -> dict[str, Any]:
@@ -2395,6 +2578,7 @@ class ArincSession:
             self.cmc.simulation_mode = self.is_cmc_simulation_active()
             state, cmd_record = self.cmc.send_command(**kwargs)
             state["transmitted_command"] = cmd_record
+            self._sync_cmc_bus_locked()
             return state
 
     def set_cmc_channels(self, **kwargs: Any) -> dict[str, Any]:
