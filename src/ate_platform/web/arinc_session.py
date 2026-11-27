@@ -2995,22 +2995,36 @@ class ArincSession:
                         )
 
                     rv = rx_views[letter]
-                    if cfg.rx_enable:
-                        if rv.filter_labels:
-                            bti429.FilterDefault(0, log_rx, h_core)
-                            sdi_mask = (
-                                bti429.SDIALL if rv.filter_sdi is None
-                                else (1 << (int(rv.filter_sdi) & 0x3))
+                    if cfg.rx_enable and rv.filter_labels:
+                        bti429.FilterDefault(0, log_rx, h_core)
+                        sdi_mask = (
+                            bti429.SDIALL if rv.filter_sdi is None
+                            else (1 << (int(rv.filter_sdi) & 0x3))
+                        )
+                        for lab_s in rv.filter_labels:
+                            bti429.FilterSet(
+                                bti429.MSGCRT429_DEFAULT,
+                                parse_label(lab_s), sdi_mask, log_rx, h_core,
                             )
-                            for lab_s in rv.filter_labels:
-                                bti429.FilterSet(
-                                    bti429.MSGCRT429_DEFAULT,
-                                    parse_label(lab_s), sdi_mask, log_rx, h_core,
-                                )
-                        else:
-                            bti429.FilterDefault(
-                                bti429.MSGCRT429_DEFAULT, log_rx, h_core
-                            )
+                    else:
+                        # Always attach default filter for non-intrusive channel_activity monitoring on CH 0/2/4/6
+                        bti429.FilterDefault(
+                            bti429.MSGCRT429_DEFAULT, log_rx, h_core
+                        )
+
+                # Also monitor spare physical RX channels (1, 3, 5, 7) passively for live wire/pinout diagnostics
+                for spare_phys in (1, 3, 5, 7):
+                    try:
+                        log_spare_rx = resolve_rx_channel(h_core, spare_phys)
+                        bti429.ChConfig(
+                            bti429.CHCFG429_AUTOSPEED | bti429.CHCFG429_SEQALL,
+                            log_spare_rx, h_core,
+                        )
+                        bti429.FilterDefault(
+                            bti429.MSGCRT429_DEFAULT, log_spare_rx, h_core
+                        )
+                    except Exception:
+                        pass
 
                 for letter in BUSES:
                     cfg = bus_cfgs[letter]

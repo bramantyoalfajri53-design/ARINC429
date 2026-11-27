@@ -706,12 +706,12 @@ def encode_cfds_tx_bundle(
     raw260 = _encode_cfds_word("260", d_bcd & DATA_MASK19, sdi=0, ssm=0, odd_parity=True)
     words.append({"label": "260", "funct": "DATE", "raw": raw260, "hex": f"0x{raw260:08X}", "rate_ms": 1000})
 
-    # 6. Label 155 - 17-bit Aircraft Configuration Word (1000 ms)
+    # 6. Label 155 - 17-bit Aircraft Configuration Word (1000 ms, SSM=00 per JcAIR T1200B capture)
     cfg_mask = 0
     for idx, key in enumerate(DEFAULT_AIRCRAFT_CONFIG.keys()):
         if aircraft_config.get(key, False):
             cfg_mask |= 1 << idx
-    raw155 = _encode_cfds_word("155", cfg_mask & DATA_MASK19, sdi=0, ssm=3, odd_parity=True)
+    raw155 = _encode_cfds_word("155", cfg_mask & DATA_MASK19, sdi=0, ssm=0, odd_parity=True)
     words.append({"label": "155", "funct": "A/C CONFIG", "raw": raw155, "hex": f"0x{raw155:08X}", "rate_ms": 1000})
 
     return words
